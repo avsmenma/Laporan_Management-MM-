@@ -44,8 +44,15 @@ class MinimalTestDataSeeder extends Seeder
         // 7. Seed Realisasi Tahun Lalu
         $this->seedTahunLalu($batch);
 
+        // 8. Seed PKS Produksi (untuk LM16)
+        $this->seedPksProduksi($batch);
+
+        // 9. Seed PKS Biaya (untuk LM16)
+        $this->seedPksBiaya($batch);
+
         $this->command->info('✓ Minimal test data berhasil di-seed.');
         $this->command->info('  Siap generate: php artisan report:generate --type=LM14 --batch=1 --unit=5E11');
+        $this->command->info('  Siap generate: php artisan report:generate --type=LM16 --batch=1 --unit=5F01');
     }
 
     private function seedDbWbs(Batch $batch): void
@@ -210,5 +217,95 @@ class MinimalTestDataSeeder extends Seeder
         }
 
         $this->command->info("  ✓ Tahun Lalu: {$templateCodes->count()} kode × 5 periode");
+    }
+
+    private function seedPksProduksi(Batch $batch): void
+    {
+        DB::table('pks_produksi')->where('batch_id', $batch->id)->where('plant_code', '5F01')->delete();
+
+        // Data produksi pabrik (uraian sesuai spek LM16)
+        $produksiData = [
+            'Jumlah Produksi TBS' => ['bi' => 120000, 'sd' => 600000],
+            'Jumlah TBS Diolah' => ['bi' => 115000, 'sd' => 575000],
+            'Jumlah Sisa Buah di Pabrik' => ['bi' => 5000, 'sd' => 5000],
+            'Jlh. Prod. Minyak Sawit' => ['bi' => 25000, 'sd' => 125000],
+            'Jumlah Produksi Inti Sawit' => ['bi' => 6000, 'sd' => 30000],
+        ];
+
+        $count = 0;
+        foreach ($produksiData as $uraian => $nilai) {
+            for ($period = 1; $period <= 5; $period++) {
+                $bi = $period === 5 ? $nilai['bi'] : $nilai['bi'] * 0.9;
+                $sd = $nilai['sd'];
+
+                DB::table('pks_produksi')->insert([
+                    'batch_id' => $batch->id,
+                    'plant_code' => '5F01',
+                    'period' => $period,
+                    'uraian' => $uraian,
+                    'nilai_bi' => $bi,
+                    'nilai_sd' => $sd,
+                ]);
+                $count++;
+            }
+        }
+
+        $this->command->info("  ✓ PKS Produksi: {$count} baris");
+    }
+
+    private function seedPksBiaya(Batch $batch): void
+    {
+        DB::table('pks_biaya')->where('batch_id', $batch->id)->where('plant_code', '5F01')->delete();
+
+        // Sample biaya pengolahan (cost_element / GL)
+        $costElements = [
+            '51100402' => 'Gaji & Bisos Karpel',
+            '51100410' => 'Gaji & Bisos Karpel',
+            '51100427' => 'Gaji & Bisos Karpel',
+        ];
+
+        // Sample biaya overhead (cost_center / BT)
+        $costCenters = [
+            'BT01' => 'Gaji & Bisos Karpin',
+            'BT02' => 'Gaji & Bisos Karpel',
+            'BT03' => 'Biaya Pemel Prusahn',
+            'BT05' => 'Biaya Pemel Prusahn',
+        ];
+
+        $count = 0;
+
+        // Seed cost_element (pengolahan)
+        foreach ($costElements as $element => $desc) {
+            for ($period = 1; $period <= 5; $period++) {
+                DB::table('pks_biaya')->insert([
+                    'batch_id' => $batch->id,
+                    'plant_code' => '5F01',
+                    'period' => $period,
+                    'cost_center' => null,
+                    'cost_element' => $element,
+                    'klasifikasi_code' => '1',
+                    'nilai' => rand(8000000, 20000000),
+                ]);
+                $count++;
+            }
+        }
+
+        // Seed cost_center (overhead)
+        foreach ($costCenters as $center => $desc) {
+            for ($period = 1; $period <= 5; $period++) {
+                DB::table('pks_biaya')->insert([
+                    'batch_id' => $batch->id,
+                    'plant_code' => '5F01',
+                    'period' => $period,
+                    'cost_center' => $center,
+                    'cost_element' => null,
+                    'klasifikasi_code' => '1',
+                    'nilai' => rand(5000000, 15000000),
+                ]);
+                $count++;
+            }
+        }
+
+        $this->command->info("  ✓ PKS Biaya: {$count} baris");
     }
 }

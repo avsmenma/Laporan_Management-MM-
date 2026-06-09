@@ -2,6 +2,7 @@
 
 use App\Domain\Report\Lm13Service;
 use App\Domain\Report\Lm14Service;
+use App\Domain\Report\Lm16Service;
 use App\Models\Batch;
 use App\Models\RefUnit;
 use Illuminate\Foundation\Inspiring;
@@ -11,14 +12,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}', function (Lm13Service $lm13Service, Lm14Service $lm14Service): int {
+Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}', function (Lm13Service $lm13Service, Lm14Service $lm14Service, Lm16Service $lm16Service): int {
     $type = strtoupper((string) $this->option('type'));
     $batchInput = (string) $this->option('batch');
     $unitCode = $this->option('unit');
     $komoditi = strtoupper((string) $this->option('komoditi'));
 
-    if (! in_array($type, ['LM13', 'LM14'], true)) {
-        $this->error('Saat ini command report:generate mendukung --type=LM13 atau --type=LM14.');
+    if (! in_array($type, ['LM13', 'LM14', 'LM16'], true)) {
+        $this->error('Command report:generate mendukung --type=LM13, LM14, atau LM16.');
 
         return 1;
     }
@@ -40,6 +41,30 @@ Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}
         return 1;
     }
 
+    // LM16 untuk PABRIK (tidak perlu komoditi filter di whereHas)
+    if ($type === 'LM16') {
+        $units = RefUnit::query()
+            ->where('type', 'PABRIK')
+            ->when($unitCode, fn ($query) => $query->where('code', $unitCode))
+            ->when($komoditi, fn ($query) => $query->where('komoditi', $komoditi))
+            ->orderBy('code')
+            ->get();
+
+        if ($units->isEmpty()) {
+            $this->error('Tidak ada unit pabrik yang cocok dengan filter command.');
+
+            return 1;
+        }
+
+        foreach ($units as $unit) {
+            $rows = $lm16Service->generate($batch, $unit);
+            $this->info("{$type} {$unit->code}: {$rows->count()} baris dimaterialisasi.");
+        }
+
+        return 0;
+    }
+
+    // LM13 & LM14 untuk KEBUN
     $units = RefUnit::query()
         ->where('type', 'KEBUN')
         ->when($unitCode, fn ($query) => $query->where('code', $unitCode))
