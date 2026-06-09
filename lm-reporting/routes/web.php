@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Import\ImportController;
 use App\Http\Controllers\Master\BatchController;
@@ -28,6 +29,13 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     })->name('pabrik');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+
+    Route::prefix('api/report')->group(function () {
+        Route::get('/lm14', [ReportController::class, 'lm14']);
+        Route::get('/lm13', [ReportController::class, 'lm13']);
+        Route::get('/lm16', [ReportController::class, 'lm16']);
+        Route::get('/drilldown', [ReportController::class, 'drilldown']);
+    });
 });
 
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {

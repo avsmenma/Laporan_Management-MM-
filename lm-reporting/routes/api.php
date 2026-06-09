@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Api\MasterController;
-use App\Http\Controllers\Api\ReportController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -17,11 +16,3 @@ use Illuminate\Support\Facades\Route;
 // Dropdown data (units, batches) - accessible without auth for easier usage
 Route::get('/units', [MasterController::class, 'units']);
 Route::get('/batches', [MasterController::class, 'batches']);
-
-// Report endpoints (require web session authentication)
-Route::middleware('auth')->group(function () {
-    Route::get('/report/lm14', [ReportController::class, 'lm14']);
-    Route::get('/report/lm13', [ReportController::class, 'lm13']);
-    Route::get('/report/lm16', [ReportController::class, 'lm16']);
-    Route::get('/report/drilldown', [ReportController::class, 'drilldown']);
-});

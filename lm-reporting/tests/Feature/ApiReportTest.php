@@ -45,7 +45,19 @@ class ApiReportTest extends TestCase
                         'kode',
                         'uraian',
                         'cells' => [
+                            'real_bulan_lalu' => [
+                                'value',
+                                'drilldown' => ['kode_baris', 'column_key'],
+                            ],
                             'bi_jumlah' => [
+                                'value',
+                                'drilldown' => ['kode_baris', 'column_key'],
+                            ],
+                            'sd_real_thn_lalu' => [
+                                'value',
+                                'drilldown' => ['kode_baris', 'column_key'],
+                            ],
+                            'cap_bi_thnlalu' => [
                                 'value',
                                 'drilldown' => ['kode_baris', 'column_key'],
                             ],
@@ -75,6 +87,32 @@ class ApiReportTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('context.column_key', 'bi_jumlah');
+    }
+
+    public function test_report_endpoint_accepts_authenticated_web_session(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create([
+            'code' => 'Batch #2026-05',
+            'year' => 2026,
+            'month' => 5,
+            'status' => 'final',
+            'processed_at' => '2026-05-20 08:00:00',
+        ]);
+        $unit = RefUnit::query()->where('code', '5E11')->firstOrFail();
+        $operator = User::query()->whereHas('role', fn ($query) => $query->where('name', Role::OPERATOR))->firstOrFail();
+
+        $this->insertLm14Source($batch, $unit);
+        app(Lm14Service::class)->generate($batch, $unit, 'KS');
+
+        $this->post('/login', [
+            'email' => $operator->email,
+            'password' => 'password',
+        ])->assertRedirect();
+
+        $this->getJson("/api/report/lm14?batch={$batch->id}&unit={$unit->code}&komoditi=KS")
+            ->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     private function insertLm14Source(Batch $batch, RefUnit $unit): void

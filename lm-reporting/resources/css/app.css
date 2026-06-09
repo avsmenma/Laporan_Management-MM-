@@ -43,3 +43,99 @@ body {
     background: var(--lm-green);
     color: white;
 }
+
+.lm-report-table {
+    border-top: 1px solid #d8e2dd;
+}
+
+.lm-report-table .tabulator {
+    border: 0;
+    font-size: 12px;
+}
+
+.lm-report-table .tabulator-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+}
+
+.lm-report-table .tabulator-col,
+.lm-report-table .tabulator-col-group {
+    background: #0f4c3a;
+    color: #fff;
+    border-right-color: rgb(255 255 255 / 24%);
+}
+
+.lm-report-table .tabulator-row.lm-row-header {
+    background: #ecf4f0;
+    font-weight: 700;
+}
+
+.lm-report-table .tabulator-row.lm-row-subtotal {
+    background: #f6faf8;
+    font-weight: 700;
+}
+
+.lm-report-table .tabulator-row.lm-row-total {
+    background: #dbece5;
+    font-weight: 800;
+}
+
+.lm-report-table .lm-number-cell {
+    cursor: pointer;
+}
+
+.lm-report-table .lm-number-cell:hover {
+    background: #e7f2ec;
+}
+
+.lm-report-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.5rem;
+    border-top: 1px solid #e1e8e4;
+    color: #52615a;
+    font-size: 0.8rem;
+}
+
+.lm-drill-preview {
+    margin: 1rem 1.5rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid #cfe1d8;
+    border-radius: 6px;
+    background: #f5fbf8;
+    color: #22382f;
+    font-size: 0.85rem;
+}
+
+.lm-error-panel {
+    margin: 1rem 0;
+    padding: 1rem 1.25rem;
+    border: 1px solid #f2c4c4;
+    border-radius: 8px;
+    background: #fff5f5;
+    color: #8a1f1f;
+    font-weight: 600;
+}
+
+@media print {
+    .filter-bar,
+    .toolbar,
+    .tabs,
+    .app-sidebar,
+    .app-header {
+        display: none !important;
+    }
+
+    .app-main {
+        padding: 0;
+    }
+
+    .report-card {
+        box-shadow: none;
+        border-radius: 0;
+    }
+}

@@ -4,7 +4,6 @@
 
 @section('content')
 <div x-data="kebunApp()" x-init="init()">
-    <!-- Filter Bar -->
     <div class="filter-bar">
         <div class="filter-grid">
             <div class="filter-group">
@@ -51,9 +50,7 @@
         </div>
     </div>
 
-    <!-- Report Card -->
     <div class="report-card" x-show="reportData">
-        <!-- Header -->
         <div class="report-header">
             <h2 class="report-title" x-text="reportData ? `Laporan Kebun - ${reportData.meta?.unit?.name}` : 'Laporan Kebun'"></h2>
             <div class="report-meta">
@@ -61,7 +58,6 @@
             </div>
         </div>
 
-        <!-- KPI Strip -->
         <div class="kpi-strip" x-show="reportData">
             <div class="kpi-item">
                 <div class="kpi-label">Jumlah Hari Sebulan</div>
@@ -86,60 +82,54 @@
             </div>
         </div>
 
-        <!-- Toolbar -->
         <div class="toolbar">
             <div class="toolbar-left">
                 <input type="text" class="search-input" placeholder="Cari baris..." x-model="searchText">
             </div>
             <div class="toolbar-right">
-                <button class="btn" @click="exportExcel()">📊 Excel</button>
-                <button class="btn" @click="exportCSV()">📄 CSV</button>
-                <button class="btn" @click="exportPDF()">📕 PDF</button>
-                <button class="btn" @click="print()">🖨️ Cetak</button>
-                <button class="btn btn-primary" @click="loadReport()">🔄 Refresh</button>
+                <button class="btn" @click="exportExcel()">Excel</button>
+                <button class="btn" @click="exportCSV()">CSV</button>
+                <button class="btn" @click="exportPDF()">PDF</button>
+                <button class="btn" @click="print()">Cetak</button>
+                <button class="btn btn-primary" @click="loadReport()">Refresh</button>
             </div>
         </div>
 
-        <!-- Tabs -->
+        <div class="lm-drill-preview" x-show="drilldownPreview">
+            <strong>Dasar nilai:</strong>
+            <span x-text="drilldownPreview ? `${drilldownPreview.report_type} ${drilldownPreview.kode_baris} - ${drilldownPreview.column_key}` : ''"></span>
+            <span> akan dibuka penuh pada prompt_09.</span>
+        </div>
+
         <div class="tabs">
-            <div class="tab" :class="{ 'active': activeTab === 'lm14' }" @click="activeTab = 'lm14'; if (canLoadReport()) loadReport()">
+            <div class="tab" :class="{ 'active': activeTab === 'lm14' }" @click="switchTab('lm14')">
                 LM 14
             </div>
-            <div class="tab" :class="{ 'active': activeTab === 'lm13' }" @click="activeTab = 'lm13'; if (canLoadReport()) loadReport()">
+            <div class="tab" :class="{ 'active': activeTab === 'lm13' }" @click="switchTab('lm13')">
                 LM 13
             </div>
         </div>
 
-        <!-- Tab Content: LM14 -->
         <div class="tab-content" :class="{ 'active': activeTab === 'lm14' }">
-            <div x-show="loadingLm14" style="padding: 2rem; text-align: center; color: #666;">
-                Loading LM14...
-            </div>
-            <div x-show="!loadingLm14 && lm14Data" id="table-lm14" style="overflow-x: auto;">
-                <!-- Tabel LM14 akan di-render di sini via Tabulator (prompt_08) -->
-                <p style="padding: 2rem; text-align: center; color: #999;">
-                    Tabel LM14 akan diimplementasikan di Prompt_08
-                </p>
-            </div>
+            <div x-show="loadingLm14" style="padding: 2rem; text-align: center; color: #666;">Loading LM14...</div>
+            <div x-show="!loadingLm14 && lm14Data" id="table-lm14" class="lm-report-table" @lm-cell-click="handleCellClick($event)"></div>
         </div>
 
-        <!-- Tab Content: LM13 -->
         <div class="tab-content" :class="{ 'active': activeTab === 'lm13' }">
-            <div x-show="loadingLm13" style="padding: 2rem; text-align: center; color: #666;">
-                Loading LM13...
-            </div>
-            <div x-show="!loadingLm13 && lm13Data" id="table-lm13" style="overflow-x: auto;">
-                <!-- Tabel LM13 akan di-render di sini via Tabulator (prompt_08) -->
-                <p style="padding: 2rem; text-align: center; color: #999;">
-                    Tabel LM13 akan diimplementasikan di Prompt_08
-                </p>
-            </div>
+            <div x-show="loadingLm13" style="padding: 2rem; text-align: center; color: #666;">Loading LM13...</div>
+            <div x-show="!loadingLm13 && lm13Data" id="table-lm13" class="lm-report-table" @lm-cell-click="handleCellClick($event)"></div>
+        </div>
+
+        <div class="lm-report-footer" x-show="activeTable()">
+            <span x-text="footerText()"></span>
+            <span>Nilai dalam Rupiah · Report final · terkunci</span>
         </div>
     </div>
 
-    <!-- Empty State -->
+    <div x-show="errorMessage" class="lm-error-panel" x-text="errorMessage"></div>
+
     <div x-show="!reportData" style="background: white; padding: 4rem; text-align: center; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>
+        <div style="font-size: 3rem; margin-bottom: 1rem;">LM</div>
         <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
         <p style="color: #999; margin-top: 0.5rem;">Pilih Komoditas, Batch, dan Unit Kebun</p>
     </div>
@@ -165,9 +155,16 @@ function kebunApp() {
         lm13Data: null,
         loadingLm14: false,
         loadingLm13: false,
+        lm14Table: null,
+        lm13Table: null,
+        drilldownPreview: null,
+        errorMessage: null,
 
         async init() {
             await this.loadBatches();
+            this.$watch('searchText', (value) => {
+                window.LmReportTables.applySearch(this.activeTable(), value);
+            });
         },
 
         async loadBatches() {
@@ -210,7 +207,7 @@ function kebunApp() {
         onKomoditiChange() {
             this.filters.unit = '';
             this.units = [];
-            this.reportData = null;
+            this.resetReport();
             this.loadUnits();
         },
 
@@ -218,9 +215,7 @@ function kebunApp() {
             if (this.selectedBatch && String(this.selectedBatch.period) !== String(this.filters.period)) {
                 this.filters.batch = '';
                 this.selectedBatch = null;
-                this.reportData = null;
-                this.lm14Data = null;
-                this.lm13Data = null;
+                this.resetReport();
             }
         },
 
@@ -229,7 +224,7 @@ function kebunApp() {
             if (this.selectedBatch) {
                 this.filters.period = this.selectedBatch.period;
             }
-            this.reportData = null;
+            this.resetReport();
         },
 
         onUnitChange() {
@@ -238,8 +233,23 @@ function kebunApp() {
             }
         },
 
+        switchTab(tab) {
+            this.activeTab = tab;
+            if (this.canLoadReport()) {
+                this.loadReport();
+            }
+        },
+
         canLoadReport() {
             return this.filters.komoditi && this.filters.batch && this.filters.unit;
+        },
+
+        resetReport() {
+            this.reportData = null;
+            this.lm14Data = null;
+            this.lm13Data = null;
+            this.drilldownPreview = null;
+            this.errorMessage = null;
         },
 
         async loadReport() {
@@ -250,44 +260,26 @@ function kebunApp() {
 
             if (this.activeTab === 'lm14') {
                 await this.loadLm14();
-            } else if (this.activeTab === 'lm13') {
+            } else {
                 await this.loadLm13();
             }
         },
 
         async loadLm14() {
             this.loadingLm14 = true;
+            this.errorMessage = null;
             try {
-                const url = `/api/report/lm14?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`;
-                const response = await fetch(url, {
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin'
+                const data = await this.fetchReport(`/api/report/lm14?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`);
+                this.reportData = data;
+                this.lm14Data = data;
+                this.$nextTick(() => {
+                    this.lm14Table = window.LmReportTables.renderTable(document.getElementById('table-lm14'), 'LM14', data);
+                    window.LmReportTables.applySearch(this.lm14Table, this.searchText);
                 });
-
-                if (!response.ok) {
-                    if (response.status === 401 || response.status === 403) {
-                        alert('Sesi Anda telah berakhir. Silakan login kembali.');
-                        window.location.href = '/login';
-                        return;
-                    }
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.reportData = data;
-                    this.lm14Data = data;
-                    console.log('LM14 loaded:', data.rows.length, 'rows');
-                } else {
-                    alert(data.message || 'Gagal memuat data LM14');
-                }
             } catch (error) {
-                console.error('Error loading LM14:', error);
-                alert('Terjadi kesalahan saat memuat data: ' + error.message);
+                this.reportData = null;
+                this.lm14Data = null;
+                this.errorMessage = error.message;
             } finally {
                 this.loadingLm14 = false;
             }
@@ -295,56 +287,99 @@ function kebunApp() {
 
         async loadLm13() {
             this.loadingLm13 = true;
+            this.errorMessage = null;
             try {
-                const url = `/api/report/lm13?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`;
-                const response = await fetch(url, {
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin'
+                const data = await this.fetchReport(`/api/report/lm13?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`);
+                this.reportData = data;
+                this.lm13Data = data;
+                this.$nextTick(() => {
+                    this.lm13Table = window.LmReportTables.renderTable(document.getElementById('table-lm13'), 'LM13', data);
+                    window.LmReportTables.applySearch(this.lm13Table, this.searchText);
                 });
-
-                if (!response.ok) {
-                    if (response.status === 401 || response.status === 403) {
-                        alert('Sesi Anda telah berakhir. Silakan login kembali.');
-                        window.location.href = '/login';
-                        return;
-                    }
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.reportData = data;
-                    this.lm13Data = data;
-                    console.log('LM13 loaded:', data.rows.length, 'rows');
-                } else {
-                    alert(data.message || 'Gagal memuat data LM13');
-                }
             } catch (error) {
-                console.error('Error loading LM13:', error);
-                alert('Terjadi kesalahan saat memuat data: ' + error.message);
+                this.reportData = null;
+                this.lm13Data = null;
+                this.errorMessage = error.message;
             } finally {
                 this.loadingLm13 = false;
             }
         },
 
+        async fetchReport(url) {
+            const response = await fetch(url, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.message || 'Gagal memuat data laporan');
+            }
+
+            return data;
+        },
+
         exportExcel() {
-            alert('Export Excel akan diimplementasikan di prompt_08');
+            const table = this.activeTable();
+            if (table) {
+                window.LmReportTables.exportExcel(table, `${this.activeReportType()}-${this.filters.unit}-${this.filters.period}.xls`);
+            }
         },
 
         exportCSV() {
-            alert('Export CSV akan diimplementasikan di prompt_08');
+            const table = this.activeTable();
+            if (table) {
+                window.LmReportTables.exportCsv(table, `${this.activeReportType()}-${this.filters.unit}-${this.filters.period}.csv`);
+            }
         },
 
         exportPDF() {
-            alert('Export PDF akan diimplementasikan di prompt_08');
+            const table = this.activeTable();
+            if (table) {
+                window.LmReportTables.exportPdf(table, `${this.activeReportType()} ${this.filters.unit}`);
+            }
         },
 
         print() {
             window.print();
+        },
+
+        activeTable() {
+            return this.activeTab === 'lm14' ? this.lm14Table : this.lm13Table;
+        },
+
+        activeReportType() {
+            return this.activeTab === 'lm14' ? 'LM14' : 'LM13';
+        },
+
+        footerText() {
+            const table = this.activeTable();
+            const rows = table ? table.getData('active').length : 0;
+            const columns = table ? table.getColumns(true).length : 0;
+            return `Menampilkan ${rows} baris · ${columns} kolom`;
+        },
+
+        handleCellClick(event) {
+            this.drilldownPreview = {
+                report_type: this.activeReportType(),
+                unit: this.filters.unit,
+                batch: this.filters.batch,
+                komoditi: this.filters.komoditi,
+                kode_baris: event.detail.drilldown.kode_baris,
+                column_key: event.detail.drilldown.column_key,
+            };
         }
     }
 }

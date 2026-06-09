@@ -4,7 +4,6 @@
 
 @section('content')
 <div x-data="pabrikApp()" x-init="init()">
-    <!-- Filter Bar -->
     <div class="filter-bar">
         <div class="filter-grid">
             <div class="filter-group">
@@ -12,7 +11,6 @@
                 <select class="filter-select" x-model="filters.komoditi" @change="onKomoditiChange()">
                     <option value="">- Pilih Komoditas -</option>
                     <option value="KS">Kelapa Sawit (PKS)</option>
-                    <!-- Karet/PKR untuk fase berikutnya -->
                 </select>
             </div>
 
@@ -51,9 +49,7 @@
         </div>
     </div>
 
-    <!-- Report Card -->
     <div class="report-card" x-show="reportData">
-        <!-- Header -->
         <div class="report-header">
             <h2 class="report-title" x-text="reportData ? `Laporan Pabrik - ${reportData.meta?.unit?.name}` : 'Laporan Pabrik'"></h2>
             <div class="report-meta">
@@ -61,7 +57,6 @@
             </div>
         </div>
 
-        <!-- KPI Strip -->
         <div class="kpi-strip" x-show="reportData">
             <div class="kpi-item">
                 <div class="kpi-label">Jumlah Hari Sebulan</div>
@@ -86,44 +81,44 @@
             </div>
         </div>
 
-        <!-- Toolbar -->
         <div class="toolbar">
             <div class="toolbar-left">
                 <input type="text" class="search-input" placeholder="Cari baris..." x-model="searchText">
             </div>
             <div class="toolbar-right">
-                <button class="btn" @click="exportExcel()">📊 Excel</button>
-                <button class="btn" @click="exportCSV()">📄 CSV</button>
-                <button class="btn" @click="exportPDF()">📕 PDF</button>
-                <button class="btn" @click="print()">🖨️ Cetak</button>
-                <button class="btn btn-primary" @click="loadReport()">🔄 Refresh</button>
+                <button class="btn" @click="exportExcel()">Excel</button>
+                <button class="btn" @click="exportCSV()">CSV</button>
+                <button class="btn" @click="exportPDF()">PDF</button>
+                <button class="btn" @click="print()">Cetak</button>
+                <button class="btn btn-primary" @click="loadReport()">Refresh</button>
             </div>
         </div>
 
-        <!-- Tabs (hanya 1 tab untuk pabrik) -->
+        <div class="lm-drill-preview" x-show="drilldownPreview">
+            <strong>Dasar nilai:</strong>
+            <span x-text="drilldownPreview ? `${drilldownPreview.report_type} ${drilldownPreview.kode_baris} - ${drilldownPreview.column_key}` : ''"></span>
+            <span> akan dibuka penuh pada prompt_09.</span>
+        </div>
+
         <div class="tabs">
-            <div class="tab active">
-                LM 16
-            </div>
+            <div class="tab active">LM 16</div>
         </div>
 
-        <!-- Tab Content: LM16 -->
         <div class="tab-content active">
-            <div x-show="loadingLm16" style="padding: 2rem; text-align: center; color: #666;">
-                Loading LM16...
-            </div>
-            <div x-show="!loadingLm16 && lm16Data" id="table-lm16" style="overflow-x: auto;">
-                <!-- Tabel LM16 akan di-render di sini via Tabulator (prompt_08) -->
-                <p style="padding: 2rem; text-align: center; color: #999;">
-                    Tabel LM16 akan diimplementasikan di Prompt_08
-                </p>
-            </div>
+            <div x-show="loadingLm16" style="padding: 2rem; text-align: center; color: #666;">Loading LM16...</div>
+            <div x-show="!loadingLm16 && lm16Data" id="table-lm16" class="lm-report-table" @lm-cell-click="handleCellClick($event)"></div>
+        </div>
+
+        <div class="lm-report-footer" x-show="lm16Table">
+            <span x-text="footerText()"></span>
+            <span>Nilai dalam Rupiah · Report final · terkunci</span>
         </div>
     </div>
 
-    <!-- Empty State -->
+    <div x-show="errorMessage" class="lm-error-panel" x-text="errorMessage"></div>
+
     <div x-show="!reportData" style="background: white; padding: 4rem; text-align: center; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">🏭</div>
+        <div style="font-size: 3rem; margin-bottom: 1rem;">LM</div>
         <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
         <p style="color: #999; margin-top: 0.5rem;">Pilih Komoditas, Batch, dan Unit Pabrik</p>
     </div>
@@ -134,7 +129,7 @@
 function pabrikApp() {
     return {
         filters: {
-            komoditi: 'KS', // Default ke Sawit
+            komoditi: 'KS',
             period: '',
             batch: '',
             unit: ''
@@ -146,10 +141,16 @@ function pabrikApp() {
         reportData: null,
         lm16Data: null,
         loadingLm16: false,
+        lm16Table: null,
+        drilldownPreview: null,
+        errorMessage: null,
 
         async init() {
             await this.loadBatches();
-            await this.loadUnits(); // Load units untuk Sawit (default)
+            await this.loadUnits();
+            this.$watch('searchText', (value) => {
+                window.LmReportTables.applySearch(this.lm16Table, value);
+            });
         },
 
         async loadBatches() {
@@ -192,7 +193,7 @@ function pabrikApp() {
         onKomoditiChange() {
             this.filters.unit = '';
             this.units = [];
-            this.reportData = null;
+            this.resetReport();
             this.loadUnits();
         },
 
@@ -200,8 +201,7 @@ function pabrikApp() {
             if (this.selectedBatch && String(this.selectedBatch.period) !== String(this.filters.period)) {
                 this.filters.batch = '';
                 this.selectedBatch = null;
-                this.reportData = null;
-                this.lm16Data = null;
+                this.resetReport();
             }
         },
 
@@ -210,7 +210,7 @@ function pabrikApp() {
             if (this.selectedBatch) {
                 this.filters.period = this.selectedBatch.period;
             }
-            this.reportData = null;
+            this.resetReport();
         },
 
         onUnitChange() {
@@ -221,6 +221,13 @@ function pabrikApp() {
 
         canLoadReport() {
             return this.filters.komoditi && this.filters.batch && this.filters.unit;
+        },
+
+        resetReport() {
+            this.reportData = null;
+            this.lm16Data = null;
+            this.drilldownPreview = null;
+            this.errorMessage = null;
         },
 
         async loadReport() {
@@ -234,56 +241,87 @@ function pabrikApp() {
 
         async loadLm16() {
             this.loadingLm16 = true;
+            this.errorMessage = null;
             try {
-                const url = `/api/report/lm16?batch=${this.filters.batch}&unit=${this.filters.unit}`;
-                const response = await fetch(url, {
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin'
+                const data = await this.fetchReport(`/api/report/lm16?batch=${this.filters.batch}&unit=${this.filters.unit}`);
+                this.reportData = data;
+                this.lm16Data = data;
+                this.$nextTick(() => {
+                    this.lm16Table = window.LmReportTables.renderTable(document.getElementById('table-lm16'), 'LM16', data);
+                    window.LmReportTables.applySearch(this.lm16Table, this.searchText);
                 });
-
-                if (!response.ok) {
-                    if (response.status === 401 || response.status === 403) {
-                        alert('Sesi Anda telah berakhir. Silakan login kembali.');
-                        window.location.href = '/login';
-                        return;
-                    }
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.reportData = data;
-                    this.lm16Data = data;
-                    console.log('LM16 loaded:', data.rows.length, 'rows');
-                } else {
-                    alert(data.message || 'Gagal memuat data LM16');
-                }
             } catch (error) {
-                console.error('Error loading LM16:', error);
-                alert('Terjadi kesalahan saat memuat data: ' + error.message);
+                this.reportData = null;
+                this.lm16Data = null;
+                this.errorMessage = error.message;
             } finally {
                 this.loadingLm16 = false;
             }
         },
 
+        async fetchReport(url) {
+            const response = await fetch(url, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.message || 'Gagal memuat data laporan');
+            }
+
+            return data;
+        },
+
         exportExcel() {
-            alert('Export Excel akan diimplementasikan di prompt_08');
+            if (this.lm16Table) {
+                window.LmReportTables.exportExcel(this.lm16Table, `LM16-${this.filters.unit}-${this.filters.period}.xls`);
+            }
         },
 
         exportCSV() {
-            alert('Export CSV akan diimplementasikan di prompt_08');
+            if (this.lm16Table) {
+                window.LmReportTables.exportCsv(this.lm16Table, `LM16-${this.filters.unit}-${this.filters.period}.csv`);
+            }
         },
 
         exportPDF() {
-            alert('Export PDF akan diimplementasikan di prompt_08');
+            if (this.lm16Table) {
+                window.LmReportTables.exportPdf(this.lm16Table, `LM16 ${this.filters.unit}`);
+            }
         },
 
         print() {
             window.print();
+        },
+
+        footerText() {
+            const rows = this.lm16Table ? this.lm16Table.getData('active').length : 0;
+            const columns = this.lm16Table ? this.lm16Table.getColumns(true).length : 0;
+            return `Menampilkan ${rows} baris · ${columns} kolom`;
+        },
+
+        handleCellClick(event) {
+            this.drilldownPreview = {
+                report_type: 'LM16',
+                unit: this.filters.unit,
+                batch: this.filters.batch,
+                komoditi: this.filters.komoditi,
+                kode_baris: event.detail.drilldown.kode_baris,
+                column_key: event.detail.drilldown.column_key,
+            };
         }
     }
 }
