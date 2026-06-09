@@ -7,7 +7,7 @@ use App\Http\Controllers\Report\ReportViewerController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return redirect()->route('reports.index');
+    return redirect()->route('kebun');
 });
 
 Route::middleware('guest')->group(function () {
@@ -17,6 +17,16 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::get('/reports', [ReportViewerController::class, 'index'])->name('reports.index');
+
+    // Halaman Kebun & Pabrik
+    Route::get('/kebun', function () {
+        return view('kebun.index');
+    })->name('kebun');
+
+    Route::get('/pabrik', function () {
+        return view('pabrik.index');
+    })->name('pabrik');
+
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });
 
