@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source "../**/*.blade.php";
+@source "../**/*.js";
+@source "../**/*.vue";
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+:root {
+    --lm-green: #0f4c3a;
+    --lm-green-dark: #0a3428;
+    --lm-cream: #f7f3ea;
+}
+
+body {
+    background: #f4f6f4;
+    color: #17231f;
+}
+
+.lm-shell {
+    min-height: 100vh;
+    background: linear-gradient(180deg, #f7f9f7 0%, #eef3ef 100%);
+}
+
+.lm-topbar {
+    background: var(--lm-green);
+    color: white;
+}
+
+.lm-card {
+    border: 1px solid #d9e3dd;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 8px 24px rgb(15 76 58 / 8%);
+}
+
+.tabulator .tabulator-header {
+    background: var(--lm-green);
+    color: white;
+}
