@@ -30,7 +30,7 @@
                 <label class="filter-label">Batch</label>
                 <select class="filter-select" x-model="filters.batch" @change="onBatchChange()">
                     <option value="">- Pilih Batch -</option>
-                    <template x-for="batch in batches" :key="batch.id">
+                    <template x-for="batch in filteredBatches()" :key="batch.id">
                         <option :value="batch.id" x-text="batch.label"></option>
                     </template>
                 </select>
@@ -102,10 +102,10 @@
 
         <!-- Tabs -->
         <div class="tabs">
-            <div class="tab" :class="{ 'active': activeTab === 'lm14' }" @click="activeTab = 'lm14'">
+            <div class="tab" :class="{ 'active': activeTab === 'lm14' }" @click="activeTab = 'lm14'; if (canLoadReport()) loadReport()">
                 LM 14
             </div>
-            <div class="tab" :class="{ 'active': activeTab === 'lm13' }" @click="activeTab = 'lm13'">
+            <div class="tab" :class="{ 'active': activeTab === 'lm13' }" @click="activeTab = 'lm13'; if (canLoadReport()) loadReport()">
                 LM 13
             </div>
         </div>
@@ -182,6 +182,14 @@ function kebunApp() {
             }
         },
 
+        filteredBatches() {
+            if (!this.filters.period) {
+                return this.batches;
+            }
+
+            return this.batches.filter(batch => String(batch.period) === String(this.filters.period));
+        },
+
         async loadUnits() {
             if (!this.filters.komoditi) {
                 this.units = [];
@@ -207,7 +215,13 @@ function kebunApp() {
         },
 
         onPeriodChange() {
-            // Filter batches by period if needed
+            if (this.selectedBatch && String(this.selectedBatch.period) !== String(this.filters.period)) {
+                this.filters.batch = '';
+                this.selectedBatch = null;
+                this.reportData = null;
+                this.lm14Data = null;
+                this.lm13Data = null;
+            }
         },
 
         onBatchChange() {

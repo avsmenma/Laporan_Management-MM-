@@ -74,7 +74,7 @@ class SpreadsheetImportService
      */
     private function readWorkbook(string $path): array
     {
-        $arrays = Excel::toArray(new RawWorkbookImport(), $path);
+        $arrays = Excel::toArray(new RawWorkbookImport, $path);
         $sheetNames = IOFactory::load($path)->getSheetNames();
 
         return collect($arrays)
@@ -106,6 +106,7 @@ class SpreadsheetImportService
 
             if (! $this->isKnownUnit($plantCode) || ! in_array($komoditi, ['KS', 'KR'], true)) {
                 $errors[] = "DB WBS baris {$index}: plant/komoditi tidak dikenal.";
+
                 continue;
             }
 
@@ -152,6 +153,7 @@ class SpreadsheetImportService
 
             if (! $this->isKnownUnit($plantCode) || ! in_array($komoditi, ['KS', 'KR'], true)) {
                 $errors[] = "DB BTL baris {$index}: plant/komoditi tidak dikenal.";
+
                 continue;
             }
 
@@ -179,9 +181,9 @@ class SpreadsheetImportService
         DB::table('pks_biaya')->where('batch_id', $batch->id)->delete();
 
         [$rows, $errors] = $this->tableRows($this->sheet($workbook, 'Summary'), [
-            'plant_code' => ['plant', 'plantcode', 'pabrik'],
+            'plant_code' => ['plant', 'plantcode', 'pabrik', 'uraian'],
             'period' => ['period', 'periode'],
-            'cost_center' => ['costcenter', 'costctr', 'cc'],
+            'cost_center' => ['costcenter', 'costctr', 'cc', 'kodea', 'kodeb'],
             'cost_element' => ['costelement', 'gl'],
             'klasifikasi_code' => ['klasifikasi', 'klasifikasicode'],
             'nilai' => ['nilai', 'amount'],
@@ -193,6 +195,7 @@ class SpreadsheetImportService
 
             if (! $this->isKnownUnit($plantCode, 'PABRIK')) {
                 $errors[] = "Summary baris {$index}: pabrik tidak dikenal.";
+
                 continue;
             }
 
@@ -215,6 +218,20 @@ class SpreadsheetImportService
     {
         DB::table('pks_produksi')->where('batch_id', $batch->id)->delete();
 
+        $lm625Sheets = collect($workbook)
+            ->keys()
+            ->filter(fn (string $name) => preg_match('/^LM625F\d{2}/i', $name))
+            ->values();
+
+        if ($lm625Sheets->isNotEmpty()) {
+            $records = [];
+            foreach ($lm625Sheets as $sheetName) {
+                $records = [...$records, ...$this->positionalPksProduksi($batch, $sheetName, $this->sheet($workbook, $sheetName))];
+            }
+
+            return $this->insertPksProduksiRecords($records);
+        }
+
         $sheetName = collect(array_keys($workbook))->first(fn (string $name) => str_starts_with(strtoupper($name), 'LM625F')) ?? 'LM625F01';
         [$rows, $errors] = $this->tableRows($this->sheet($workbook, $sheetName), [
             'plant_code' => ['plant', 'plantcode', 'pabrik'],
@@ -224,27 +241,14 @@ class SpreadsheetImportService
             'nilai_sd' => ['nilaisd', 'sdbulanini', 'sd'],
         ], ['uraian']);
 
-        $inserted = 0;
-        foreach ($rows as $index => $row) {
-            $plantCode = $this->text($row['plant_code'] ?? $this->plantCodeFromLm625Sheet($sheetName));
-
-            if (! $this->isKnownUnit($plantCode, 'PABRIK')) {
-                $errors[] = "{$sheetName} baris {$index}: pabrik tidak dikenal.";
-                continue;
-            }
-
-            DB::table('pks_produksi')->insert([
-                'batch_id' => $batch->id,
-                'plant_code' => $plantCode,
-                'period' => $this->int($row['period'] ?? $batch->month),
-                'uraian' => $this->text($row['uraian'] ?? null),
-                'nilai_bi' => $this->number($row['nilai_bi'] ?? 0),
-                'nilai_sd' => $this->number($row['nilai_sd'] ?? 0),
-            ]);
-            $inserted++;
-        }
-
-        return new ImportResult($inserted, $errors);
+        return $this->insertPksProduksiRecords(collect($rows)->map(fn (array $row) => [
+            'batch_id' => $batch->id,
+            'plant_code' => $this->text($row['plant_code'] ?? $this->plantCodeFromLm625Sheet($sheetName)),
+            'period' => $this->int($row['period'] ?? $batch->month),
+            'uraian' => $this->text($row['uraian'] ?? null),
+            'nilai_bi' => $this->number($row['nilai_bi'] ?? 0),
+            'nilai_sd' => $this->number($row['nilai_sd'] ?? 0),
+        ])->all(), $errors);
     }
 
     private function importAlokasiProduksi(Batch $batch, array $workbook): ImportResult
@@ -284,6 +288,7 @@ class SpreadsheetImportService
         foreach ($records as $index => $record) {
             if (! $this->isKnownUnit($record['kebun_code'], 'KEBUN')) {
                 $errors[] = "Alokasi produksi baris {$index}: kebun tidak dikenal.";
+
                 continue;
             }
 
@@ -310,6 +315,7 @@ class SpreadsheetImportService
             $kebunCode = $this->text($row['kebun_code'] ?? null);
             if (! $this->isKnownUnit($kebunCode, 'KEBUN')) {
                 $errors[] = "Alokasi areal baris {$index}: kebun tidak dikenal.";
+
                 continue;
             }
 
@@ -330,6 +336,10 @@ class SpreadsheetImportService
 
     private function importBudget(Batch $batch, array $workbook, string $table): ImportResult
     {
+        if ($table === 'budget_rkap' && array_key_exists('RKAP', $workbook) && $this->looksLikePksRkap($workbook['RKAP'])) {
+            return $this->importPksRkapBudget($batch, $workbook['RKAP']);
+        }
+
         [$rows, $errors] = $this->tableRows($this->firstSheet($workbook), [
             'year' => ['year', 'tahun'],
             'komoditi' => ['komoditi', 'budidaya'],
@@ -346,6 +356,7 @@ class SpreadsheetImportService
 
             if (! $this->isKnownUnit($plantCode) || $reportType === null) {
                 $errors[] = "{$table} baris {$index}: plant/report_type tidak valid.";
+
                 continue;
             }
 
@@ -363,6 +374,27 @@ class SpreadsheetImportService
         }
 
         return new ImportResult($upserted, $errors);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $records
+     * @param  array<int, string>  $errors
+     */
+    private function insertPksProduksiRecords(array $records, array $errors = []): ImportResult
+    {
+        $inserted = 0;
+        foreach ($records as $index => $record) {
+            if (! $this->isKnownUnit($record['plant_code'], 'PABRIK')) {
+                $errors[] = "Produksi pabrik baris {$index}: pabrik tidak dikenal.";
+
+                continue;
+            }
+
+            DB::table('pks_produksi')->insert($record);
+            $inserted++;
+        }
+
+        return new ImportResult($inserted, $errors);
     }
 
     private function importTahunLalu(Batch $batch, array $workbook): ImportResult
@@ -384,6 +416,7 @@ class SpreadsheetImportService
 
             if (! $this->isKnownUnit($plantCode) || $reportType === null) {
                 $errors[] = "Tahun lalu baris {$index}: plant/report_type tidak valid.";
+
                 continue;
             }
 
@@ -531,6 +564,113 @@ class SpreadsheetImportService
         }
 
         return $records;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function positionalPksProduksi(Batch $batch, string $sheetName, array $rows): array
+    {
+        $plantCode = $this->plantCodeFromLm625Sheet($sheetName);
+        if ($plantCode === null) {
+            return [];
+        }
+
+        $labels = [
+            'Jumlah Produksi TBS',
+            'Jumlah TBS Diolah',
+            'Jumlah Sisa Buah di Pabrik',
+            'Jlh. Prod. Minyak Sawit',
+            'Jumlah Produksi Inti Sawit',
+        ];
+
+        $records = [];
+        foreach ($rows as $row) {
+            $uraian = $this->nullableText($row[1] ?? null);
+            if ($uraian === null || ! in_array($uraian, $labels, true)) {
+                continue;
+            }
+
+            $currentBi = $uraian === 'Jumlah Sisa Buah di Pabrik'
+                ? $this->number($row[3] ?? 0)
+                : $this->number($row[4] ?? 0);
+            $currentSd = $uraian === 'Jumlah Sisa Buah di Pabrik'
+                ? $currentBi
+                : $this->number($row[5] ?? 0);
+
+            $records[] = [
+                'batch_id' => $batch->id,
+                'plant_code' => $plantCode,
+                'period' => $batch->month,
+                'uraian' => $uraian,
+                'nilai_bi' => $currentBi,
+                'nilai_sd' => $currentSd,
+            ];
+
+            if ($batch->month > 1) {
+                $previousBi = $uraian === 'Jumlah Sisa Buah di Pabrik'
+                    ? $this->number($row[18] ?? 0)
+                    : $this->number($row[19] ?? 0);
+                $previousSd = $uraian === 'Jumlah Sisa Buah di Pabrik'
+                    ? $previousBi
+                    : $this->number($row[20] ?? 0);
+
+                $records[] = [
+                    'batch_id' => $batch->id,
+                    'plant_code' => $plantCode,
+                    'period' => $batch->month - 1,
+                    'uraian' => $uraian,
+                    'nilai_bi' => $previousBi,
+                    'nilai_sd' => $previousSd,
+                ];
+            }
+        }
+
+        return $records;
+    }
+
+    private function importPksRkapBudget(Batch $batch, array $rows): ImportResult
+    {
+        $plantColumns = [];
+        foreach (($rows[0] ?? []) as $column => $value) {
+            $plantCode = $this->nullableText($value);
+            if ($plantCode !== null && preg_match('/^5F\d{2}$/', $plantCode)) {
+                $plantColumns[$column] = $plantCode;
+            }
+        }
+
+        $upserted = 0;
+        foreach (array_slice($rows, 2) as $row) {
+            $kode = $this->nullableText($row[0] ?? null);
+            if ($kode === null) {
+                continue;
+            }
+
+            foreach ($plantColumns as $column => $plantCode) {
+                if (! $this->isKnownUnit($plantCode, 'PABRIK')) {
+                    continue;
+                }
+
+                DB::table('budget_rkap')->updateOrInsert(
+                    [
+                        'year' => $batch->year,
+                        'komoditi' => 'KS',
+                        'plant_code' => $plantCode,
+                        'report_type' => 'LM16',
+                        'kode' => $kode,
+                    ],
+                    ['nilai' => $this->number($row[$column] ?? 0) * 1000],
+                );
+                $upserted++;
+            }
+        }
+
+        return new ImportResult($upserted, []);
+    }
+
+    private function looksLikePksRkap(array $rows): bool
+    {
+        return collect($rows[0] ?? [])->contains(fn (mixed $value) => is_string($value) && preg_match('/^5F\d{2}$/', trim($value)));
     }
 
     private function looksLikeAlokasiMatrix(array $rows): bool

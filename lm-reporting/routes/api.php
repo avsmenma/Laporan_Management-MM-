@@ -23,4 +23,5 @@ Route::middleware('auth')->group(function () {
     Route::get('/report/lm14', [ReportController::class, 'lm14']);
     Route::get('/report/lm13', [ReportController::class, 'lm13']);
     Route::get('/report/lm16', [ReportController::class, 'lm16']);
+    Route::get('/report/drilldown', [ReportController::class, 'drilldown']);
 });

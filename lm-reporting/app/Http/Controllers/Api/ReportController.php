@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\LmTemplateRow;
 use App\Models\RefUnit;
+use App\Models\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -157,6 +158,55 @@ class ReportController extends Controller
     }
 
     /**
+     * GET /api/report/drilldown?type&batch&unit&komoditi&kode&column
+     */
+    public function drilldown(Request $request): JsonResponse
+    {
+        $request->validate([
+            'type' => 'required|in:LM14,LM13,LM16,lm14,lm13,lm16',
+            'batch' => 'required',
+            'unit' => 'required',
+            'kode' => 'required',
+            'column' => 'required',
+            'komoditi' => 'nullable|in:KS,KR,ks,kr',
+        ]);
+
+        $type = strtoupper((string) $request->type);
+        $batch = $this->findBatch((string) $request->batch);
+        $unit = $this->findUnit((string) $request->unit);
+        $komoditi = $request->filled('komoditi') ? strtoupper((string) $request->komoditi) : null;
+
+        $this->checkBatchAccess($batch);
+
+        $template = LmTemplateRow::query()
+            ->where('report_type', $type)
+            ->when($type !== 'LM16', fn ($query) => $query->where('komoditi', $komoditi))
+            ->where(fn ($query) => $query
+                ->where('kode', $request->kode)
+                ->orWhere('urutan', is_numeric($request->kode) ? (int) $request->kode : 0))
+            ->orderBy('urutan')
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'meta' => $this->buildMeta($batch, $unit, $type, $komoditi),
+            'context' => [
+                'type' => $type,
+                'kode_baris' => (string) $request->kode,
+                'column_key' => (string) $request->column,
+                'template' => $template ? [
+                    'urutan' => $template->urutan,
+                    'kode' => $template->kode,
+                    'uraian' => $template->uraian,
+                    'source' => $template->source,
+                ] : null,
+                'message' => 'Rincian sumber sel akan diperluas pada prompt_09.',
+            ],
+            'sources' => $this->drilldownSources($type, $batch, $unit, $komoditi, $template),
+        ]);
+    }
+
+    /**
      * Build metadata untuk response report.
      */
     private function buildMeta(Batch $batch, RefUnit $unit, string $reportType, ?string $komoditi = null): array
@@ -224,7 +274,7 @@ class ReportController extends Controller
         $user = auth()->user();
 
         // Jika role Viewer, hanya boleh akses batch final/locked
-        if ($user && $user->role === 'Viewer') {
+        if ($user && $user->hasRole(Role::VIEWER)) {
             if (! in_array($batch->status, ['final', 'locked'], true)) {
                 abort(403, 'Viewer hanya dapat melihat laporan dengan status final atau locked.');
             }
@@ -259,7 +309,7 @@ class ReportController extends Controller
      */
     private function formatLm14Row($row): array
     {
-        return [
+        return $this->withCellMetadata([
             'urutan' => $row->urutan,
             'kode' => $row->kode,
             'uraian' => $row->uraian,
@@ -279,7 +329,21 @@ class ReportController extends Controller
             'cap_sd_lalu' => (float) ($row->cap_sd_thnlalu ?? 0),
             'cap_sd_rko' => (float) $row->cap_sd_rko,
             'cap_sd_rkap' => (float) $row->cap_sd_rkap,
-        ];
+        ], $row->kode ?? (string) $row->urutan, [
+            'real_thn_lalu',
+            'bi_jumlah',
+            'bi_rko',
+            'bi_rkap',
+            'sd_jumlah',
+            'sd_rko',
+            'sd_rkap',
+            'cap_bi_lalu',
+            'cap_bi_rko',
+            'cap_bi_rkap',
+            'cap_sd_lalu',
+            'cap_sd_rko',
+            'cap_sd_rkap',
+        ]);
     }
 
     /**
@@ -288,7 +352,7 @@ class ReportController extends Controller
      */
     private function formatLm13Row($row): array
     {
-        return [
+        return $this->withCellMetadata([
             'urutan' => $row->urutan,
             'kode' => $row->kode,
             'uraian' => $row->uraian,
@@ -303,7 +367,15 @@ class ReportController extends Controller
             'sd_jumlah' => (float) $row->sd_real_thn_ini,
             'sd_rko' => (float) $row->sd_rko_tw,
             'sd_rkap' => (float) $row->sd_rkap,
-        ];
+        ], $row->kode ?? (string) $row->urutan, [
+            'real_thn_lalu',
+            'bi_jumlah',
+            'bi_rko',
+            'bi_rkap',
+            'sd_jumlah',
+            'sd_rko',
+            'sd_rkap',
+        ]);
     }
 
     /**
@@ -311,7 +383,7 @@ class ReportController extends Controller
      */
     private function formatLm16Row($row): array
     {
-        return [
+        return $this->withCellMetadata([
             'urutan' => $row->urutan,
             'kode' => $row->kode,
             'uraian' => $row->uraian,
@@ -334,6 +406,50 @@ class ReportController extends Controller
             'cap_sd_rkap' => (float) $row->cap_sd_rkap,
             'rp_kg_tbs' => (float) $row->rp_kg_tbs,
             'rp_kg_mi' => (float) $row->rp_kg_mi,
+        ], $row->kode ?? (string) $row->urutan, [
+            'real_bln_lalu',
+            'bi_olah',
+            'bi_kso',
+            'bi_jumlah',
+            'bi_rko',
+            'bi_rkap',
+            'sd_olah',
+            'sd_kso',
+            'sd_jumlah',
+            'sd_rko',
+            'sd_rkap',
+            'cap_bi_lalu',
+            'cap_bi_rkap',
+            'cap_bi_sd',
+            'cap_sd_rkap',
+            'rp_kg_tbs',
+            'rp_kg_mi',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<int, string>  $valueKeys
+     * @return array<string, mixed>
+     */
+    private function withCellMetadata(array $row, ?string $kodeBaris, array $valueKeys): array
+    {
+        $kode = $kodeBaris ?: (string) $row['urutan'];
+        $cells = [];
+
+        foreach ($valueKeys as $key) {
+            $cells[$key] = [
+                'value' => $row[$key] ?? 0,
+                'drilldown' => [
+                    'kode_baris' => $kode,
+                    'column_key' => $key,
+                ],
+            ];
+        }
+
+        return [
+            ...$row,
+            'cells' => $cells,
         ];
     }
 
@@ -369,14 +485,14 @@ class ReportController extends Controller
         return [
             ['key' => 'kode', 'title' => 'Kode', 'frozen' => true, 'group' => null, 'block' => null],
             ['key' => 'uraian', 'title' => 'Uraian', 'frozen' => true, 'group' => null, 'block' => null],
-            // OLAH_JUAL block
-            ['key' => 'real_thn_lalu', 'title' => 'Real Thn Lalu', 'group' => 'Realisasi', 'block' => 'OLAH_JUAL'],
-            ['key' => 'bi_jumlah', 'title' => 'Bulan Ini', 'group' => 'Realisasi', 'block' => 'OLAH_JUAL'],
-            ['key' => 'bi_rko', 'title' => 'RKO', 'group' => 'Budget', 'block' => 'OLAH_JUAL'],
-            ['key' => 'bi_rkap', 'title' => 'RKAP', 'group' => 'Budget', 'block' => 'OLAH_JUAL'],
-            ['key' => 'sd_jumlah', 'title' => 's.d BI', 'group' => 'Realisasi', 'block' => 'OLAH_JUAL'],
-            ['key' => 'sd_rko', 'title' => 'RKO', 'group' => 'Budget', 'block' => 'OLAH_JUAL'],
-            ['key' => 'sd_rkap', 'title' => 'RKAP', 'group' => 'Budget', 'block' => 'OLAH_JUAL'],
+            ['key' => 'block', 'title' => 'Blok', 'group' => null],
+            ['key' => 'real_thn_lalu', 'title' => 'Real Thn Lalu', 'group' => 'Realisasi'],
+            ['key' => 'bi_jumlah', 'title' => 'Bulan Ini', 'group' => 'Realisasi'],
+            ['key' => 'bi_rko', 'title' => 'RKO', 'group' => 'Budget'],
+            ['key' => 'bi_rkap', 'title' => 'RKAP', 'group' => 'Budget'],
+            ['key' => 'sd_jumlah', 'title' => 's.d BI', 'group' => 'Realisasi'],
+            ['key' => 'sd_rko', 'title' => 'RKO', 'group' => 'Budget'],
+            ['key' => 'sd_rkap', 'title' => 'RKAP', 'group' => 'Budget'],
         ];
     }
 
@@ -412,5 +528,48 @@ class ReportController extends Controller
             ['key' => 'rp_kg_tbs', 'title' => 'Rp/Kg TBS', 'group' => 'Harga Pokok'],
             ['key' => 'rp_kg_mi', 'title' => 'Rp/Kg M+I', 'group' => 'Harga Pokok'],
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function drilldownSources(string $type, Batch $batch, RefUnit $unit, ?string $komoditi, ?LmTemplateRow $template): array
+    {
+        if (! $template) {
+            return [];
+        }
+
+        if ($type === 'LM16') {
+            return DB::table('pks_biaya')
+                ->where('batch_id', $batch->id)
+                ->where('plant_code', $unit->code)
+                ->where('period', $batch->month)
+                ->limit(25)
+                ->get()
+                ->map(fn ($row) => (array) $row)
+                ->all();
+        }
+
+        if ($template->source === 'BTL') {
+            return DB::table('db_btl')
+                ->where('batch_id', $batch->id)
+                ->where('komoditi', $komoditi)
+                ->where('plant_code', $unit->code)
+                ->where('period', $batch->month)
+                ->limit(25)
+                ->get()
+                ->map(fn ($row) => (array) $row)
+                ->all();
+        }
+
+        return DB::table('db_wbs')
+            ->where('batch_id', $batch->id)
+            ->where('komoditi', $komoditi)
+            ->where('plant_code', $unit->code)
+            ->where('period', $batch->month)
+            ->limit(25)
+            ->get()
+            ->map(fn ($row) => (array) $row)
+            ->all();
     }
 }

@@ -30,7 +30,7 @@
                 <label class="filter-label">Batch</label>
                 <select class="filter-select" x-model="filters.batch" @change="onBatchChange()">
                     <option value="">- Pilih Batch -</option>
-                    <template x-for="batch in batches" :key="batch.id">
+                    <template x-for="batch in filteredBatches()" :key="batch.id">
                         <option :value="batch.id" x-text="batch.label"></option>
                     </template>
                 </select>
@@ -164,6 +164,14 @@ function pabrikApp() {
             }
         },
 
+        filteredBatches() {
+            if (!this.filters.period) {
+                return this.batches;
+            }
+
+            return this.batches.filter(batch => String(batch.period) === String(this.filters.period));
+        },
+
         async loadUnits() {
             if (!this.filters.komoditi) {
                 this.units = [];
@@ -189,7 +197,12 @@ function pabrikApp() {
         },
 
         onPeriodChange() {
-            // Filter batches by period if needed
+            if (this.selectedBatch && String(this.selectedBatch.period) !== String(this.filters.period)) {
+                this.filters.batch = '';
+                this.selectedBatch = null;
+                this.reportData = null;
+                this.lm16Data = null;
+            }
         },
 
         onBatchChange() {

@@ -88,12 +88,73 @@ class ImportServiceTest extends TestCase
         $this->assertEquals(45000.0, (float) DB::table('budget_rko')->where('kode', '41-01')->value('nilai'));
     }
 
+    public function test_pks_matrix_workbook_imports_summary_lm625_and_rkap_rows(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create([
+            'code' => 'Batch #2026-05',
+            'year' => 2026,
+            'month' => 5,
+            'status' => 'draft',
+        ]);
+
+        $service = app(SpreadsheetImportService::class);
+        $file = $this->workbook([
+            'Summary' => [
+                [],
+                [],
+                ['Uraian', 'Period', 'Kode A', 'Kode B', 'CO Object Name', 'Cost Element', 'Cost element name', 'Lock', 'Nilai'],
+                ['5F01', 5, 'STAS', 'STAS01', 'Loading Ramp', 51100402, 'Bi Gaji', 'a. Gaji', 700],
+            ],
+            'LM625F01' => $this->lm625Rows(),
+            'RKAP' => [
+                [null, '5F01'],
+                ['Uraian', 'Pagun'],
+                ['Gaji, tunjangan & Bisos Kary Pelaksana', 123],
+            ],
+        ]);
+
+        $this->assertSame(1, $service->import('pks_biaya', $batch, $file)->rowCount);
+        $this->assertSame(10, $service->import('pks_produksi', $batch, $file)->rowCount);
+        $this->assertSame(1, $service->import('budget_rkap', $batch, $file)->rowCount);
+
+        $this->assertEquals(700.0, (float) DB::table('pks_biaya')->where('plant_code', '5F01')->value('nilai'));
+        $this->assertEquals(124.0, (float) DB::table('pks_produksi')->where('plant_code', '5F01')->where('period', 5)->where('uraian', 'Jumlah Produksi TBS')->value('nilai_bi'));
+        $this->assertEquals(92.0, (float) DB::table('pks_produksi')->where('plant_code', '5F01')->where('period', 4)->where('uraian', 'Jumlah Produksi TBS')->value('nilai_bi'));
+        $this->assertEquals(123000.0, (float) DB::table('budget_rkap')->where('plant_code', '5F01')->where('report_type', 'LM16')->value('nilai'));
+    }
+
+    /**
+     * @return array<int, array<int, mixed>>
+     */
+    private function lm625Rows(): array
+    {
+        $rows = array_fill(0, 60, []);
+        foreach ([
+            22 => ['Jumlah Produksi TBS', 124, 498, 92, 373],
+            31 => ['Jumlah TBS Diolah', 127, 497, 94, 370],
+            40 => ['Jumlah Sisa Buah di Pabrik', 7, 7, 37, 37],
+            49 => ['Jlh. Prod. Minyak Sawit', 27, 108, 20, 81],
+            58 => ['Jumlah Produksi Inti Sawit', 4, 18, 3, 14],
+        ] as $index => [$uraian, $bi, $sd, $prevBi, $prevSd]) {
+            $rows[$index][1] = $uraian;
+            $rows[$index][3] = $bi;
+            $rows[$index][4] = $bi;
+            $rows[$index][5] = $sd;
+            $rows[$index][18] = $prevBi;
+            $rows[$index][19] = $prevBi;
+            $rows[$index][20] = $prevSd;
+        }
+
+        return $rows;
+    }
+
     /**
      * @param  array<string, array<int, array<int, mixed>>>  $sheets
      */
     private function workbook(array $sheets): string
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $spreadsheet->removeSheetByIndex(0);
 
         foreach ($sheets as $name => $rows) {
