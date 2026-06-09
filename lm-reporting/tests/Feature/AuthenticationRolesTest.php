@@ -35,9 +35,9 @@ class AuthenticationRolesTest extends TestCase
             $this->post('/login', [
                 'email' => $user->email,
                 'password' => 'password',
-            ])->assertRedirect(route('reports.index'));
+            ])->assertRedirect(route('kebun'));
 
-            $this->actingAs($user)->get('/reports')->assertOk()->assertSee($roleName);
+            $this->actingAs($user)->get('/reports')->assertRedirect(route('kebun'));
             $this->post('/logout')->assertRedirect(route('login'));
         }
     }

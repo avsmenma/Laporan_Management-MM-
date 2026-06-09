@@ -30,7 +30,7 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('reports.index'));
+        return redirect()->intended(route('kebun'));
     }
 
     public function destroy(Request $request): RedirectResponse

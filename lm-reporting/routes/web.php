@@ -4,7 +4,6 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Import\ImportController;
 use App\Http\Controllers\Master\BatchController;
-use App\Http\Controllers\Report\ReportViewerController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -17,7 +16,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
-    Route::get('/reports', [ReportViewerController::class, 'index'])->name('reports.index');
+    Route::redirect('/reports', '/kebun')->name('reports.index');
 
     // Halaman Kebun & Pabrik
     Route::get('/kebun', function () {
