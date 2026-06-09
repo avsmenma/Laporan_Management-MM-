@@ -223,7 +223,23 @@ function pabrikApp() {
             this.loadingLm16 = true;
             try {
                 const url = `/api/report/lm16?batch=${this.filters.batch}&unit=${this.filters.unit}`;
-                const response = await fetch(url);
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin'
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        alert('Sesi Anda telah berakhir. Silakan login kembali.');
+                        window.location.href = '/login';
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.success) {
@@ -235,7 +251,7 @@ function pabrikApp() {
                 }
             } catch (error) {
                 console.error('Error loading LM16:', error);
-                alert('Terjadi kesalahan saat memuat data');
+                alert('Terjadi kesalahan saat memuat data: ' + error.message);
             } finally {
                 this.loadingLm16 = false;
             }

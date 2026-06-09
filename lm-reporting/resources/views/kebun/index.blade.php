@@ -245,7 +245,23 @@ function kebunApp() {
             this.loadingLm14 = true;
             try {
                 const url = `/api/report/lm14?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`;
-                const response = await fetch(url);
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin'
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        alert('Sesi Anda telah berakhir. Silakan login kembali.');
+                        window.location.href = '/login';
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.success) {
@@ -257,7 +273,7 @@ function kebunApp() {
                 }
             } catch (error) {
                 console.error('Error loading LM14:', error);
-                alert('Terjadi kesalahan saat memuat data');
+                alert('Terjadi kesalahan saat memuat data: ' + error.message);
             } finally {
                 this.loadingLm14 = false;
             }
@@ -267,7 +283,23 @@ function kebunApp() {
             this.loadingLm13 = true;
             try {
                 const url = `/api/report/lm13?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`;
-                const response = await fetch(url);
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin'
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        alert('Sesi Anda telah berakhir. Silakan login kembali.');
+                        window.location.href = '/login';
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.success) {
@@ -279,7 +311,7 @@ function kebunApp() {
                 }
             } catch (error) {
                 console.error('Error loading LM13:', error);
-                alert('Terjadi kesalahan saat memuat data');
+                alert('Terjadi kesalahan saat memuat data: ' + error.message);
             } finally {
                 this.loadingLm13 = false;
             }
