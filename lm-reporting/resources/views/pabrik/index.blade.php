@@ -265,7 +265,7 @@ function pabrikApp() {
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                credentials: 'same-origin'
+                credentials: 'include'
             });
 
             if (response.redirected && new URL(response.url).pathname === '/login') {
@@ -273,10 +273,13 @@ function pabrikApp() {
             }
 
             if (!response.ok) {
-                if (response.status === 401 || response.status === 403) {
+                if (response.status === 401) {
                     throw new Error('Sesi login tidak terbaca saat memuat laporan. Refresh halaman lalu login ulang jika masih terjadi.');
                 }
                 const errorData = await response.json().catch(() => null);
+                if (response.status === 403) {
+                    throw new Error(errorData?.message || 'Akses ditolak. Viewer hanya dapat melihat batch final atau locked.');
+                }
                 throw new Error(errorData?.message || `HTTP ${response.status}: ${response.statusText}`);
             }
 

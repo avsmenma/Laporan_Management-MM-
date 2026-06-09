@@ -19,10 +19,11 @@ class MinimalTestDataSeeder extends Seeder
             ['year' => 2026, 'month' => 5],
             [
                 'code' => 'Batch #2026-05',
-                'status' => 'draft',
+                'status' => 'final',
                 'processed_at' => now(),
             ]
         );
+        $batch->forceFill(['status' => 'final'])->save();
 
         $this->command->info("✓ Batch {$batch->code} (ID: {$batch->id})");
 
