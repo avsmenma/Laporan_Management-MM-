@@ -16,6 +16,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
+    Route::redirect('/report', '/kebun');
     Route::redirect('/reports', '/kebun')->name('reports.index');
 
     // Halaman Kebun & Pabrik

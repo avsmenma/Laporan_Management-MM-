@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Report;
 
 use App\Http\Controllers\Controller;
-use Illuminate\View\View;
+use Illuminate\Http\RedirectResponse;
 
 class ReportViewerController extends Controller
 {
-    public function index(): View
+    public function index(): RedirectResponse
     {
-        return view('reports.index');
+        return redirect()->route('kebun');
     }
 }

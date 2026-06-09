@@ -314,13 +314,21 @@ function kebunApp() {
                 credentials: 'same-origin'
             });
 
+            if (response.redirected && new URL(response.url).pathname === '/login') {
+                throw new Error('Sesi login tidak terbaca saat memuat laporan. Refresh halaman lalu login ulang jika masih terjadi.');
+            }
+
             if (!response.ok) {
                 if (response.status === 401 || response.status === 403) {
-                    window.location.href = '/login';
-                    return;
+                    throw new Error('Sesi login tidak terbaca saat memuat laporan. Refresh halaman lalu login ulang jika masih terjadi.');
                 }
                 const errorData = await response.json().catch(() => null);
                 throw new Error(errorData?.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error('Server mengembalikan halaman, bukan data laporan. Pastikan URL aktif adalah /kebun atau /pabrik.');
             }
 
             const data = await response.json();
