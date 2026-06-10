@@ -341,8 +341,6 @@ select.field-control { padding-right: 8px; }
 .lm-report-table .tabulator-header .tabulator-col .tabulator-col-content,
 .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-group-cols {
     background-color: var(--g-800) !important;
-    border-right-color: rgb(255 255 255 / 12%) !important;
-    border-bottom-color: var(--g-950) !important;
 }
 
 /* top-level group bands a touch lighter, like the reference */
@@ -364,6 +362,24 @@ select.field-control { padding-right: 8px; }
     text-overflow: ellipsis;
 }
 
+/* --- thicker, spreadsheet-like grid lines on the header --- */
+.lm-report-table .tabulator-header {
+    border-bottom: 2px solid var(--g-950) !important;
+}
+.lm-report-table .tabulator-header .tabulator-col,
+.lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-group-cols .tabulator-col {
+    border-right: 2px solid rgba(255, 255, 255, .30) !important;
+}
+/* horizontal divider between a group title and its sub-columns */
+.lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-group-cols {
+    border-top: 2px solid rgba(255, 255, 255, .30) !important;
+}
+
+/* slightly clearer vertical grid lines in the body */
+.lm-report-table .tabulator-row .tabulator-cell {
+    border-right: 1px solid var(--line) !important;
+}
+
 /* frozen identity columns (Kode / Uraian) */
 .lm-report-table .tabulator-row .tabulator-cell.tabulator-frozen,
 .lm-report-table .tabulator-header .tabulator-col.tabulator-frozen {
@@ -378,6 +394,7 @@ select.field-control { padding-right: 8px; }
     background: var(--surface-2);
 }
 
+/* section band (e.g. "BIAYA TANAMAN") */
 .lm-report-table .tabulator-row.lm-row-header td,
 .lm-report-table .tabulator-row.lm-row-header .tabulator-cell {
     background: #e9f1ec;
@@ -388,17 +405,47 @@ select.field-control { padding-right: 8px; }
     font-size: 11px;
 }
 
-.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell {
-    background: #eef3f0;
+/* ===== "Jumlah ..." subtotal & grand-total rows: solid green band, white text ===== */
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell,
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell.tabulator-frozen,
+.lm-report-table .tabulator-row.lm-row-subtotal.tabulator-row-even .tabulator-cell.tabulator-frozen {
+    background: var(--g-700) !important;
+    color: #fff !important;
     font-weight: 700;
-    color: var(--ink-900);
+}
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell,
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell.tabulator-frozen,
+.lm-report-table .tabulator-row.lm-row-total.tabulator-row-even .tabulator-cell.tabulator-frozen {
+    background: var(--g-800) !important;
+    color: #fff !important;
+    font-weight: 800;
+    border-top: 2px solid var(--g-950) !important;
+    border-bottom: 2px solid var(--g-950) !important;
+}
+/* number cells on those rows follow the white-on-green band */
+.lm-report-table .tabulator-row.lm-row-subtotal .lm-number-cell,
+.lm-report-table .tabulator-row.lm-row-total .lm-number-cell {
+    color: #fff !important;
 }
 
-.lm-report-table .tabulator-row.lm-row-total .tabulator-cell {
-    background: #dcebe3;
-    font-weight: 800;
-    color: var(--g-950);
-    border-top: 2px solid var(--g-700);
+/* make the "Jumlah ..." label read as one merged cell across Kode + Uraian:
+   drop the divider on the Kode cell and pull the label left into the Kode column
+   (Kode column width = 110px, see textColumn('kode', 'Kode', 110) in app.js) */
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="kode"],
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="kode"] {
+    box-shadow: none !important;
+    border-right-color: transparent !important;
+}
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"],
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] {
+    overflow: visible !important;
+}
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"] > span,
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] > span {
+    position: relative;
+    z-index: 1;
+    margin-left: -110px;
+    padding-left: 12px !important;
 }
 
 /* numeric cells: tabular mono, right aligned */
