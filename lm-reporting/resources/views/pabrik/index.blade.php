@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Laporan Pabrik')
+@section('unit-label', 'Unit Pabrik: ')
 
 @section('content')
 <div x-data="pabrikApp()" x-init="init()">
@@ -151,6 +152,14 @@ function pabrikApp() {
             this.$watch('searchText', (value) => {
                 window.LmReportTables.applySearch(this.lm16Table, value);
             });
+            this.$watch('filters.unit', () => this.emitTopbarUnit());
+        },
+
+        emitTopbarUnit() {
+            const unit = this.units.find((item) => String(item.code) === String(this.filters.unit));
+            window.dispatchEvent(new CustomEvent('lm-topbar-unit', {
+                detail: { label: unit ? `${unit.code} - ${unit.name}` : '' },
+            }));
         },
 
         async loadBatches() {
