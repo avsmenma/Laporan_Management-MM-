@@ -391,6 +391,24 @@ select.field-control { padding-right: 8px; }
     border-right: 1px solid var(--line) !important;
 }
 
+/* never clip content into "..." — header titles & numbers show in full */
+.lm-report-table .tabulator-header .tabulator-col-title {
+    white-space: normal !important;
+    text-overflow: clip !important;
+    overflow: visible !important;
+}
+.lm-report-table .lm-number-cell {
+    text-overflow: clip !important;
+    overflow: visible !important;
+}
+/* Uraian column: tampilkan teks penuh, turun ke bawah bila panjang */
+.lm-report-table .tabulator-cell[tabulator-field="uraian"] {
+    white-space: normal !important;
+    text-overflow: clip !important;
+    overflow: visible !important;
+    line-height: 1.3;
+}
+
 /* frozen identity columns (Kode / Uraian) */
 .lm-report-table .tabulator-row .tabulator-cell.tabulator-frozen,
 .lm-report-table .tabulator-header .tabulator-col.tabulator-frozen {
