@@ -349,30 +349,41 @@ select.field-control { padding-right: 8px; }
     background-color: var(--g-700) !important;
 }
 
-/* header text must be light & readable on the green */
+/* header text must be light, readable, a touch larger and centered */
 .lm-report-table .tabulator-header .tabulator-col,
 .lm-report-table .tabulator-header .tabulator-col .tabulator-col-title,
 .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-title {
     color: #eaf4ef !important;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: .01em;
 }
 .lm-report-table .tabulator-header .tabulator-col .tabulator-col-title {
-    text-overflow: ellipsis;
+    white-space: normal;
+    line-height: 1.2;
+}
+/* center every header label (group titles + column titles) */
+.lm-report-table .tabulator-header .tabulator-col .tabulator-col-content,
+.lm-report-table .tabulator-header .tabulator-col .tabulator-col-title-holder {
+    justify-content: center;
+}
+.lm-report-table .tabulator-header .tabulator-col .tabulator-col-title,
+.lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-title {
+    text-align: center !important;
+    width: 100%;
 }
 
-/* --- thicker, spreadsheet-like grid lines on the header --- */
+/* --- crisp, spreadsheet-like grid lines on the header --- */
 .lm-report-table .tabulator-header {
     border-bottom: 2px solid var(--g-950) !important;
 }
 .lm-report-table .tabulator-header .tabulator-col,
 .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-group-cols .tabulator-col {
-    border-right: 2px solid rgba(255, 255, 255, .30) !important;
+    border-right: 1.5px solid rgba(255, 255, 255, .45) !important;
 }
 /* horizontal divider between a group title and its sub-columns */
 .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-group-cols {
-    border-top: 2px solid rgba(255, 255, 255, .30) !important;
+    border-top: 1.5px solid rgba(255, 255, 255, .45) !important;
 }
 
 /* slightly clearer vertical grid lines in the body */
@@ -439,13 +450,18 @@ select.field-control { padding-right: 8px; }
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"],
 .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] {
     overflow: visible !important;
+    white-space: normal !important;
 }
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"] > span,
 .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] > span {
     position: relative;
     z-index: 1;
-    margin-left: -110px;
+    margin-left: -110px;          /* tarik label masuk ke kolom Kode */
     padding-left: 12px !important;
+    width: 418px;                 /* batas Kode (110) + Uraian (320), beri jarak ke kolom angka */
+    white-space: normal;          /* turun ke baris berikutnya bila panjang */
+    overflow-wrap: anywhere;
+    line-height: 1.25;
 }
 
 /* numeric cells: tabular mono, right aligned */
