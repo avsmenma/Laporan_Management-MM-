@@ -51,42 +51,14 @@
     </div>
 
     <div class="report-card" x-show="reportData">
-        <div class="report-header">
-            <h2 class="report-title" x-text="reportData ? `Laporan Pabrik - ${reportData.meta?.unit?.name}` : 'Laporan Pabrik'"></h2>
-            <div class="report-meta">
-                <span x-text="reportData ? `Komoditas: ${reportData.meta?.unit?.komoditi} | Periode: ${reportData.meta?.batch?.period}/${reportData.meta?.batch?.year}` : ''"></span>
-            </div>
-        </div>
-
-        <div class="kpi-strip" x-show="reportData">
-            <div class="kpi-item">
-                <div class="kpi-label">Jumlah Hari Sebulan</div>
-                <div class="kpi-value">
-                    <span x-text="reportData?.meta?.kpi_hari?.jumlah_hari || 0"></span>
-                    <span class="kpi-unit">hari</span>
+        <div class="report-tabbar">
+            <div class="tabs">
+                <div class="tab active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    LM 16
                 </div>
             </div>
-            <div class="kpi-item">
-                <div class="kpi-label">Hari Dijalani</div>
-                <div class="kpi-value">
-                    <span x-text="reportData?.meta?.kpi_hari?.hari_dijalani || 0"></span>
-                    <span class="kpi-unit">hari</span>
-                </div>
-            </div>
-            <div class="kpi-item">
-                <div class="kpi-label">Sisa Hari</div>
-                <div class="kpi-value">
-                    <span x-text="reportData?.meta?.kpi_hari?.sisa_hari || 0"></span>
-                    <span class="kpi-unit">hari</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="toolbar">
-            <div class="toolbar-left">
-                <input type="text" class="search-input" placeholder="Cari baris..." x-model="searchText">
-            </div>
-            <div class="toolbar-right">
+            <div class="report-actions">
                 <button class="btn" @click="exportExcel()">Excel</button>
                 <button class="btn" @click="exportCSV()">CSV</button>
                 <button class="btn" @click="exportPDF()">PDF</button>
@@ -99,10 +71,6 @@
             <strong>Dasar nilai:</strong>
             <span x-text="drilldownPreview ? `${drilldownPreview.report_type} ${drilldownPreview.kode_baris} - ${drilldownPreview.column_key}` : ''"></span>
             <span> akan dibuka penuh pada prompt_09.</span>
-        </div>
-
-        <div class="tabs">
-            <div class="tab active">LM 16</div>
         </div>
 
         <div class="tab-content active">
@@ -153,12 +121,19 @@ function pabrikApp() {
                 window.LmReportTables.applySearch(this.lm16Table, value);
             });
             this.$watch('filters.unit', () => this.emitTopbarUnit());
+            this.$watch('reportData', (data) => this.emitTopbarKpi(data));
         },
 
         emitTopbarUnit() {
             const unit = this.units.find((item) => String(item.code) === String(this.filters.unit));
             window.dispatchEvent(new CustomEvent('lm-topbar-unit', {
                 detail: { label: unit ? `${unit.code} - ${unit.name}` : '' },
+            }));
+        },
+
+        emitTopbarKpi(data) {
+            window.dispatchEvent(new CustomEvent('lm-topbar-kpi', {
+                detail: { kpi: data?.meta?.kpi_hari ?? null },
             }));
         },
 

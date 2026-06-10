@@ -52,42 +52,18 @@
     </div>
 
     <div class="report-card" x-show="reportData">
-        <div class="report-header">
-            <h2 class="report-title" x-text="reportData ? `Laporan Kebun - ${reportData.meta?.unit?.name}` : 'Laporan Kebun'"></h2>
-            <div class="report-meta">
-                <span x-text="reportData ? `Komoditas: ${reportData.meta?.unit?.komoditi} | Periode: ${reportData.meta?.batch?.period}/${reportData.meta?.batch?.year}` : ''"></span>
-            </div>
-        </div>
-
-        <div class="kpi-strip" x-show="reportData">
-            <div class="kpi-item">
-                <div class="kpi-label">Jumlah Hari Sebulan</div>
-                <div class="kpi-value">
-                    <span x-text="reportData?.meta?.kpi_hari?.jumlah_hari || 0"></span>
-                    <span class="kpi-unit">hari</span>
+        <div class="report-tabbar">
+            <div class="tabs">
+                <div class="tab" :class="{ 'active': activeTab === 'lm14' }" @click="switchTab('lm14')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    LM 14
+                </div>
+                <div class="tab" :class="{ 'active': activeTab === 'lm13' }" @click="switchTab('lm13')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    LM 13
                 </div>
             </div>
-            <div class="kpi-item">
-                <div class="kpi-label">Hari Dijalani</div>
-                <div class="kpi-value">
-                    <span x-text="reportData?.meta?.kpi_hari?.hari_dijalani || 0"></span>
-                    <span class="kpi-unit">hari</span>
-                </div>
-            </div>
-            <div class="kpi-item">
-                <div class="kpi-label">Sisa Hari</div>
-                <div class="kpi-value">
-                    <span x-text="reportData?.meta?.kpi_hari?.sisa_hari || 0"></span>
-                    <span class="kpi-unit">hari</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="toolbar">
-            <div class="toolbar-left">
-                <input type="text" class="search-input" placeholder="Cari baris..." x-model="searchText">
-            </div>
-            <div class="toolbar-right">
+            <div class="report-actions">
                 <button class="btn" @click="exportExcel()">Excel</button>
                 <button class="btn" @click="exportCSV()">CSV</button>
                 <button class="btn" @click="exportPDF()">PDF</button>
@@ -100,15 +76,6 @@
             <strong>Dasar nilai:</strong>
             <span x-text="drilldownPreview ? `${drilldownPreview.report_type} ${drilldownPreview.kode_baris} - ${drilldownPreview.column_key}` : ''"></span>
             <span> akan dibuka penuh pada prompt_09.</span>
-        </div>
-
-        <div class="tabs">
-            <div class="tab" :class="{ 'active': activeTab === 'lm14' }" @click="switchTab('lm14')">
-                LM 14
-            </div>
-            <div class="tab" :class="{ 'active': activeTab === 'lm13' }" @click="switchTab('lm13')">
-                LM 13
-            </div>
         </div>
 
         <div class="tab-content" :class="{ 'active': activeTab === 'lm14' }">
@@ -167,12 +134,19 @@ function kebunApp() {
                 window.LmReportTables.applySearch(this.activeTable(), value);
             });
             this.$watch('filters.unit', () => this.emitTopbarUnit());
+            this.$watch('reportData', (data) => this.emitTopbarKpi(data));
         },
 
         emitTopbarUnit() {
             const unit = this.units.find((item) => String(item.code) === String(this.filters.unit));
             window.dispatchEvent(new CustomEvent('lm-topbar-unit', {
                 detail: { label: unit ? `${unit.code} - ${unit.name}` : '' },
+            }));
+        },
+
+        emitTopbarKpi(data) {
+            window.dispatchEvent(new CustomEvent('lm-topbar-kpi', {
+                detail: { kpi: data?.meta?.kpi_hari ?? null },
             }));
         },
 
