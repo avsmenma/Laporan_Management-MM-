@@ -57,7 +57,17 @@
         .topbar-divider { width: 1px; height: 26px; background: rgba(255,255,255,.14); flex: none; }
         .topbar-unit { font-size: 12px; color: #bcd7cc; white-space: nowrap; }
         .topbar-unit b { color: #fff; font-weight: 600; margin-left: 4px; }
-        .app-header-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+        .app-header-right { display: flex; align-items: center; gap: 12px; }
+
+        /* day KPIs inside the topbar */
+        .topbar-kpis { display: flex; align-items: center; gap: 22px; }
+        .topbar-kpis .tk { text-align: center; line-height: 1; }
+        .topbar-kpis .tk .tk-l {
+            display: block; font-size: 10px; letter-spacing: .05em; text-transform: uppercase;
+            color: #9dc3b4; font-weight: 600; margin-bottom: 4px;
+        }
+        .topbar-kpis .tk b { font-family: var(--font-mono); font-size: 17px; font-weight: 700; color: #fff; }
+        .topbar-kpis .tk b small { font-size: 11px; color: #9dc3b4; font-weight: 500; margin-left: 3px; }
 
         .role-badge {
             display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px;
@@ -172,22 +182,26 @@
         }
         .search-input:focus { outline: none; border-color: var(--g-600); box-shadow: 0 0 0 3px var(--g-50); }
 
-        /* ---------------- Tabs (reference style) ---------------- */
-        .tabs {
-            display: flex; gap: 4px; align-items: flex-end; padding: 10px 16px 0;
-            background: var(--surface-2); border-bottom: 1px solid var(--line);
+        /* ---------------- Tab bar (tabs + actions in one row, reference style) ---------------- */
+        .report-tabbar {
+            display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+            padding: 10px 16px 0; background: var(--surface-2); border-bottom: 1px solid var(--line);
         }
+        .tabs { display: flex; gap: 4px; align-items: flex-end; }
         .tab {
-            height: 38px; padding: 0 18px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+            height: 38px; padding: 0 16px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
             font-size: 13px; font-weight: 600; color: var(--ink-500); border: 1px solid transparent; border-bottom: none;
             border-radius: 9px 9px 0 0; position: relative; top: 1px; background: transparent;
             transition: color .14s, background .14s; margin-bottom: 0;
         }
+        .tab svg { width: 15px; height: 15px; flex: none; }
         .tab:hover { color: var(--ink-800); background: #e9edea; }
         .tab.active {
             color: var(--g-800); background: var(--surface); border-color: var(--line);
             box-shadow: 0 -2px 0 var(--g-700) inset;
         }
+
+        .report-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-bottom: 9px; }
 
         .tab-content { display: none; padding: 0; }
         .tab-content.active { display: block; }
@@ -220,6 +234,15 @@
              @lm-topbar-unit.window="unit = $event.detail.label">
             @yield('unit-label', 'Unit')<b x-text="unit"></b>
         </div>
+
+        <div class="topbar-spacer"></div>
+        <div class="topbar-kpis" x-data="{ kpi: null }" x-cloak x-show="kpi"
+             @lm-topbar-kpi.window="kpi = $event.detail.kpi">
+            <div class="tk"><span class="tk-l">Jlh. Hari Sebulan</span><b><span x-text="kpi?.jumlah_hari ?? 0"></span><small>hari</small></b></div>
+            <div class="tk"><span class="tk-l">Hari Dijalani</span><b><span x-text="kpi?.hari_dijalani ?? 0"></span><small>hari</small></b></div>
+            <div class="tk"><span class="tk-l">Sisa Hari</span><b><span x-text="kpi?.sisa_hari ?? 0"></span><small>hari</small></b></div>
+        </div>
+        <div class="topbar-spacer"></div>
 
         <div class="app-header-right">
             <span class="role-badge"><span class="dot"></span>{{ auth()->user()?->role?->name ?? 'Guest' }}</span>
