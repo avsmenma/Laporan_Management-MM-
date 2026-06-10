@@ -4,77 +4,90 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Batch - Sistem Pelaporan LM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="font-sans">
-    <div class="lm-shell">
-        <header class="lm-topbar">
-            <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="topbar-brand">
+                <div class="brand-mark">PN</div>
                 <div>
-                    <h1 class="font-semibold">Batch Laporan</h1>
-                    <p class="text-xs text-white/75">Kelola periode 1-12 dan status report</p>
+                    <div class="brand-name">Batch Laporan</div>
+                    <div class="brand-sub">Kelola periode 1-12 dan status report</div>
                 </div>
-                <a class="rounded bg-white px-3 py-1 text-sm font-medium text-[#0f4c3a]" href="{{ route('reports.index') }}">Report Viewer</a>
+            </div>
+            <div class="topbar-spacer"></div>
+            <div class="topbar-right">
+                <a class="topbar-link solid" href="{{ route('reports.index') }}">Report Viewer</a>
             </div>
         </header>
 
-        <main class="mx-auto max-w-5xl space-y-5 px-6 py-6">
+        <main class="app-main page page-narrow">
             @if (session('status'))
-                <div class="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('status') }}</div>
+                <div class="alert alert-ok" style="margin-bottom:18px">{{ session('status') }}</div>
             @endif
 
-            <section class="lm-card p-5">
-                <h2 class="mb-4 text-lg font-semibold">Buat / Update Batch</h2>
-                <form method="POST" action="{{ route('batches.store') }}" class="grid gap-4 md:grid-cols-4">
-                    @csrf
-                    <label class="text-sm">
-                        <span class="font-medium">Tahun</span>
-                        <input name="year" type="number" value="2026" class="mt-1 w-full rounded border px-3 py-2">
-                    </label>
-                    <label class="text-sm">
-                        <span class="font-medium">Bulan</span>
-                        <select name="month" class="mt-1 w-full rounded border px-3 py-2">
-                            @foreach (range(1, 12) as $month)
-                                <option value="{{ $month }}" @selected($month === 5)>{{ $month }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <label class="text-sm">
-                        <span class="font-medium">Status</span>
-                        <select name="status" class="mt-1 w-full rounded border px-3 py-2">
-                            <option value="draft">draft</option>
-                            <option value="final">final</option>
-                            <option value="locked">locked</option>
-                        </select>
-                    </label>
-                    <div class="flex items-end">
-                        <button class="w-full rounded bg-[#0f4c3a] px-4 py-2 font-semibold text-white">Simpan</button>
-                    </div>
-                </form>
+            <section class="panel" style="margin-bottom:20px">
+                <div class="panel-head"><span class="panel-title">Buat / Update Batch</span></div>
+                <div class="panel-body">
+                    <form method="POST" action="{{ route('batches.store') }}" class="grid gap-4 md:grid-cols-4">
+                        @csrf
+                        <div class="field" style="margin-bottom:0">
+                            <label>Tahun</label>
+                            <input name="year" type="number" value="2026" class="field-control">
+                        </div>
+                        <div class="field" style="margin-bottom:0">
+                            <label>Bulan</label>
+                            <select name="month" class="field-control">
+                                @foreach (range(1, 12) as $month)
+                                    <option value="{{ $month }}" @selected($month === 5)>{{ $month }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0">
+                            <label>Status</label>
+                            <select name="status" class="field-control">
+                                <option value="draft">draft</option>
+                                <option value="final">final</option>
+                                <option value="locked">locked</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <button class="btn btn-primary btn-block" type="submit">Simpan</button>
+                        </div>
+                    </form>
+                </div>
             </section>
 
-            <section class="lm-card overflow-hidden">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-[#0f4c3a] text-white">
+            <section class="panel" style="overflow:hidden">
+                <div class="panel-head"><span class="panel-title">Daftar Batch</span></div>
+                <table class="htable">
+                    <thead>
                         <tr>
-                            <th class="px-4 py-3">Kode</th>
-                            <th class="px-4 py-3">Tahun</th>
-                            <th class="px-4 py-3">Bulan</th>
-                            <th class="px-4 py-3">Status</th>
-                            <th class="px-4 py-3">Diproses</th>
+                            <th>Kode</th>
+                            <th>Tahun</th>
+                            <th>Bulan</th>
+                            <th>Status</th>
+                            <th>Diproses</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($batches as $batch)
-                            <tr class="border-t">
-                                <td class="px-4 py-3 font-medium">{{ $batch->code }}</td>
-                                <td class="px-4 py-3">{{ $batch->year }}</td>
-                                <td class="px-4 py-3">{{ $batch->month }}</td>
-                                <td class="px-4 py-3">{{ $batch->status }}</td>
-                                <td class="px-4 py-3">{{ optional($batch->processed_at)->format('Y-m-d H:i') }}</td>
+                            <tr>
+                                <td class="file-cell">{{ $batch->code }}</td>
+                                <td class="mono">{{ $batch->year }}</td>
+                                <td class="mono">{{ $batch->month }}</td>
+                                <td>
+                                    @php $st = $batch->status; @endphp
+                                    <span class="pill {{ $st === 'locked' ? 'pill-info' : ($st === 'final' ? 'pill-ok' : 'pill-idle') }}"><span class="dot"></span>{{ $st }}</span>
+                                </td>
+                                <td class="mono">{{ optional($batch->processed_at)->format('Y-m-d H:i') }}</td>
                             </tr>
                         @empty
-                            <tr><td class="px-4 py-6 text-slate-500" colspan="5">Belum ada batch.</td></tr>
+                            <tr><td class="empty-cell" colspan="5">Belum ada batch.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
