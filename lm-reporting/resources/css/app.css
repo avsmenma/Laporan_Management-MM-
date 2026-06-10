@@ -338,26 +338,64 @@ select.field-control { padding-right: 8px; }
 .lm-report-table .tabulator-col-group {
     background: var(--g-800);
     color: #fff;
-    border-right-color: rgb(255 255 255 / 24%);
+    border-right-color: rgb(255 255 255 / 12%);
 }
 
-.lm-report-table .tabulator-row.lm-row-header {
-    background: #ecf4f0;
+/* group header band a touch lighter, like the reference */
+.lm-report-table .tabulator-col.tabulator-col-group {
+    background: var(--g-700);
+}
+.lm-report-table .tabulator-col .tabulator-col-title {
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: .01em;
+}
+
+/* frozen identity columns (Kode / Uraian) */
+.lm-report-table .tabulator-row .tabulator-cell.tabulator-frozen,
+.lm-report-table .tabulator-header .tabulator-col.tabulator-frozen {
+    box-shadow: inset -1px 0 0 var(--line-strong);
+}
+.lm-report-table .tabulator-row .tabulator-cell.tabulator-frozen {
+    background: var(--surface);
+    font-weight: 500;
+    color: var(--ink-900);
+}
+.lm-report-table .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen {
+    background: var(--surface-2);
+}
+
+.lm-report-table .tabulator-row.lm-row-header td,
+.lm-report-table .tabulator-row.lm-row-header .tabulator-cell {
+    background: #e9f1ec;
     font-weight: 700;
+    color: var(--g-800);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    font-size: 11px;
 }
 
-.lm-report-table .tabulator-row.lm-row-subtotal {
-    background: #f6faf8;
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell {
+    background: #eef3f0;
     font-weight: 700;
+    color: var(--ink-900);
 }
 
-.lm-report-table .tabulator-row.lm-row-total {
-    background: #dbece5;
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell {
+    background: #dcebe3;
     font-weight: 800;
+    color: var(--g-950);
+    border-top: 2px solid var(--g-700);
 }
 
+/* numeric cells: tabular mono, right aligned */
 .lm-report-table .lm-number-cell {
     cursor: pointer;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--ink-800);
+    letter-spacing: -.01em;
 }
 
 .lm-report-table .lm-number-cell:hover {
