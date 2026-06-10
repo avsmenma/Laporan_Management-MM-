@@ -4,31 +4,36 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Import Data - Sistem Pelaporan LM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="font-sans">
-    <div class="lm-shell">
-        <header class="lm-topbar">
-            <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="topbar-brand">
+                <div class="brand-mark">PN</div>
                 <div>
-                    <h1 class="font-semibold">Import Data LM</h1>
-                    <p class="text-xs text-white/75">DB WBS, DB BTL, pabrik, RKAP/RKO, dan tahun lalu</p>
+                    <div class="brand-name">Import Data LM</div>
+                    <div class="brand-sub">DB WBS, DB BTL, pabrik, RKAP/RKO, dan tahun lalu</div>
                 </div>
-                <div class="flex gap-2">
-                    <a class="rounded bg-white/15 px-3 py-1 text-sm text-white" href="{{ route('batches.index') }}">Batch</a>
-                    <a class="rounded bg-white px-3 py-1 text-sm font-medium text-[#0f4c3a]" href="{{ route('reports.index') }}">Report Viewer</a>
-                </div>
+            </div>
+            <div class="topbar-spacer"></div>
+            <div class="topbar-right">
+                <a class="topbar-link" href="{{ route('batches.index') }}">Batch</a>
+                <a class="topbar-link solid" href="{{ route('reports.index') }}">Report Viewer</a>
             </div>
         </header>
 
-        <main class="mx-auto max-w-6xl space-y-5 px-6 py-6">
+        <main class="app-main page">
             @if (session('status'))
-                <div class="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('status') }}</div>
+                <div class="alert alert-ok" style="margin-bottom:18px">{{ session('status') }}</div>
             @endif
 
             @if (session('import_errors'))
-                <div class="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    <div class="font-semibold">Ringkasan error</div>
+                <div class="alert alert-warn" style="margin-bottom:18px;flex-direction:column;align-items:stretch">
+                    <div><b>Ringkasan error</b></div>
                     <ul class="mt-2 list-disc pl-5">
                         @foreach (array_slice(session('import_errors'), 0, 10) as $error)
                             <li>{{ $error }}</li>
@@ -37,60 +42,69 @@
                 </div>
             @endif
 
-            <section class="lm-card p-5">
-                <h2 class="mb-4 text-lg font-semibold">Upload File Excel</h2>
-                <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data" class="grid gap-4 md:grid-cols-4">
-                    @csrf
-                    <label class="text-sm">
-                        <span class="font-medium">Batch</span>
-                        <select name="batch_id" class="mt-1 w-full rounded border px-3 py-2" required>
-                            @foreach ($batches as $batch)
-                                <option value="{{ $batch->id }}">{{ $batch->code }} - {{ $batch->status }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <label class="text-sm">
-                        <span class="font-medium">Jenis Import</span>
-                        <select name="type" class="mt-1 w-full rounded border px-3 py-2" required>
-                            @foreach ($types as $key => $label)
-                                <option value="{{ $key }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <label class="text-sm">
-                        <span class="font-medium">File</span>
-                        <input name="file" type="file" accept=".xlsx,.xls,.csv" class="mt-1 w-full rounded border px-3 py-2" required>
-                    </label>
-                    <div class="flex items-end">
-                        <button class="w-full rounded bg-[#0f4c3a] px-4 py-2 font-semibold text-white">Import</button>
-                    </div>
-                </form>
+            <section class="panel" style="margin-bottom:20px">
+                <div class="panel-head"><span class="panel-title">Upload File Excel</span></div>
+                <div class="panel-body">
+                    <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data" class="grid gap-4 md:grid-cols-4">
+                        @csrf
+                        <div class="field" style="margin-bottom:0">
+                            <label>Batch</label>
+                            <select name="batch_id" class="field-control" required>
+                                @foreach ($batches as $batch)
+                                    <option value="{{ $batch->id }}">{{ $batch->code }} - {{ $batch->status }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0">
+                            <label>Jenis Import</label>
+                            <select name="type" class="field-control" required>
+                                @foreach ($types as $key => $label)
+                                    <option value="{{ $key }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0">
+                            <label>File</label>
+                            <input name="file" type="file" accept=".xlsx,.xls,.csv" class="field-control" required>
+                        </div>
+                        <div class="flex items-end">
+                            <button class="btn btn-primary btn-block" type="submit">Import</button>
+                        </div>
+                    </form>
+                </div>
             </section>
 
-            <section class="lm-card overflow-hidden">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-[#0f4c3a] text-white">
+            <section class="panel" style="overflow:hidden">
+                <div class="panel-head"><span class="panel-title">Riwayat Upload</span></div>
+                <table class="htable">
+                    <thead>
                         <tr>
-                            <th class="px-4 py-3">Waktu</th>
-                            <th class="px-4 py-3">Batch</th>
-                            <th class="px-4 py-3">Jenis</th>
-                            <th class="px-4 py-3">User</th>
-                            <th class="px-4 py-3">Baris</th>
-                            <th class="px-4 py-3">Error</th>
+                            <th>Waktu</th>
+                            <th>Batch</th>
+                            <th>Jenis</th>
+                            <th>User</th>
+                            <th>Baris</th>
+                            <th>Error</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($logs as $log)
-                            <tr class="border-t">
-                                <td class="px-4 py-3">{{ $log->uploaded_at->format('Y-m-d H:i') }}</td>
-                                <td class="px-4 py-3">{{ $log->batch?->code }}</td>
-                                <td class="px-4 py-3">{{ $types[$log->jenis] ?? $log->jenis }}</td>
-                                <td class="px-4 py-3">{{ $log->user?->name }}</td>
-                                <td class="px-4 py-3">{{ $log->row_count }}</td>
-                                <td class="px-4 py-3">{{ $log->error_count }}</td>
+                            <tr>
+                                <td class="mono">{{ $log->uploaded_at->format('Y-m-d H:i') }}</td>
+                                <td class="file-cell">{{ $log->batch?->code }}</td>
+                                <td>{{ $types[$log->jenis] ?? $log->jenis }}</td>
+                                <td>{{ $log->user?->name }}</td>
+                                <td class="mono">{{ $log->row_count }}</td>
+                                <td>
+                                    @if ($log->error_count > 0)
+                                        <span class="pill pill-err"><span class="dot"></span>{{ $log->error_count }}</span>
+                                    @else
+                                        <span class="pill pill-ok"><span class="dot"></span>{{ $log->error_count }}</span>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td class="px-4 py-6 text-slate-500" colspan="6">Belum ada log upload.</td></tr>
+                            <tr><td class="empty-cell" colspan="6">Belum ada log upload.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
