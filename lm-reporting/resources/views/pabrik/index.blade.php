@@ -180,7 +180,17 @@ function pabrikApp() {
             }
 
             try {
-                const response = await fetch(`/api/units?type=PABRIK&komoditi=${this.filters.komoditi}`);
+                const params = new URLSearchParams({
+                    type: 'PABRIK',
+                    komoditi: this.filters.komoditi,
+                });
+
+                if (this.filters.batch) {
+                    params.set('batch', this.filters.batch);
+                    params.set('report_type', 'LM16');
+                }
+
+                const response = await fetch(`/api/units?${params.toString()}`);
                 const data = await response.json();
                 if (data.success) {
                     this.units = data.data;
@@ -200,7 +210,9 @@ function pabrikApp() {
         onPeriodChange() {
             if (this.selectedBatch && String(this.selectedBatch.period) !== String(this.filters.period)) {
                 this.filters.batch = '';
+                this.filters.unit = '';
                 this.selectedBatch = null;
+                this.units = [];
                 this.resetReport();
             }
         },
@@ -210,7 +222,9 @@ function pabrikApp() {
             if (this.selectedBatch) {
                 this.filters.period = this.selectedBatch.period;
             }
+            this.filters.unit = '';
             this.resetReport();
+            this.loadUnits();
         },
 
         onUnitChange() {

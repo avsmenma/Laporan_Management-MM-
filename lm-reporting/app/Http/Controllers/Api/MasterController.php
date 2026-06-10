@@ -7,6 +7,7 @@ use App\Models\Batch;
 use App\Models\RefUnit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MasterController extends Controller
 {
@@ -32,6 +33,24 @@ class MasterController extends Controller
             } else {
                 // Untuk pabrik, filter langsung di ref_unit.komoditi
                 $query->where('komoditi', $komoditi);
+            }
+        }
+
+        if ($request->filled(['batch', 'report_type'])) {
+            $reportTable = match (strtoupper((string) $request->report_type)) {
+                'LM13' => 'report_lm13',
+                'LM14' => 'report_lm14',
+                'LM16' => 'report_lm16',
+                default => null,
+            };
+
+            if ($reportTable !== null) {
+                $unitIds = DB::table($reportTable)
+                    ->where('batch_id', $request->batch)
+                    ->distinct()
+                    ->pluck('unit_id');
+
+                $query->whereIn('id', $unitIds);
             }
         }
 
