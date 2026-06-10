@@ -72,11 +72,11 @@ function textColumn(field, title, width) {
     };
 }
 
-function numberColumn(field, title, width = 112) {
+function numberColumn(field, title, minWidth = 104) {
     return {
         title,
         field,
-        width,
+        minWidth,
         hozAlign: 'right',
         headerHozAlign: 'center',
         headerSort: false,
