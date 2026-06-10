@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @auth
+        <meta name="lm-report-user" content="{{ auth()->id() }}">
+        <meta name="lm-report-token" content="{{ hash_hmac('sha256', auth()->id().'|'.auth()->user()->email.'|'.auth()->user()->role_id, config('app.key')) }}">
+    @endauth
     <title>{{ config('app.name', 'Sistem Pelaporan LM') }} - @yield('title', 'Dashboard')</title>
 
     <!-- Styles -->

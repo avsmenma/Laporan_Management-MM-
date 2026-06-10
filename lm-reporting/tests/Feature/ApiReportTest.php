@@ -115,6 +115,32 @@ class ApiReportTest extends TestCase
             ->assertJsonPath('success', true);
     }
 
+    public function test_report_data_endpoint_accepts_signed_ui_token(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create([
+            'code' => 'Batch #2026-05',
+            'year' => 2026,
+            'month' => 5,
+            'status' => 'final',
+            'processed_at' => '2026-05-20 08:00:00',
+        ]);
+        $unit = RefUnit::query()->where('code', '5E11')->firstOrFail();
+        $operator = User::query()->whereHas('role', fn ($query) => $query->where('name', Role::OPERATOR))->firstOrFail();
+
+        $this->insertLm14Source($batch, $unit);
+        app(Lm14Service::class)->generate($batch, $unit, 'KS');
+
+        $token = hash_hmac('sha256', "{$operator->id}|{$operator->email}|{$operator->role_id}", config('app.key'));
+
+        $this->withHeaders([
+            'X-LM-Report-User' => (string) $operator->id,
+            'X-LM-Report-Token' => $token,
+        ])->getJson("/report-data/lm14?batch={$batch->id}&unit={$unit->code}&komoditi=KS")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
     private function insertLm14Source(Batch $batch, RefUnit $unit): void
     {
         DB::table('db_wbs')->insert([

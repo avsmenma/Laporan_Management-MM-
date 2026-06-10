@@ -286,7 +286,7 @@ function kebunApp() {
             this.loadingLm14 = true;
             this.errorMessage = null;
             try {
-                const data = await this.fetchReport(`/api/report/lm14?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`);
+                const data = await this.fetchReport(`/report-data/lm14?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`);
                 this.reportData = data;
                 this.lm14Data = data;
                 this.$nextTick(() => {
@@ -306,7 +306,7 @@ function kebunApp() {
             this.loadingLm13 = true;
             this.errorMessage = null;
             try {
-                const data = await this.fetchReport(`/api/report/lm13?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`);
+                const data = await this.fetchReport(`/report-data/lm13?batch=${this.filters.batch}&unit=${this.filters.unit}&komoditi=${this.filters.komoditi}`);
                 this.reportData = data;
                 this.lm13Data = data;
                 this.$nextTick(() => {
@@ -326,7 +326,9 @@ function kebunApp() {
             const response = await fetch(url, {
                 headers: {
                     'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-LM-Report-User': document.querySelector('meta[name="lm-report-user"]')?.content ?? '',
+                    'X-LM-Report-Token': document.querySelector('meta[name="lm-report-token"]')?.content ?? ''
                 },
                 credentials: 'include'
             });

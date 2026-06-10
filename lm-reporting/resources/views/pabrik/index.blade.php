@@ -257,7 +257,7 @@ function pabrikApp() {
             this.loadingLm16 = true;
             this.errorMessage = null;
             try {
-                const data = await this.fetchReport(`/api/report/lm16?batch=${this.filters.batch}&unit=${this.filters.unit}`);
+                const data = await this.fetchReport(`/report-data/lm16?batch=${this.filters.batch}&unit=${this.filters.unit}`);
                 this.reportData = data;
                 this.lm16Data = data;
                 this.$nextTick(() => {
@@ -277,7 +277,9 @@ function pabrikApp() {
             const response = await fetch(url, {
                 headers: {
                     'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-LM-Report-User': document.querySelector('meta[name="lm-report-user"]')?.content ?? '',
+                    'X-LM-Report-Token': document.querySelector('meta[name="lm-report-token"]')?.content ?? ''
                 },
                 credentials: 'include'
             });

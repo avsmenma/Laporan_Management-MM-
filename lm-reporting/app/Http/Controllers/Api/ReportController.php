@@ -7,8 +7,10 @@ use App\Models\Batch;
 use App\Models\LmTemplateRow;
 use App\Models\RefUnit;
 use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
@@ -18,6 +20,8 @@ class ReportController extends Controller
      */
     public function lm14(Request $request): JsonResponse
     {
+        $this->authenticateReportRequest($request);
+
         $request->validate([
             'batch' => 'required',
             'unit' => 'required',
@@ -68,6 +72,8 @@ class ReportController extends Controller
      */
     public function lm13(Request $request): JsonResponse
     {
+        $this->authenticateReportRequest($request);
+
         $request->validate([
             'batch' => 'required',
             'unit' => 'required',
@@ -117,6 +123,8 @@ class ReportController extends Controller
      */
     public function lm16(Request $request): JsonResponse
     {
+        $this->authenticateReportRequest($request);
+
         $request->validate([
             'batch' => 'required',
             'unit' => 'required',
@@ -162,6 +170,8 @@ class ReportController extends Controller
      */
     public function drilldown(Request $request): JsonResponse
     {
+        $this->authenticateReportRequest($request);
+
         $request->validate([
             'type' => 'required|in:LM14,LM13,LM16,lm14,lm13,lm16',
             'batch' => 'required',
@@ -279,6 +289,28 @@ class ReportController extends Controller
                 abort(403, 'Viewer hanya dapat melihat laporan dengan status final atau locked.');
             }
         }
+    }
+
+    private function authenticateReportRequest(Request $request): void
+    {
+        if ($request->user()) {
+            return;
+        }
+
+        $userId = (int) $request->header('X-LM-Report-User', 0);
+        $token = (string) $request->header('X-LM-Report-Token', '');
+        $user = $userId > 0 ? User::query()->find($userId) : null;
+
+        if (! $user || ! hash_equals($this->reportToken($user), $token)) {
+            abort(401, 'Sesi laporan tidak valid.');
+        }
+
+        Auth::onceUsingId($user->id);
+    }
+
+    private function reportToken(User $user): string
+    {
+        return hash_hmac('sha256', "{$user->id}|{$user->email}|{$user->role_id}", config('app.key'));
     }
 
     /**
