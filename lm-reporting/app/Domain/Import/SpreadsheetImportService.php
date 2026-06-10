@@ -119,7 +119,7 @@ class SpreadsheetImportService
                 'job_name' => $this->nullableText($row['job_name'] ?? null),
                 'cost_element' => $this->nullableText($row['cost_element'] ?? null),
                 'cost_element_desc' => $this->nullableText($row['cost_element_desc'] ?? null),
-                'klasifikasi_code' => $this->nullableText($row['klasifikasi_code'] ?? null),
+                'klasifikasi_code' => $this->klasifikasiCode($row['klasifikasi_code'] ?? null),
                 'nilai' => $this->number($row['nilai'] ?? 0),
                 'fisik' => $this->nullableNumber($row['fisik'] ?? null),
             ]);
@@ -167,7 +167,7 @@ class SpreadsheetImportService
                 'co_object_name' => $this->nullableText($row['co_object_name'] ?? null),
                 'cost_element' => $this->nullableText($row['cost_element'] ?? null),
                 'cost_element_name' => $this->nullableText($row['cost_element_name'] ?? null),
-                'klasifikasi_code' => $this->nullableText($row['klasifikasi_code'] ?? null),
+                'klasifikasi_code' => $this->klasifikasiCode($row['klasifikasi_code'] ?? null),
                 'nilai' => $this->number($row['nilai'] ?? 0),
             ]);
             $inserted++;
@@ -205,7 +205,7 @@ class SpreadsheetImportService
                 'period' => $this->int($row['period'] ?? $batch->month),
                 'cost_center' => $this->nullableText($row['cost_center'] ?? null),
                 'cost_element' => $this->nullableText($row['cost_element'] ?? null),
-                'klasifikasi_code' => $this->nullableText($row['klasifikasi_code'] ?? null),
+                'klasifikasi_code' => $this->klasifikasiCode($row['klasifikasi_code'] ?? null),
                 'nilai' => $this->number($row['nilai'] ?? 0),
             ]);
             $inserted++;
@@ -734,6 +734,20 @@ class SpreadsheetImportService
         $text = trim((string) $value);
 
         return $text === '' ? null : $text;
+    }
+
+    private function klasifikasiCode(mixed $value): ?string
+    {
+        $text = $this->nullableText($value);
+        if ($text === null) {
+            return null;
+        }
+
+        if (preg_match('/^\d+/', $text, $matches)) {
+            return $matches[0];
+        }
+
+        return $text;
     }
 
     private function int(mixed $value): int

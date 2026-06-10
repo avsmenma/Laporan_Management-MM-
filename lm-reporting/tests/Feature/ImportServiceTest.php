@@ -29,17 +29,18 @@ class ImportServiceTest extends TestCase
         $file = $this->workbook([
             'DB WBS' => [
                 ['Budidaya', 'Plant', 'Period', 'Aktifitas', 'Cost Element', 'Klasifikasi', 'Nilai', 'Fisik'],
-                ['KS', '5E01', 5, '41-01', '511001', '2', 100, 1.5],
+                ['KS', '5E01', 5, '41-01', '511001', '2. SPK', 100, 1.5],
                 ['KS', '5E01', 5, '41-02', '511002', '3', 200, 2.5],
             ],
             'DB BTL' => [
                 ['Kode', 'Plant', 'Period', 'Kode CC', 'Cost Element', 'Klasifikasi', 'Nilai'],
-                ['KS', '5E01', 5, 'BT01', '511003', '1', 300],
+                ['KS', '5E01', 5, 'BT01', '511003', '1. Gaji', 300],
             ],
         ]);
 
         $this->assertSame(2, $service->import('wbs', $batch, $file)->rowCount);
         $this->assertSame(2, DB::table('db_wbs')->where('batch_id', $batch->id)->count());
+        $this->assertSame('2', DB::table('db_wbs')->where('batch_id', $batch->id)->where('aktivitas', '41-01')->value('klasifikasi_code'));
 
         $replacement = $this->workbook([
             'DB WBS' => [
@@ -54,6 +55,7 @@ class ImportServiceTest extends TestCase
 
         $this->assertSame(1, $service->import('btl', $batch, $file)->rowCount);
         $this->assertSame(1, DB::table('db_btl')->where('batch_id', $batch->id)->count());
+        $this->assertSame('1', DB::table('db_btl')->where('batch_id', $batch->id)->value('klasifikasi_code'));
     }
 
     public function test_rkap_and_rko_import_are_upserted_and_multiplied_by_thousand(): void
