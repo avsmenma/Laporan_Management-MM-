@@ -232,8 +232,8 @@ function kebunApp() {
 
         switchTab(tab) {
             this.activeTab = tab;
-            this.filters.unit = '';
-            this.resetReport();
+            // Pertahankan unit yang sudah dipilih, segarkan daftar unit di latar,
+            // lalu langsung muat laporan tab ini tanpa memilih ulang kebun.
             this.loadUnits();
             if (this.canLoadReport()) {
                 this.loadReport();
