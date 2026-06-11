@@ -288,6 +288,18 @@
                             <span class="nav-ico">🏭</span> PABRIK
                         </a>
                     </li>
+                    @if (in_array(optional(optional(auth()->user())->role)->name, ['Operator', 'Admin'], true))
+                        <li class="sidebar-nav-item" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
+                            <a href="{{ route('import.index') }}" class="sidebar-nav-link {{ request()->routeIs('import.*') ? 'active' : '' }}">
+                                <span class="nav-ico">⬆️</span> IMPORT
+                            </a>
+                        </li>
+                        <li class="sidebar-nav-item">
+                            <a href="{{ route('batches.index') }}" class="sidebar-nav-link {{ request()->routeIs('batches.*') ? 'active' : '' }}">
+                                <span class="nav-ico">🗂️</span> BATCH
+                            </a>
+                        </li>
+                    @endif
                 </ul>
             </nav>
         </aside>
