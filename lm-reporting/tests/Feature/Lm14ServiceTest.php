@@ -51,7 +51,7 @@ class Lm14ServiceTest extends TestCase
         $total = $this->reportRow($batch, $unit, 210);
         $this->assertEquals(325.0, (float) $total->real_bulan_ini);
 
-        DB::table('db_btl')->where('batch_id', $batch->id)->where('kode_cc', '99-01')->update(['nilai' => 150]);
+        DB::table('db_btl')->where('batch_id', $batch->id)->where('kode_cc', 'SP01')->update(['nilai' => 150]);
         app(Lm14Service::class)->generate($batch, $unit, 'KS');
         $this->assertSame(210, DB::table('report_lm14')->where('batch_id', $batch->id)->where('unit_id', $unit->id)->count());
         $this->assertEquals(350.0, (float) $this->reportRow($batch, $unit, 6)->real_bulan_ini);
@@ -92,11 +92,13 @@ class Lm14ServiceTest extends TestCase
         $unit = RefUnit::query()->where('code', '5E01')->firstOrFail();
 
         DB::table('db_btl')->insert([
-            ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'kode_cc' => '99-01', 'cost_element' => null, 'nilai' => 100],
-            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'kode_cc' => '99-01', 'cost_element' => null, 'nilai' => 50],
+            // Gaji staf "dari WBS": realisasi bulan ini ada di db_btl cost center SP01.
+            ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'kode_cc' => 'SP01', 'cost_element' => null, 'nilai' => 100],
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'kode_cc' => 'SUP', 'cost_element' => '51100200', 'nilai' => 25],
         ]);
         DB::table('db_wbs')->insert([
+            // Gaji staf "dari WBS": realisasi bulan lalu ada di db_wbs aktivitas 99-01.
+            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktivitas' => '99-01', 'nilai' => 50],
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'aktivitas' => '99-01.', 'nilai' => 200],
             ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktivitas' => '99-01.', 'nilai' => 75],
         ]);
