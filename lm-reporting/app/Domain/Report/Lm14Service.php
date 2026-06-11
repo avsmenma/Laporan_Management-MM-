@@ -11,6 +11,15 @@ use Illuminate\Support\Facades\DB;
 class Lm14Service
 {
     /**
+     * Baris "Gaji/Upah & Biaya Kary. Staf dari WBS" memakai kode LM 99-01,
+     * tetapi realisasinya tersimpan di db_btl pada cost center SP01
+     * dan/atau di db_wbs pada aktivitas 99-01. Lihat sumStafGaji().
+     */
+    private const STAF_GAJI_KODE = '99-01';
+
+    private const STAF_GAJI_BTL_CC = 'SP01';
+
+    /**
      * @return Collection<int, array<string, mixed>>
      */
     public function generate(Batch $batch, RefUnit $unit, string $komoditi): Collection
@@ -168,72 +177,84 @@ class Lm14Service
 
     private function sumSourceCurrentBatch(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float
     {
-        $value = $this->sourceQuery($template->source, $template->kode)
+        if ($this->isStafGaji($template)) {
+            return $this->sumStafGaji($unit, $komoditi, function ($query) use ($batch): void {
+                $query->where('batch_id', $batch->id)
+                    ->where('period', $batch->month);
+            });
+        }
+
+        return (float) $this->sourceQuery($template->source, $template->kode)
             ->where('batch_id', $batch->id)
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('period', $batch->month)
             ->sum('nilai');
-
-        return $this->withGajiStafFallback($value, $template, fn () => DB::table('db_wbs')
-            ->where('batch_id', $batch->id)
-            ->where('komoditi', $komoditi)
-            ->where('plant_code', $unit->code)
-            ->where('period', $batch->month)
-            ->where('aktivitas', $template->kode)
-            ->where('cost_element', '90042012')
-            ->sum('nilai'));
     }
 
     private function sumSourceYearPeriod(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template, int $period): float
     {
-        $value = $this->sourceQuery($template->source, $template->kode)
+        if ($this->isStafGaji($template)) {
+            return $this->sumStafGaji($unit, $komoditi, function ($query, string $table) use ($batch, $period): void {
+                $query->join('batch', $table.'.batch_id', '=', 'batch.id')
+                    ->where('batch.year', $batch->year)
+                    ->where('period', $period);
+            });
+        }
+
+        return (float) $this->sourceQuery($template->source, $template->kode)
             ->join('batch', $this->sourceTable($template->source).'.batch_id', '=', 'batch.id')
             ->where('batch.year', $batch->year)
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('period', $period)
             ->sum('nilai');
-
-        return $this->withGajiStafFallback($value, $template, fn () => DB::table('db_wbs')
-            ->join('batch', 'db_wbs.batch_id', '=', 'batch.id')
-            ->where('batch.year', $batch->year)
-            ->where('komoditi', $komoditi)
-            ->where('plant_code', $unit->code)
-            ->where('period', $period)
-            ->where('aktivitas', $template->kode)
-            ->where('cost_element', '90042012')
-            ->sum('nilai'));
     }
 
     private function sumSourceBeforeMonth(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float
     {
-        $value = $this->sourceQuery($template->source, $template->kode)
+        if ($this->isStafGaji($template)) {
+            return $this->sumStafGaji($unit, $komoditi, function ($query, string $table) use ($batch): void {
+                $query->join('batch', $table.'.batch_id', '=', 'batch.id')
+                    ->where('batch.year', $batch->year)
+                    ->where('period', '<', $batch->month);
+            });
+        }
+
+        return (float) $this->sourceQuery($template->source, $template->kode)
             ->join('batch', $this->sourceTable($template->source).'.batch_id', '=', 'batch.id')
             ->where('batch.year', $batch->year)
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('period', '<', $batch->month)
             ->sum('nilai');
-
-        return $this->withGajiStafFallback($value, $template, fn () => DB::table('db_wbs')
-            ->join('batch', 'db_wbs.batch_id', '=', 'batch.id')
-            ->where('batch.year', $batch->year)
-            ->where('komoditi', $komoditi)
-            ->where('plant_code', $unit->code)
-            ->where('period', '<', $batch->month)
-            ->where('aktivitas', $template->kode)
-            ->where('cost_element', '90042012')
-            ->sum('nilai'));
     }
 
-    private function withGajiStafFallback(float $value, LmTemplateRow $template, callable $fallback): float
+    private function isStafGaji(LmTemplateRow $template): bool
     {
-        if ($value != 0.0 || $template->source !== 'BTL' || $template->kode !== '99-01') {
-            return $value;
-        }
+        return $template->source === 'BTL' && $template->kode === self::STAF_GAJI_KODE;
+    }
 
-        return (float) $fallback();
+    /**
+     * Realisasi baris "Gaji Staf dari WBS" = db_btl (cost center SP01) + db_wbs (aktivitas 99-01).
+     * Cakupan periode (batch/tahun/bulan) diterapkan lewat closure $scope agar bisa dipakai
+     * untuk bulan ini, bulan lalu, maupun akumulasi sebelum bulan ini.
+     */
+    private function sumStafGaji(RefUnit $unit, string $komoditi, callable $scope): float
+    {
+        $btl = DB::table('db_btl')
+            ->where('komoditi', $komoditi)
+            ->where('plant_code', $unit->code)
+            ->where('kode_cc', self::STAF_GAJI_BTL_CC);
+        $scope($btl, 'db_btl');
+
+        $wbs = DB::table('db_wbs')
+            ->where('komoditi', $komoditi)
+            ->where('plant_code', $unit->code)
+            ->where('aktivitas', self::STAF_GAJI_KODE);
+        $scope($wbs, 'db_wbs');
+
+        return (float) $btl->sum('nilai') + (float) $wbs->sum('nilai');
     }
 
     private function sourceQuery(?string $source, ?string $kode): \Illuminate\Database\Query\Builder
