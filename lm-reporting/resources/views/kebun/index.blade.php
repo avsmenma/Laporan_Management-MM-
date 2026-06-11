@@ -34,9 +34,6 @@
                         <option :value="batch.id" x-text="batch.label"></option>
                     </template>
                 </select>
-                <div x-show="filters.batch" class="filter-meta" style="font-size: 0.75rem; color: #666; margin-top: 0.25rem;">
-                    <span x-text="selectedBatch ? `Tahun: ${selectedBatch.year} | Status: ${selectedBatch.status}` : ''"></span>
-                </div>
             </div>
 
             <div class="filter-group">
@@ -79,12 +76,6 @@
                 <button class="btn" @click="print()">Cetak</button>
                 <button class="btn btn-primary" @click="loadReport()">Refresh</button>
             </div>
-        </div>
-
-        <div class="lm-drill-preview" x-show="drilldownPreview">
-            <strong>Dasar nilai:</strong>
-            <span x-text="drilldownPreview ? `${drilldownPreview.report_type} ${drilldownPreview.kode_baris} - ${drilldownPreview.column_key}` : ''"></span>
-            <span> akan dibuka penuh pada prompt_09.</span>
         </div>
 
         <div class="tab-content" :class="{ 'active': activeTab === 'lm14' }">
