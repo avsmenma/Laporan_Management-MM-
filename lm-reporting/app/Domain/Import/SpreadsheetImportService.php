@@ -399,7 +399,7 @@ class SpreadsheetImportService
 
     private function importTahunLalu(Batch $batch, array $workbook): ImportResult
     {
-        $sheet = $this->firstSheet($workbook);
+        $sheet = $this->sheet($workbook, 'Tahun Lalu');
 
         $matrix = $this->detectTahunLaluMatrix($sheet);
         if ($matrix !== null) {
