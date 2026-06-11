@@ -92,7 +92,8 @@ class Lm14ServiceTest extends TestCase
         $unit = RefUnit::query()->where('code', '5E01')->firstOrFail();
 
         DB::table('db_btl')->insert([
-            // Gaji staf "dari WBS": realisasi bulan ini ada di db_btl cost center SP01.
+            // Gaji staf "dari WBS": realisasi bulan ini dan s.d. bulan ini ada di db_btl cost center SP01.
+            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'kode_cc' => 'SP01', 'cost_element' => null, 'nilai' => 50],
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'kode_cc' => 'SP01', 'cost_element' => null, 'nilai' => 100],
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'kode_cc' => 'SUP', 'cost_element' => '51100200', 'nilai' => 25],
         ]);

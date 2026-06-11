@@ -11,9 +11,9 @@ use Illuminate\Support\Facades\DB;
 class Lm14Service
 {
     /**
-     * Baris "Gaji/Upah & Biaya Kary. Staf dari WBS" memakai kode LM 99-01,
-     * tetapi realisasinya tersimpan di db_btl pada cost center SP01
-     * dan/atau di db_wbs pada aktivitas 99-01. Lihat sumStafGaji().
+     * Baris "Gaji/Upah & Biaya Kary. Staf dari WBS" memakai kode LM 99-01.
+     * Workbook sumber menghitung bulan ini dan s.d. bulan ini dari db_btl cost
+     * center SP01, sedangkan kolom bulan lalu memakai db_wbs aktivitas 99-01.
      */
     private const STAF_GAJI_KODE = '99-01';
 
@@ -178,7 +178,7 @@ class Lm14Service
     private function sumSourceCurrentBatch(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float
     {
         if ($this->isStafGaji($template)) {
-            return $this->sumStafGaji($unit, $komoditi, function ($query) use ($batch): void {
+            return $this->sumStafGajiBtl($unit, $komoditi, function ($query) use ($batch): void {
                 $query->where('batch_id', $batch->id)
                     ->where('period', $batch->month);
             });
@@ -195,8 +195,8 @@ class Lm14Service
     private function sumSourceYearPeriod(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template, int $period): float
     {
         if ($this->isStafGaji($template)) {
-            return $this->sumStafGaji($unit, $komoditi, function ($query, string $table) use ($batch, $period): void {
-                $query->join('batch', $table.'.batch_id', '=', 'batch.id')
+            return $this->sumStafGajiWbs($unit, $komoditi, function ($query) use ($batch, $period): void {
+                $query->join('batch', 'db_wbs.batch_id', '=', 'batch.id')
                     ->where('batch.year', $batch->year)
                     ->where('period', $period);
             });
@@ -214,8 +214,8 @@ class Lm14Service
     private function sumSourceBeforeMonth(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float
     {
         if ($this->isStafGaji($template)) {
-            return $this->sumStafGaji($unit, $komoditi, function ($query, string $table) use ($batch): void {
-                $query->join('batch', $table.'.batch_id', '=', 'batch.id')
+            return $this->sumStafGajiBtl($unit, $komoditi, function ($query) use ($batch): void {
+                $query->join('batch', 'db_btl.batch_id', '=', 'batch.id')
                     ->where('batch.year', $batch->year)
                     ->where('period', '<', $batch->month);
             });
@@ -236,25 +236,35 @@ class Lm14Service
     }
 
     /**
-     * Realisasi baris "Gaji Staf dari WBS" = db_btl (cost center SP01) + db_wbs (aktivitas 99-01).
-     * Cakupan periode (batch/tahun/bulan) diterapkan lewat closure $scope agar bisa dipakai
-     * untuk bulan ini, bulan lalu, maupun akumulasi sebelum bulan ini.
+     * Realisasi bulan ini/s.d. bulan ini baris "Gaji Staf dari WBS"
+     * mengikuti db_btl cost center SP01.
      */
-    private function sumStafGaji(RefUnit $unit, string $komoditi, callable $scope): float
+    private function sumStafGajiBtl(RefUnit $unit, string $komoditi, callable $scope): float
     {
         $btl = DB::table('db_btl')
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('kode_cc', self::STAF_GAJI_BTL_CC);
-        $scope($btl, 'db_btl');
 
+        $scope($btl);
+
+        return (float) $btl->sum('nilai');
+    }
+
+    /**
+     * Kolom bulan lalu untuk baris "Gaji Staf dari WBS" mengikuti db_wbs
+     * aktivitas 99-01 pada periode sebelumnya.
+     */
+    private function sumStafGajiWbs(RefUnit $unit, string $komoditi, callable $scope): float
+    {
         $wbs = DB::table('db_wbs')
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('aktivitas', self::STAF_GAJI_KODE);
-        $scope($wbs, 'db_wbs');
 
-        return (float) $btl->sum('nilai') + (float) $wbs->sum('nilai');
+        $scope($wbs);
+
+        return (float) $wbs->sum('nilai');
     }
 
     private function sourceQuery(?string $source, ?string $kode): \Illuminate\Database\Query\Builder
