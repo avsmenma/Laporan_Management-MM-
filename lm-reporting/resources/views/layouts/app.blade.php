@@ -117,6 +117,13 @@
         /* ---------------- Main content ---------------- */
         .app-main { flex: 1; min-width: 0; padding: 24px 26px 56px; background: var(--bg); }
 
+        /* ---------------- Mode layar penuh (fokus, hanya area web) ---------------- */
+        body.lm-focus .app-header,
+        body.lm-focus .app-sidebar { display: none !important; }
+        body.lm-focus .app-container { min-height: 100vh; }
+        body.lm-focus .app-main { padding: 14px 18px 28px; }
+        body.lm-focus .filter-bar { margin-bottom: 12px; }
+
         /* ---------------- Filter bar ---------------- */
         .filter-bar {
             background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);

@@ -64,6 +64,15 @@
                 </div>
             </div>
             <div class="report-actions">
+                <button type="button" class="btn"
+                    x-data="{ focus: false }"
+                    @click="focus = !focus; document.body.classList.toggle('lm-focus', focus)"
+                    @keydown.escape.window="if (focus) { focus = false; document.body.classList.remove('lm-focus') }"
+                    :class="{ 'btn-primary': focus }"
+                    :title="focus ? 'Keluar layar penuh (Esc)' : 'Layar penuh'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                    <span x-text="focus ? 'Keluar Layar Penuh' : 'Layar Penuh'"></span>
+                </button>
                 <button class="btn" @click="exportExcel()">Excel</button>
                 <button class="btn" @click="exportCSV()">CSV</button>
                 <button class="btn" @click="exportPDF()">PDF</button>
