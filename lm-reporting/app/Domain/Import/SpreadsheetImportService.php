@@ -399,7 +399,82 @@ class SpreadsheetImportService
 
     private function importTahunLalu(Batch $batch, array $workbook): ImportResult
     {
-        [$rows, $errors] = $this->tableRows($this->firstSheet($workbook), [
+        $sheet = $this->firstSheet($workbook);
+
+        $matrix = $this->detectTahunLaluMatrix($sheet);
+        if ($matrix !== null) {
+            return $this->importTahunLaluMatrix($batch, $sheet, $matrix);
+        }
+
+        return $this->importTahunLaluTabular($batch, $sheet);
+    }
+
+    /**
+     * Format matriks (sheet "Tahun Lalu" asli): kode baris di satu kolom (mis. B),
+     * kode unit kebun tersebar sebagai kolom (5E01..5E19), tiap sel = realisasi
+     * tahun lalu s.d bulan laporan untuk kombinasi kode+unit tersebut.
+     *
+     * @param  array{headerIndex: int, plantColumns: array<int, string>}  $matrix
+     */
+    private function importTahunLaluMatrix(Batch $batch, array $sheet, array $matrix): ImportResult
+    {
+        $headerIndex = $matrix['headerIndex'];
+        $plantColumns = $matrix['plantColumns'];
+        $firstPlantColumn = min(array_keys($plantColumns));
+
+        $kodeColumn = $this->detectKodeColumn($sheet, $headerIndex, $firstPlantColumn);
+        $year = $this->detectTahunLaluYear($sheet) ?? ($batch->year - 1);
+        $period = $this->detectTahunLaluPeriod($sheet) ?? $batch->month;
+        $komoditi = $this->detectTahunLaluKomoditi($sheet);
+        $reportType = 'LM14';
+
+        DB::table('realisasi_tahun_lalu')
+            ->where('year', $year)
+            ->where('report_type', $reportType)
+            ->where('period', $period)
+            ->whereIn('plant_code', array_values($plantColumns))
+            ->when(
+                $komoditi !== null,
+                fn ($query) => $query->where('komoditi', $komoditi),
+                fn ($query) => $query->whereNull('komoditi'),
+            )
+            ->delete();
+
+        $records = [];
+        foreach (array_slice($sheet, $headerIndex + 1) as $values) {
+            $kode = $this->nullableText($values[$kodeColumn] ?? null);
+            if (! $this->looksLikeTahunLaluKode($kode)) {
+                continue;
+            }
+
+            foreach ($plantColumns as $column => $plantCode) {
+                $nilai = $this->matrixNumber($values[$column] ?? null);
+                if ($nilai === null || abs($nilai) < 0.00001) {
+                    continue;
+                }
+
+                $records[] = [
+                    'year' => $year,
+                    'komoditi' => $komoditi,
+                    'plant_code' => $plantCode,
+                    'report_type' => $reportType,
+                    'kode' => $kode,
+                    'period' => $period,
+                    'nilai' => $nilai,
+                ];
+            }
+        }
+
+        foreach (array_chunk($records, 500) as $chunk) {
+            DB::table('realisasi_tahun_lalu')->insert($chunk);
+        }
+
+        return new ImportResult(count($records), []);
+    }
+
+    private function importTahunLaluTabular(Batch $batch, array $sheet): ImportResult
+    {
+        [$rows, $errors] = $this->tableRows($sheet, [
             'year' => ['year', 'tahun'],
             'komoditi' => ['komoditi', 'budidaya'],
             'plant_code' => ['plant', 'plantcode', 'kodeunit'],
@@ -435,6 +510,133 @@ class SpreadsheetImportService
         }
 
         return new ImportResult($upserted, $errors);
+    }
+
+    /**
+     * Deteksi baris header matriks (yang memuat >=3 kode unit sebagai kolom).
+     *
+     * @return array{headerIndex: int, plantColumns: array<int, string>}|null
+     */
+    private function detectTahunLaluMatrix(array $sheet): ?array
+    {
+        foreach (array_slice($sheet, 0, 15, true) as $index => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $plantColumns = [];
+            foreach ($row as $column => $value) {
+                $code = $this->nullableText($value);
+                if ($code !== null && $this->isKnownUnit($code)) {
+                    $plantColumns[$column] = $code;
+                }
+            }
+
+            if (count($plantColumns) >= 3) {
+                return ['headerIndex' => $index, 'plantColumns' => $plantColumns];
+            }
+        }
+
+        return null;
+    }
+
+    private function detectKodeColumn(array $sheet, int $headerIndex, int $firstPlantColumn): int
+    {
+        $best = 0;
+        $bestCount = -1;
+        for ($column = 0; $column < max(1, $firstPlantColumn); $column++) {
+            $count = 0;
+            foreach (array_slice($sheet, $headerIndex + 1, 120) as $values) {
+                if ($this->looksLikeTahunLaluKode($this->nullableText($values[$column] ?? null))) {
+                    $count++;
+                }
+            }
+
+            if ($count > $bestCount) {
+                $bestCount = $count;
+                $best = $column;
+            }
+        }
+
+        return $best;
+    }
+
+    private function looksLikeTahunLaluKode(?string $kode): bool
+    {
+        return $kode !== null && preg_match('/^\d{2}-\d{2}\.?$/', $kode) === 1;
+    }
+
+    private function detectTahunLaluYear(array $sheet): ?int
+    {
+        foreach (array_slice($sheet, 0, 8) as $row) {
+            foreach ((array) $row as $value) {
+                if (preg_match('/(20\d{2})/', (string) $value, $matches)) {
+                    return (int) $matches[1];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function detectTahunLaluPeriod(array $sheet): ?int
+    {
+        $months = [
+            'januari' => 1, 'februari' => 2, 'maret' => 3, 'april' => 4,
+            'mei' => 5, 'juni' => 6, 'juli' => 7, 'agustus' => 8,
+            'september' => 9, 'oktober' => 10, 'november' => 11, 'desember' => 12,
+        ];
+
+        foreach (array_slice($sheet, 0, 8) as $row) {
+            foreach ((array) $row as $value) {
+                $key = mb_strtolower(trim((string) $value));
+                if (isset($months[$key])) {
+                    return $months[$key];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function detectTahunLaluKomoditi(array $sheet): ?string
+    {
+        foreach (array_slice($sheet, 0, 8) as $row) {
+            foreach ((array) $row as $value) {
+                $text = strtoupper(trim((string) $value));
+                if ($text === 'KS' || $text === 'KR') {
+                    return $text;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Ambil angka dari sel matriks. Mendukung ekspor Google Sheets berbentuk
+     * =IFERROR(__xludf.DUMMYFUNCTION(...), <nilai cache>) dengan mengambil nilai cache.
+     */
+    private function matrixNumber(mixed $value): ?float
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        $string = trim((string) $value);
+        if (preg_match('/,\s*(-?\d+(?:\.\d+)?)\s*\)\s*$/', $string, $matches)) {
+            return (float) $matches[1];
+        }
+
+        if (str_starts_with($string, '=')) {
+            return null;
+        }
+
+        return $this->nullableNumber($value);
     }
 
     /**
