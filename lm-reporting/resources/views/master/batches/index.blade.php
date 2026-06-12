@@ -62,6 +62,57 @@
                 </div>
             </section>
 
+            @if (auth()->user()?->hasRole('Admin'))
+                <section class="panel" style="margin-bottom:20px;border-color:#e6b8b3">
+                    <div class="panel-head"><span class="panel-title" style="color:#b42318">⚠️ Hapus Data (Admin)</span></div>
+                    <div class="panel-body" x-data="{ mode: 'month', konfirmasi: '' }">
+                        <form method="POST" action="{{ route('data.purge') }}"
+                              @submit="if (!confirm('Yakin menghapus data? Tindakan ini permanen dan tidak bisa dibatalkan.')) $event.preventDefault()">
+                            @csrf
+                            <div class="grid gap-4 md:grid-cols-4">
+                                <div class="field" style="margin-bottom:0">
+                                    <label>Cakupan</label>
+                                    <select name="mode" x-model="mode" class="field-control">
+                                        <option value="month">Per Bulan</option>
+                                        <option value="year">Per Tahun</option>
+                                        <option value="all">Semua Data</option>
+                                    </select>
+                                </div>
+                                <div class="field" style="margin-bottom:0" x-show="mode !== 'all'">
+                                    <label>Tahun</label>
+                                    <select name="year" class="field-control">
+                                        @forelse ($batches->pluck('year')->unique()->sortDesc() as $y)
+                                            <option value="{{ $y }}">{{ $y }}</option>
+                                        @empty
+                                            <option value="{{ now()->year }}">{{ now()->year }}</option>
+                                        @endforelse
+                                    </select>
+                                </div>
+                                <div class="field" style="margin-bottom:0" x-show="mode === 'month'">
+                                    <label>Bulan</label>
+                                    <select name="month" class="field-control">
+                                        @foreach (range(1, 12) as $m)
+                                            <option value="{{ $m }}" @selected($m === 5)>{{ $m }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="field" style="margin-bottom:0">
+                                    <label>Ketik <b>HAPUS</b> untuk konfirmasi</label>
+                                    <input name="konfirmasi" x-model="konfirmasi" class="field-control" placeholder="HAPUS" autocomplete="off">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn" style="margin-top:14px;background:#b42318;color:#fff;border-color:#b42318"
+                                    :disabled="konfirmasi !== 'HAPUS'" :style="konfirmasi !== 'HAPUS' ? 'opacity:.5;cursor:not-allowed' : ''">
+                                Hapus Data
+                            </button>
+                            <p class="field-hint" style="margin-top:10px">
+                                Menghapus data laporan & impor sesuai cakupan beserta batch periodenya. <b>Per Bulan</b> tidak menghapus anggaran tahunan (RKAP/RKO/areal). <b>Semua Data</b> mengosongkan seluruh batch &amp; data. Tindakan permanen.
+                            </p>
+                        </form>
+                    </div>
+                </section>
+            @endif
+
             <section class="panel" style="overflow:hidden">
                 <div class="panel-head"><span class="panel-title">Daftar Batch</span></div>
                 <table class="htable">
