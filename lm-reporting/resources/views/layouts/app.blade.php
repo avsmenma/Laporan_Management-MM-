@@ -118,6 +118,8 @@
         .app-main { flex: 1; min-width: 0; padding: 24px 26px 56px; background: var(--bg); }
 
         /* ---------------- Mode layar penuh (fokus, hanya area web) ---------------- */
+        /* Skala 67% (seperti zoom browser 67%) agar seluruh kolom tabel muat tanpa scroll horizontal. */
+        body.lm-focus { zoom: 0.67; }
         body.lm-focus .app-header,
         body.lm-focus .app-sidebar { display: none !important; }
         body.lm-focus .app-container { min-height: 100vh; }
