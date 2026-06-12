@@ -108,6 +108,78 @@
         <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
         <p style="color: #999; margin-top: 0.5rem;">Pilih Komoditas, Batch, dan Unit Kebun</p>
     </div>
+
+    <!-- Popup rincian sumber (drill-down) saat angka tabel diklik -->
+    <div class="lm-dd-overlay" x-show="drill.open" x-cloak
+         @keydown.escape.window="drill.open && closeDrill()" @click.self="closeDrill()">
+        <div class="lm-dd-modal">
+            <div class="lm-dd-head">
+                <div class="lm-dd-titles">
+                    <div class="lm-dd-title" x-text="drill.title"></div>
+                    <div class="lm-dd-sub">
+                        <span x-text="drill.columnLabel"></span>
+                        <span class="lm-dd-dot">·</span>
+                        <span>Rp <span x-text="fmtNum(drill.value)"></span></span>
+                    </div>
+                </div>
+                <button type="button" class="lm-dd-close" @click="closeDrill()" aria-label="Tutup">&times;</button>
+            </div>
+
+            <div class="lm-dd-body">
+                <div x-show="drill.loading" class="lm-dd-state">Memuat rincian sumber…</div>
+                <div x-show="!drill.loading && drill.error" class="lm-dd-state lm-dd-err" x-text="drill.error"></div>
+                <div x-show="!drill.loading && !drill.error && !drill.pivot" class="lm-dd-state"
+                     x-text="drill.message || 'Tidak ada rincian sumber untuk sel ini.'"></div>
+
+                <div class="lm-dd-tablewrap" x-show="!drill.loading && !drill.error && drill.pivot">
+                    <template x-if="drill.pivot">
+                    <table class="lm-dd-table">
+                        <thead>
+                            <tr>
+                                <th class="lm-dd-l">Pekerjaan PB7-I</th>
+                                <th class="lm-dd-l">Pekerjaan PB712-II</th>
+                                <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
+                                    <th x-text="cat"></th>
+                                </template>
+                                <th>Grand Total</th>
+                            </tr>
+                        </thead>
+                        <template x-for="(group, gi) in (drill.pivot?.groups ?? [])" :key="gi">
+                            <tbody>
+                                <template x-for="(r, ri) in group.rows" :key="ri">
+                                    <tr>
+                                        <td class="lm-dd-l lm-dd-pb7" x-text="ri === 0 ? group.pb7 : ''"></td>
+                                        <td class="lm-dd-l" x-text="r.pb712"></td>
+                                        <template x-for="cat in drill.pivot.categories" :key="cat">
+                                            <td class="lm-dd-n" x-text="fmtNum(r.values[cat])"></td>
+                                        </template>
+                                        <td class="lm-dd-n lm-dd-rowtot" x-text="fmtNum(r.total)"></td>
+                                    </tr>
+                                </template>
+                                <tr class="lm-dd-subrow">
+                                    <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' — Subtotal'"></td>
+                                    <template x-for="cat in drill.pivot.categories" :key="cat">
+                                        <td class="lm-dd-n" x-text="fmtNum(group.subtotal[cat])"></td>
+                                    </template>
+                                    <td class="lm-dd-n" x-text="fmtNum(group.subtotal_total)"></td>
+                                </tr>
+                            </tbody>
+                        </template>
+                        <tfoot>
+                            <tr class="lm-dd-grandrow">
+                                <td class="lm-dd-l" colspan="2">Grand Total</td>
+                                <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
+                                    <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand[cat])"></td>
+                                </template>
+                                <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand_total)"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @push('scripts')
@@ -134,7 +206,7 @@ function kebunApp() {
         loadingLm13: false,
         lm14Table: null,
         lm13Table: null,
-        drilldownPreview: null,
+        drill: { open: false, loading: false, error: null, title: '', columnLabel: '', value: 0, pivot: null, message: null },
         errorMessage: null,
 
         async init() {
@@ -446,15 +518,49 @@ function kebunApp() {
             return `Menampilkan ${rows} baris · ${columns} kolom`;
         },
 
-        handleCellClick(event) {
-            this.drilldownPreview = {
-                report_type: this.activeReportType(),
-                unit: this.filters.unit,
-                batch: this.filters.batch,
-                komoditi: this.filters.komoditi,
-                kode_baris: event.detail.drilldown.kode_baris,
-                column_key: event.detail.drilldown.column_key,
+        async handleCellClick(event) {
+            const dd = event.detail.drilldown;
+            this.drill = {
+                open: true,
+                loading: true,
+                error: null,
+                title: String(event.detail.row?.uraian ?? '').trim() || dd.kode_baris,
+                columnLabel: '',
+                value: Number(event.detail.value ?? 0),
+                pivot: null,
+                message: null,
             };
+
+            try {
+                const params = new URLSearchParams({
+                    type: this.activeReportType(),
+                    batch: this.filters.batch,
+                    unit: this.filters.unit,
+                    komoditi: this.filters.komoditi,
+                    kode: dd.kode_baris,
+                    column: dd.column_key,
+                });
+                const data = await this.fetchReport(`/report-data/drilldown?${params.toString()}`);
+                this.drill.columnLabel = data.context?.column_label ?? dd.column_key;
+                this.drill.pivot = data.pivot;
+                this.drill.message = data.context?.message ?? null;
+            } catch (error) {
+                this.drill.error = error.message;
+            } finally {
+                this.drill.loading = false;
+            }
+        },
+
+        closeDrill() {
+            this.drill.open = false;
+        },
+
+        fmtNum(value) {
+            const n = Number(value ?? 0);
+            if (!Number.isFinite(n) || Math.abs(n) < 0.5) {
+                return '';
+            }
+            return n.toLocaleString('id-ID', { maximumFractionDigits: 0 });
         }
     }
 }

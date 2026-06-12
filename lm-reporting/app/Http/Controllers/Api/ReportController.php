@@ -197,22 +197,29 @@ class ReportController extends Controller
             ->orderBy('urutan')
             ->first();
 
+        $columnKey = (string) $request->column;
+        $pivot = $this->drilldownPivot($type, $batch, $unit, $komoditi, $template, $columnKey);
+
         return response()->json([
             'success' => true,
             'meta' => $this->buildMeta($batch, $unit, $type, $komoditi),
             'context' => [
                 'type' => $type,
                 'kode_baris' => (string) $request->kode,
-                'column_key' => (string) $request->column,
+                'column_key' => $columnKey,
+                'column_label' => $this->columnLabel($type, $columnKey),
                 'template' => $template ? [
                     'urutan' => $template->urutan,
                     'kode' => $template->kode,
                     'uraian' => $template->uraian,
+                    'row_type' => $template->row_type,
                     'source' => $template->source,
                 ] : null,
-                'message' => 'Rincian sumber sel akan diperluas pada prompt_09.',
+                'message' => $pivot === null
+                    ? 'Kolom ini tidak memiliki rincian sumber mentah (mis. anggaran, capaian, atau tahun lalu).'
+                    : null,
             ],
-            'sources' => $this->drilldownSources($type, $batch, $unit, $komoditi, $template),
+            'pivot' => $pivot,
         ]);
     }
 
@@ -570,46 +577,257 @@ class ReportController extends Controller
         ];
     }
 
+    /** Urutan kanonik kolom klasifikasi pada pivot rincian sumber. */
+    private const KLASIFIKASI_ORDER = ['1. Gaji', '2. SPK', '3. Bahan', '4. EAP', '5. Depresiasi', '6.Lain-Lain'];
+
     /**
-     * @return array<int, array<string, mixed>>
+     * Label kolom yang diklik (untuk judul popup rincian).
      */
-    private function drilldownSources(string $type, Batch $batch, RefUnit $unit, ?string $komoditi, ?LmTemplateRow $template): array
+    private function columnLabel(string $type, string $columnKey): string
     {
-        if (! $template) {
-            return [];
+        $labels = [
+            'bi_jumlah' => 'Real Bulan Ini',
+            'sd_jumlah' => 'Real s.d Bulan Ini',
+            'real_bulan_lalu' => 'Real Bulan Lalu',
+            'real_thn_lalu' => 'Real Tahun Lalu',
+            'sd_real_thn_lalu' => 'Real s.d Tahun Lalu',
+            'bi_rko' => 'RKO Bulan Ini',
+            'bi_rkap' => 'RKAP Bulan Ini',
+            'sd_rko' => 'RKO s.d',
+            'sd_rkap' => 'RKAP s.d',
+        ];
+
+        return $labels[$columnKey] ?? $columnKey;
+    }
+
+    /**
+     * Tentukan lingkup periode untuk kolom realisasi yang BERSUMBER dari tabel mentah.
+     * Mengembalikan null untuk kolom non-sumber (anggaran, capaian, tahun lalu).
+     */
+    private function columnPeriodScope(string $columnKey): ?string
+    {
+        return match ($columnKey) {
+            'bi_jumlah' => 'bi',
+            'sd_jumlah' => 'sd',
+            'real_bulan_lalu' => 'lalu',
+            default => null,
+        };
+    }
+
+    /**
+     * Pivot rincian sumber sel yang diklik: baris mentah penyusun nilai sel
+     * (db_wbs_raw untuk WBS, db_ohc untuk BTL) dikelompokkan per
+     * Pekerjaan PB7-I × PB712-II dan dipivot per klasifikasi. Grand total pivot
+     * sama dengan nilai sel pada laporan.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function drilldownPivot(string $type, Batch $batch, RefUnit $unit, ?string $komoditi, ?LmTemplateRow $template, string $columnKey): ?array
+    {
+        if ($type !== 'LM14' || ! $template) {
+            return null;
         }
 
-        if ($type === 'LM16') {
-            return DB::table('pks_biaya')
-                ->where('batch_id', $batch->id)
-                ->where('plant_code', $unit->code)
-                ->where('period', $batch->month)
-                ->limit(25)
-                ->get()
-                ->map(fn ($row) => (array) $row)
-                ->all();
+        $scope = $this->columnPeriodScope($columnKey);
+        if ($scope === null) {
+            return null;
         }
 
-        if ($template->source === 'BTL') {
-            return DB::table('db_ohc')
-                ->where('batch_id', $batch->id)
-                ->where('komoditi', $komoditi)
-                ->where('plant_code', $unit->code)
-                ->where('period', $batch->month)
-                ->limit(25)
-                ->get()
-                ->map(fn ($row) => (array) $row)
-                ->all();
+        $details = $this->contributingDetailTemplates($template, $type, $komoditi);
+        if ($details === []) {
+            return null;
         }
 
-        return DB::table('db_wbs_raw')
-            ->where('batch_id', $batch->id)
-            ->where('komoditi', $komoditi)
-            ->where('plant_code', $unit->code)
-            ->where('period', $batch->month)
-            ->limit(25)
+        $rows = [];
+        foreach ($details as $detail) {
+            foreach ($this->rawBreakdownRows($detail, $batch, $unit, $komoditi, $scope) as $row) {
+                $rows[] = $row;
+            }
+        }
+
+        return $this->buildPivot($rows);
+    }
+
+    /**
+     * Daftar baris template bertipe detail yang menyusun sebuah sel. Untuk baris
+     * detail = dirinya sendiri; untuk subtotal/total = ekspansi rekursif formula
+     * (u{urutan}+u{urutan}...) hingga ke baris detail.
+     *
+     * @return array<int, LmTemplateRow>
+     */
+    private function contributingDetailTemplates(LmTemplateRow $template, string $type, ?string $komoditi): array
+    {
+        if ($template->row_type === 'detail') {
+            return [$template];
+        }
+
+        $all = LmTemplateRow::query()
+            ->where('report_type', $type)
+            ->when($komoditi !== null, fn ($query) => $query->where('komoditi', $komoditi))
             ->get()
-            ->map(fn ($row) => (array) $row)
-            ->all();
+            ->keyBy('urutan');
+
+        $details = [];
+        $visit = function (LmTemplateRow $node) use (&$visit, $all, &$details): void {
+            if ($node->row_type === 'detail') {
+                $details[$node->urutan] = $node;
+
+                return;
+            }
+
+            preg_match_all('/u(\d+)/i', (string) $node->formula, $matches);
+            foreach ($matches[1] ?? [] as $urutan) {
+                $child = $all->get((int) $urutan);
+                if ($child !== null) {
+                    $visit($child);
+                }
+            }
+        };
+        $visit($template);
+
+        return array_values($details);
+    }
+
+    /**
+     * Baris mentah (pekerjaan_pb7_i, pekerjaan_pb712_ii, klasifikasi, total) untuk
+     * satu baris detail, mengikuti kriteria sumber yang SAMA dengan Lm14Service.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function rawBreakdownRows(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope): \Illuminate\Support\Collection
+    {
+        $source = $detail->source;
+        $kode = (string) $detail->kode;
+        if ($source === null || $kode === '') {
+            return collect();
+        }
+
+        $isStafGaji = $source === 'BTL' && $kode === '99-01';
+
+        // Tentukan tabel, kolom nilai, dan kriteria kode (selaras Lm14Service).
+        if ($source === 'WBS' || ($isStafGaji && $scope === 'lalu')) {
+            $table = 'db_wbs_raw';
+            $valueColumn = 'value';
+            $codeColumn = 'aktifitas';
+            $codeValue = $isStafGaji ? '99-01' : $kode;
+        } elseif ($source === 'BTL') {
+            $table = 'db_ohc';
+            $valueColumn = 'value_obj_crcy';
+            if ($isStafGaji) {
+                $codeColumn = 'lock';
+                $codeValue = 'SP01';
+            } elseif (str_starts_with($kode, '511')) {
+                $codeColumn = 'cost_element';
+                $codeValue = $kode;
+            } else {
+                $codeColumn = 'lock';
+                $codeValue = $kode;
+            }
+        } else {
+            return collect();
+        }
+
+        $query = DB::table($table)
+            ->where($table.'.'.$codeColumn, $codeValue)
+            ->where($table.'.komoditi', $komoditi)
+            ->where($table.'.plant_code', $unit->code);
+
+        // Lingkup periode sesuai kolom yang diklik (selaras Lm14Service).
+        if ($scope === 'bi') {
+            $query->where($table.'.batch_id', $batch->id)->where($table.'.period', $batch->month);
+        } elseif ($scope === 'sd') {
+            $query->join('batch', $table.'.batch_id', '=', 'batch.id')
+                ->where('batch.year', $batch->year)
+                ->where($table.'.period', '<=', $batch->month);
+        } else { // lalu
+            $query->join('batch', $table.'.batch_id', '=', 'batch.id')
+                ->where('batch.year', $batch->year)
+                ->where($table.'.period', $batch->month - 1);
+        }
+
+        return $query
+            ->groupBy($table.'.pekerjaan_pb7_i', $table.'.pekerjaan_pb712_ii', $table.'.klasifikasi')
+            ->select(
+                $table.'.pekerjaan_pb7_i as pb7',
+                $table.'.pekerjaan_pb712_ii as pb712',
+                $table.'.klasifikasi as klasifikasi',
+                DB::raw('SUM('.$table.'.'.$valueColumn.') as total'),
+            )
+            ->get();
+    }
+
+    /**
+     * Susun struktur pivot: grup per Pekerjaan PB7-I, baris per PB712-II, kolom per
+     * klasifikasi, dengan subtotal grup dan grand total (baris & kolom).
+     *
+     * @param  array<int, object>  $rows
+     * @return array<string, mixed>
+     */
+    private function buildPivot(array $rows): array
+    {
+        $blank = '(Tanpa Keterangan)';
+        $blankKlas = '(Tanpa Klasifikasi)';
+
+        // Agregasi ke map: pb7 -> pb712 -> klasifikasi -> total.
+        $agg = [];
+        $presentKlas = [];
+        foreach ($rows as $row) {
+            $pb7 = trim((string) $row->pb7) !== '' ? (string) $row->pb7 : $blank;
+            $pb712 = trim((string) $row->pb712) !== '' ? (string) $row->pb712 : $blank;
+            $klas = trim((string) $row->klasifikasi) !== '' ? (string) $row->klasifikasi : $blankKlas;
+            $total = (float) $row->total;
+
+            $agg[$pb7][$pb712][$klas] = ($agg[$pb7][$pb712][$klas] ?? 0) + $total;
+            $presentKlas[$klas] = true;
+        }
+
+        // Urutkan kolom klasifikasi: kanonik dulu, sisanya menyusul.
+        $categories = array_values(array_filter(self::KLASIFIKASI_ORDER, fn ($k) => isset($presentKlas[$k])));
+        foreach (array_keys($presentKlas) as $k) {
+            if (! in_array($k, $categories, true)) {
+                $categories[] = $k;
+            }
+        }
+
+        ksort($agg);
+        $groups = [];
+        $grand = array_fill_keys($categories, 0.0);
+        $grandTotal = 0.0;
+
+        foreach ($agg as $pb7 => $pb712Map) {
+            ksort($pb712Map);
+            $groupRows = [];
+            $subtotal = array_fill_keys($categories, 0.0);
+            $subtotalTotal = 0.0;
+
+            foreach ($pb712Map as $pb712 => $klasMap) {
+                $values = array_fill_keys($categories, 0.0);
+                $rowTotal = 0.0;
+                foreach ($klasMap as $klas => $total) {
+                    $values[$klas] = ($values[$klas] ?? 0) + $total;
+                    $rowTotal += $total;
+                    $subtotal[$klas] = ($subtotal[$klas] ?? 0) + $total;
+                    $grand[$klas] = ($grand[$klas] ?? 0) + $total;
+                }
+                $subtotalTotal += $rowTotal;
+                $grandTotal += $rowTotal;
+                $groupRows[] = ['pb712' => $pb712, 'values' => $values, 'total' => $rowTotal];
+            }
+
+            $groups[] = [
+                'pb7' => $pb7,
+                'rows' => $groupRows,
+                'subtotal' => $subtotal,
+                'subtotal_total' => $subtotalTotal,
+            ];
+        }
+
+        return [
+            'categories' => $categories,
+            'groups' => $groups,
+            'grand' => $grand,
+            'grand_total' => $grandTotal,
+            'row_count' => count($rows),
+        ];
     }
 }
