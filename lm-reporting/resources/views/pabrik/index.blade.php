@@ -49,6 +49,7 @@
                 <label class="filter-label">Unit Pabrik</label>
                 <select class="filter-select" x-model="filters.unit" @change="onUnitChange()">
                     <option value="">- Pilih Unit -</option>
+                    <option value="ALL">Semua Unit</option>
                     <template x-for="unit in units" :key="unit.code">
                         <option :value="unit.code" x-text="`${unit.code} - ${unit.name}`"></option>
                     </template>
@@ -244,13 +245,18 @@ function pabrikApp() {
         },
 
         onUnitChange() {
+            if (this.filters.unit === 'ALL') {
+                this.resetReport();
+                this.errorMessage = 'Laporan konsolidasi "Semua Unit" belum tersedia. Silakan pilih satu unit pabrik.';
+                return;
+            }
             if (this.canLoadReport()) {
                 this.loadReport();
             }
         },
 
         canLoadReport() {
-            return this.filters.komoditi && this.filters.batch && this.filters.unit;
+            return this.filters.komoditi && this.filters.batch && this.filters.unit && this.filters.unit !== 'ALL';
         },
 
         resetReport() {
