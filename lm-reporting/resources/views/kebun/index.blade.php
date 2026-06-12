@@ -17,11 +17,21 @@
             </div>
 
             <div class="filter-group">
+                <label class="filter-label">Tahun</label>
+                <select class="filter-select" x-model="filters.year" @change="onYearChange()">
+                    <option value="">- Pilih Tahun -</option>
+                    <template x-for="y in availableYears()" :key="y">
+                        <option :value="y" x-text="y"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="filter-group">
                 <label class="filter-label">Periode (Bulan)</label>
                 <select class="filter-select" x-model="filters.period" @change="onPeriodChange()">
-                    <option value="">- Pilih Periode -</option>
-                    <template x-for="month in 12" :key="month">
-                        <option :value="month" x-text="month"></option>
+                    <option value="">- Pilih Bulan -</option>
+                    <template x-for="m in availableMonths()" :key="m">
+                        <option :value="m" x-text="monthName(m)"></option>
                     </template>
                 </select>
             </div>
@@ -40,6 +50,7 @@
                 <label class="filter-label">Unit Kebun</label>
                 <select class="filter-select" x-model="filters.unit" @change="onUnitChange()">
                     <option value="">- Pilih Unit -</option>
+                    <option value="ALL">Semua Unit</option>
                     <template x-for="unit in units" :key="unit.code">
                         <option :value="unit.code" x-text="`${unit.code} - ${unit.name}`"></option>
                     </template>
@@ -105,10 +116,12 @@ function kebunApp() {
     return {
         filters: {
             komoditi: '',
+            year: '',
             period: '',
             batch: '',
             unit: ''
         },
+        monthNames: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
         batches: [],
         units: [],
         selectedBatch: null,
@@ -158,12 +171,34 @@ function kebunApp() {
             }
         },
 
-        filteredBatches() {
-            if (!this.filters.period) {
-                return this.batches;
-            }
+        monthName(m) {
+            return this.monthNames[Number(m) - 1] ?? m;
+        },
 
-            return this.batches.filter(batch => String(batch.period) === String(this.filters.period));
+        availableYears() {
+            return [...new Set(this.batches.map(b => b.year))].sort((a, b) => b - a);
+        },
+
+        availableMonths() {
+            const list = this.filters.year
+                ? this.batches.filter(b => String(b.year) === String(this.filters.year))
+                : this.batches;
+            return [...new Set(list.map(b => Number(b.period)))].sort((a, b) => a - b);
+        },
+
+        onYearChange() {
+            this.filters.batch = '';
+            this.filters.unit = '';
+            this.selectedBatch = null;
+            this.units = [];
+            this.resetReport();
+        },
+
+        filteredBatches() {
+            return this.batches.filter(batch =>
+                (!this.filters.year || String(batch.year) === String(this.filters.year)) &&
+                (!this.filters.period || String(batch.period) === String(this.filters.period))
+            );
         },
 
         async loadUnits() {
@@ -214,6 +249,7 @@ function kebunApp() {
             this.selectedBatch = this.batches.find(b => b.id == this.filters.batch);
             if (this.selectedBatch) {
                 this.filters.period = this.selectedBatch.period;
+                this.filters.year = this.selectedBatch.year;
             }
             this.filters.unit = '';
             this.resetReport();
@@ -221,6 +257,11 @@ function kebunApp() {
         },
 
         onUnitChange() {
+            if (this.filters.unit === 'ALL') {
+                this.resetReport();
+                this.errorMessage = 'Laporan konsolidasi "Semua Unit" belum tersedia. Silakan pilih satu unit kebun.';
+                return;
+            }
             if (this.canLoadReport()) {
                 this.loadReport();
             }
@@ -237,7 +278,7 @@ function kebunApp() {
         },
 
         canLoadReport() {
-            return this.filters.komoditi && this.filters.batch && this.filters.unit;
+            return this.filters.komoditi && this.filters.batch && this.filters.unit && this.filters.unit !== 'ALL';
         },
 
         resetReport() {
