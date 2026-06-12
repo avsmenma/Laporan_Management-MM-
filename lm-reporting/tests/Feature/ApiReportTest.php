@@ -143,18 +143,18 @@ class ApiReportTest extends TestCase
 
     private function insertLm14Source(Batch $batch, RefUnit $unit): void
     {
-        DB::table('db_wbs')->insert([
+        DB::table('db_wbs_raw')->insert([
             'batch_id' => $batch->id,
             'komoditi' => 'KS',
             'plant_code' => $unit->code,
             'period' => 5,
-            'aktivitas' => '41-01',
+            'aktifitas' => '41-01',
             'job_name' => 'TM - PEMEL JALAN MANUAL - ACCESS ROAD',
             'cost_element' => '51100001',
             'cost_element_desc' => 'Biaya Tenaga Kerja',
-            'klasifikasi_code' => '1',
-            'nilai' => 1000,
-            'fisik' => null,
+            'klasifikasi' => '1. Gaji',
+            'value' => 1000,
+            'qty' => null,
         ]);
     }
 }

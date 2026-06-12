@@ -591,7 +591,7 @@ class ReportController extends Controller
         }
 
         if ($template->source === 'BTL') {
-            return DB::table('db_btl')
+            return DB::table('db_ohc')
                 ->where('batch_id', $batch->id)
                 ->where('komoditi', $komoditi)
                 ->where('plant_code', $unit->code)
@@ -602,7 +602,7 @@ class ReportController extends Controller
                 ->all();
         }
 
-        return DB::table('db_wbs')
+        return DB::table('db_wbs_raw')
             ->where('batch_id', $batch->id)
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)

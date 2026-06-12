@@ -12,12 +12,12 @@ class Lm14Service
 {
     /**
      * Baris "Gaji/Upah & Biaya Kary. Staf dari WBS" memakai kode LM 99-01.
-     * Workbook sumber menghitung bulan ini dan s.d. bulan ini dari db_btl cost
-     * center SP01, sedangkan kolom bulan lalu memakai db_wbs aktivitas 99-01.
+     * Workbook sumber menghitung bulan ini dan s.d. bulan ini dari db_ohc lock
+     * SP01, sedangkan kolom bulan lalu memakai db_wbs_raw aktifitas 99-01.
      */
     private const STAF_GAJI_KODE = '99-01';
 
-    private const STAF_GAJI_BTL_CC = 'SP01';
+    private const STAF_GAJI_OHC_LOCK = 'SP01';
 
     /**
      * @return Collection<int, array<string, mixed>>
@@ -178,7 +178,7 @@ class Lm14Service
     private function sumSourceCurrentBatch(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float
     {
         if ($this->isStafGaji($template)) {
-            return $this->sumStafGajiBtl($unit, $komoditi, function ($query) use ($batch): void {
+            return $this->sumStafGajiOhc($unit, $komoditi, function ($query) use ($batch): void {
                 $query->where('batch_id', $batch->id)
                     ->where('period', $batch->month);
             });
@@ -214,8 +214,8 @@ class Lm14Service
     private function sumSourceBeforeMonth(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float
     {
         if ($this->isStafGaji($template)) {
-            return $this->sumStafGajiBtl($unit, $komoditi, function ($query) use ($batch): void {
-                $query->join('batch', 'db_btl.batch_id', '=', 'batch.id')
+            return $this->sumStafGajiOhc($unit, $komoditi, function ($query) use ($batch): void {
+                $query->join('batch', 'db_ohc.batch_id', '=', 'batch.id')
                     ->where('batch.year', $batch->year)
                     ->where('period', '<', $batch->month);
             });
@@ -237,18 +237,18 @@ class Lm14Service
 
     /**
      * Realisasi bulan ini/s.d. bulan ini baris "Gaji Staf dari WBS"
-     * mengikuti db_btl cost center SP01.
+     * mengikuti db_ohc lock SP01 (pengganti db_btl cost center SP01).
      */
-    private function sumStafGajiBtl(RefUnit $unit, string $komoditi, callable $scope): float
+    private function sumStafGajiOhc(RefUnit $unit, string $komoditi, callable $scope): float
     {
-        $btl = DB::table('db_btl')
+        $ohc = DB::table('db_ohc')
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
-            ->where('kode_cc', self::STAF_GAJI_BTL_CC);
+            ->where('lock', self::STAF_GAJI_OHC_LOCK);
 
-        $scope($btl);
+        $scope($ohc);
 
-        return (float) $btl->sum('nilai');
+        return (float) $ohc->sum('value_obj_crcy');
     }
 
     /**
@@ -271,8 +271,8 @@ class Lm14Service
     {
         $table = $this->sourceTable($source);
         $codeColumn = match (true) {
-            $source === 'BTL' && str_starts_with((string) $kode, '511') => 'cost_element',
-            $source === 'BTL' => 'kode_cc',
+            $source === 'BTL' && str_starts_with((string) $kode, '511') => 'cost_element', // GL/depresiasi di db_ohc
+            $source === 'BTL' => 'lock', // CC overhead (BT01..) di db_ohc kolom "lock"
             default => 'aktifitas', // kolom db_wbs_raw (ejaan file: "Aktifitas")
         };
 
@@ -281,14 +281,14 @@ class Lm14Service
 
     private function sourceTable(?string $source): string
     {
-        // Sumber WBS kini dari tabel mentah db_wbs_raw (kolom value), BTL masih db_btl
-        // sampai pemetaan db_ohc dikonfirmasi. Lihat docs/MIGRASI_SUMBER_LM14_LM13.md.
-        return $source === 'BTL' ? 'db_btl' : 'db_wbs_raw';
+        // Sumber mentah SAP: WBS dari db_wbs_raw (kolom value), BTL/overhead dari db_ohc
+        // (kolom value_obj_crcy). Lihat docs/MIGRASI_SUMBER_LM14_LM13.md.
+        return $source === 'BTL' ? 'db_ohc' : 'db_wbs_raw';
     }
 
     private function valueColumn(?string $source): string
     {
-        return $source === 'BTL' ? 'nilai' : 'value';
+        return $source === 'BTL' ? 'value_obj_crcy' : 'value';
     }
 
     private function sumTahunLalu(Batch $batch, RefUnit $unit, string $komoditi, string $kode, int $period): float
