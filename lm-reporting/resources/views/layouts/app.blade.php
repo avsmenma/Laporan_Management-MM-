@@ -394,6 +394,13 @@
                             </a>
                         </li>
                     @endif
+                    @if (auth()->user()?->hasRole('Admin'))
+                        <li class="sidebar-nav-item">
+                            <a href="{{ route('data.index') }}" class="sidebar-nav-link {{ request()->routeIs('data.*') ? 'active' : '' }}">
+                                <span class="nav-ico">🗑️</span> HAPUS DATA
+                            </a>
+                        </li>
+                    @endif
                 </ul>
             </nav>
             <div class="sidebar-spacer"></div>
