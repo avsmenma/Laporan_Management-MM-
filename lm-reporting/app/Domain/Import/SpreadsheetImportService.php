@@ -9,11 +9,54 @@ use App\Models\RefUnit;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 
 class SpreadsheetImportService
 {
     private array $knownUnitCodes = [];
+
+    /** Urutan kolom db_wbs_raw sesuai urutan kolom file DB WBS (A..AV). */
+    private const WBS_COLUMNS = [
+        'company_code', 'plant', 'plant_desc', 'divisi_afdeling', 'blok', 'status_blok', 'tahun_tanam',
+        'komoditi', 'period', 'project', 'wbs', 'wbs_desc', 'fase', 'group_aktifitas', 'group_desc',
+        'aktifitas', 'job_name', 'hierarchy_area', 'cost_center', 'cc_desc', 'partner_cctr', 'partner_cctr_desc',
+        'cost_element', 'cost_element_desc', 'value', 'currency', 'material', 'mat_desc', 'qty', 'uom',
+        'object_num', 'object_type', 'profit_center', 'value_type', 'reference_procedure', 'order_no',
+        'order_type', 'order_category', 'order_desc', 'hectare_planted', 'co_business_transaction',
+        'mapping_cogm', 'klasifikasi', 'kode', 'pekerjaan_pb712_ii', 'pekerjaan_pb7_i', 'source', 'keterangan',
+    ];
+
+    /** Urutan kolom db_gc sesuai urutan kolom file DB CC GC (A..AR). */
+    private const GC_COLUMNS = [
+        'cost_center', 'co_object_name', 'business_transaction', 'document_number', 'ref_document_number',
+        'cost_element', 'cost_element_name', 'period', 'posting_date', 'value_obj_crcy', 'total_quantity',
+        'posted_uom', 'name', 'user_name', 'material', 'material_description', 'reference_procedure',
+        'dr_cr_indicator', 'reference_key', 'partner_object_class', 'object_type', 'partner_object_name',
+        'partner_object_type', 'offsetting_account', 'name_offsetting_account', 'name_offsetting_account_2',
+        'document_header_text', 'partner_object', 'partner_object_type3', 'partner_cctr', 'source_object',
+        'source_object_name', 'origin_obj_type', 'source_object_type', 'cost_element_descr', 'plant',
+        'afdeling', 'kode', 'pekerjaan_pb712_ii', 'klasifikasi', 'pekerjaan_pb7_i', 'komoditi', 'unit_kerja', 'gc',
+    ];
+
+    /** Urutan kolom db_ohc sesuai urutan kolom file DB OHC (A..AR). */
+    private const OHC_COLUMNS = [
+        'cost_center', 'co_object_name', 'business_transaction', 'document_number', 'ref_document_number',
+        'cost_element', 'cost_element_name', 'period', 'posting_date', 'value_obj_crcy', 'total_quantity',
+        'posted_uom', 'name', 'user_name', 'material', 'material_description', 'reference_procedure',
+        'dr_cr_indicator', 'reference_key', 'partner_object_class', 'object_type', 'partner_object_name',
+        'partner_object_type', 'offsetting_account', 'name_offsetting_account', 'name_offsetting_account_2',
+        'document_header_text', 'partner_object', 'partner_object_type3', 'partner_cctr', 'source_object',
+        'source_object_name', 'origin_obj_type', 'source_object_type', 'cost_element_descr', 'plant',
+        'lock', 'kode', 'pekerjaan_pb712_ii', 'klasifikasi', 'pekerjaan_pb7_i', 'komoditi', 'unit_kerja',
+        'pekerjaan_pb712_iii',
+    ];
+
+    private const NUMERIC_RAW_COLUMNS = [
+        'value' => true, 'qty' => true, 'period' => true, 'hectare_planted' => true,
+        'value_obj_crcy' => true, 'total_quantity' => true,
+    ];
 
     /**
      * @return array<string, string>
@@ -22,14 +65,8 @@ class SpreadsheetImportService
     {
         return [
             'wbs' => 'DB WBS',
-            'btl' => 'DB BTL',
-            'pks_biaya' => 'Biaya Pabrik - Summary',
-            'pks_produksi' => 'Produksi Pabrik - LM625Fxx',
-            'alokasi_produksi' => 'Alokasi Produksi',
-            'alokasi_areal' => 'Alokasi Areal',
-            'budget_rkap' => 'Budget RKAP',
-            'budget_rko' => 'Budget RKO',
-            'realisasi_tahun_lalu' => 'Realisasi Tahun Lalu',
+            'ohc' => 'DB OHC',
+            'gc' => 'DB GC',
         ];
     }
 
@@ -41,18 +78,12 @@ class SpreadsheetImportService
         $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
         $filename = $file instanceof UploadedFile ? $file->getClientOriginalName() : basename($file);
 
-        $workbook = $this->readWorkbook($path);
+        [$headers, $rows] = $this->readSheetCached($path);
 
         $result = DB::transaction(fn () => match ($type) {
-            'wbs' => $this->importWbs($batch, $workbook),
-            'btl' => $this->importBtl($batch, $workbook),
-            'pks_biaya' => $this->importPksBiaya($batch, $workbook),
-            'pks_produksi' => $this->importPksProduksi($batch, $workbook),
-            'alokasi_produksi' => $this->importAlokasiProduksi($batch, $workbook),
-            'alokasi_areal' => $this->importAlokasiAreal($batch, $workbook),
-            'budget_rkap' => $this->importBudget($batch, $workbook, 'budget_rkap'),
-            'budget_rko' => $this->importBudget($batch, $workbook, 'budget_rko'),
-            'realisasi_tahun_lalu' => $this->importTahunLalu($batch, $workbook),
+            'wbs' => $this->importRaw($batch, 'db_wbs_raw', self::WBS_COLUMNS, $headers, $rows, 'wbs'),
+            'ohc' => $this->importRaw($batch, 'db_ohc', self::OHC_COLUMNS, $headers, $rows, 'gcohc'),
+            'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $headers, $rows, 'gcohc'),
         });
 
         ImportUploadLog::query()->create([
@@ -67,6 +98,149 @@ class SpreadsheetImportService
         ]);
 
         return $result;
+    }
+
+    /**
+     * Pratinjau isi file sebelum dikonfirmasi: kolom, sebagian baris contoh, dan total baris data.
+     *
+     * @return array{type: string, label: string, columns: array<int, string>, rows: array<int, array<int, mixed>>, total: int}
+     */
+    public function preview(string $type, string $path, int $sampleSize = 15): array
+    {
+        abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
+
+        $total = max(0, $this->totalDataRows($path));
+        [$headers, $rows] = $this->readSheetCached($path, $sampleSize);
+
+        return [
+            'type' => $type,
+            'label' => self::types()[$type],
+            'columns' => array_map(fn ($value) => trim((string) $value), $headers),
+            'rows' => $rows,
+            'total' => $total,
+        ];
+    }
+
+    private function totalDataRows(string $path): int
+    {
+        try {
+            $info = (new \PhpOffice\PhpSpreadsheet\Reader\Xlsx)->listWorksheetInfo($path);
+
+            return (int) (($info[0]['totalRows'] ?? 1) - 1);
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Baca sheet pertama dan kembalikan nilai TERHITUNG (cache) untuk sel formula
+     * (mis. kolom Plant/Kode/Klasifikasi hasil VLOOKUP). Maatwebsite hanya memberi
+     * string rumus, jadi di sini dibaca langsung via PhpSpreadsheet.
+     *
+     * @return array{0: array<int, mixed>, 1: array<int, array<int, mixed>>}
+     */
+    private function readSheetCached(string $path, ?int $maxRows = null): array
+    {
+        $reader = IOFactory::createReaderForFile($path);
+        $reader->setReadDataOnly(true);
+
+        if ($maxRows !== null) {
+            $reader->setReadFilter(new class($maxRows + 1) implements IReadFilter {
+                public function __construct(private int $limit) {}
+
+                public function readCell($columnAddress, $row, $worksheetName = ''): bool
+                {
+                    return $row <= $this->limit;
+                }
+            });
+        }
+
+        $sheet = $reader->load($path)->getSheet(0);
+        $colCount = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
+        $rowCount = $sheet->getHighestDataRow();
+        if ($maxRows !== null) {
+            $rowCount = min($rowCount, $maxRows + 1);
+        }
+
+        $matrix = [];
+        for ($r = 1; $r <= $rowCount; $r++) {
+            $row = [];
+            for ($i = 1; $i <= $colCount; $i++) {
+                $cell = $sheet->getCell(Coordinate::stringFromColumnIndex($i).$r);
+                $row[] = $cell->isFormula() ? $cell->getOldCalculatedValue() : $cell->getValue();
+            }
+            $matrix[] = $row;
+        }
+
+        $headers = array_shift($matrix) ?? [];
+
+        return [$headers, $matrix];
+    }
+
+    /**
+     * Impor data mentah (WBS/GC/OHC) ke tabel staging: ganti data batch, lalu insert semua baris.
+     *
+     * @param  array<int, string>  $columns
+     * @param  array<int, mixed>  $headers
+     * @param  array<int, array<int, mixed>>  $rows
+     */
+    private function importRaw(Batch $batch, string $table, array $columns, array $headers, array $rows, string $kind): ImportResult
+    {
+        DB::table($table)->where('batch_id', $batch->id)->delete();
+
+        $records = [];
+        $inserted = 0;
+        foreach ($rows as $values) {
+            if ($this->isEmptyRow($values)) {
+                continue;
+            }
+
+            $record = ['batch_id' => $batch->id];
+            foreach ($columns as $index => $column) {
+                $record[$column] = $this->rawCell($values[$index] ?? null, isset(self::NUMERIC_RAW_COLUMNS[$column]));
+            }
+
+            $record['plant_code'] = $kind === 'wbs'
+                ? $this->nullableText($record['plant'] ?? null)
+                : $this->plantFromCostCenter($record['cost_center'] ?? null);
+
+            $records[] = $record;
+
+            if (count($records) >= 500) {
+                DB::table($table)->insert($records);
+                $inserted += count($records);
+                $records = [];
+            }
+        }
+
+        if ($records !== []) {
+            DB::table($table)->insert($records);
+            $inserted += count($records);
+        }
+
+        return new ImportResult($inserted, []);
+    }
+
+    private function rawCell(mixed $value, bool $numeric): mixed
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+
+        if ($numeric) {
+            return is_numeric($value) ? (float) $value : $this->nullableNumber($value);
+        }
+
+        $text = trim((string) $value);
+
+        return $text === '' ? null : mb_substr($text, 0, 250);
+    }
+
+    private function plantFromCostCenter(mixed $costCenter): ?string
+    {
+        $text = $this->nullableText($costCenter);
+
+        return $text === null ? null : mb_substr($text, 0, 4);
     }
 
     /**
