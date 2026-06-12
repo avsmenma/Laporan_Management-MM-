@@ -196,7 +196,7 @@ class Lm14Service
     {
         if ($this->isStafGaji($template)) {
             return $this->sumStafGajiWbs($unit, $komoditi, function ($query) use ($batch, $period): void {
-                $query->join('batch', 'db_wbs.batch_id', '=', 'batch.id')
+                $query->join('batch', 'db_wbs_raw.batch_id', '=', 'batch.id')
                     ->where('batch.year', $batch->year)
                     ->where('period', $period);
             });
