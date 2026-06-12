@@ -16,7 +16,7 @@ class DataPurgeService
     private const BATCH_TABLES = [
         'report_lm13', 'report_lm14', 'report_lm16',
         'pks_biaya', 'pks_produksi', 'alokasi_produksi',
-        'db_wbs', 'db_btl', 'db_pks', 'db_wbs_raw', 'db_gc', 'db_ohc',
+        'db_wbs_raw', 'db_gc', 'db_ohc',
         'import_upload_logs',
     ];
 

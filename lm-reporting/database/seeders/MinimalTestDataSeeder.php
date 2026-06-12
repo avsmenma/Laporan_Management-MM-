@@ -58,9 +58,9 @@ class MinimalTestDataSeeder extends Seeder
 
     private function seedDbWbs(Batch $batch): void
     {
-        DB::table('db_wbs')->where('batch_id', $batch->id)->where('plant_code', '5E11')->delete();
+        DB::table('db_wbs_raw')->where('batch_id', $batch->id)->where('plant_code', '5E11')->delete();
 
-        // Sample biaya tanaman untuk Danau Salak
+        // Sample biaya tanaman untuk Danau Salak (db_wbs_raw: kolom aktifitas/value)
         $activities = [
             '41-01' => 'TM - PEMEL JALAN MANUAL - ACCESS ROAD',
             '43-01' => 'TM - PENGENDALIAN GULMA MANUAL',
@@ -72,54 +72,55 @@ class MinimalTestDataSeeder extends Seeder
         $count = 0;
         foreach ($activities as $kode => $nama) {
             for ($period = 1; $period <= 5; $period++) {
-                DB::table('db_wbs')->insert([
+                DB::table('db_wbs_raw')->insert([
                     'batch_id' => $batch->id,
                     'komoditi' => 'KS',
                     'plant_code' => '5E11',
                     'period' => $period,
-                    'aktivitas' => $kode,
+                    'aktifitas' => $kode,
                     'job_name' => $nama,
                     'cost_element' => '51100001',
                     'cost_element_desc' => 'Biaya Tenaga Kerja',
-                    'klasifikasi_code' => '1',
-                    'nilai' => rand(5000000, 15000000),
-                    'fisik' => null,
+                    'klasifikasi' => '1. Gaji',
+                    'value' => rand(5000000, 15000000),
+                    'qty' => null,
                 ]);
                 $count++;
             }
         }
 
-        $this->command->info("  ✓ DB WBS: {$count} baris");
+        $this->command->info("  ✓ DB WBS (db_wbs_raw): {$count} baris");
     }
 
     private function seedDbBtl(Batch $batch): void
     {
-        DB::table('db_btl')->where('batch_id', $batch->id)->where('plant_code', '5E11')->delete();
+        DB::table('db_ohc')->where('batch_id', $batch->id)->where('plant_code', '5E11')->delete();
 
-        // Gaji staf overhead
+        // Gaji staf overhead (db_ohc: kolom lock/value_obj_crcy)
         $ccCodes = ['BT01', 'BT02', 'BT05'];
         $count = 0;
 
         foreach ($ccCodes as $cc) {
             for ($period = 1; $period <= 5; $period++) {
-                DB::table('db_btl')->insert([
+                DB::table('db_ohc')->insert([
                     'batch_id' => $batch->id,
                     'komoditi' => 'KS',
                     'plant_code' => '5E11',
+                    'cost_center' => "5E11{$cc}KS",
                     'unit_kerja' => 'Kebun Danau Salak',
                     'period' => $period,
-                    'kode_cc' => $cc,
+                    'lock' => $cc,
                     'co_object_name' => "Overhead {$cc}",
                     'cost_element' => '51100001',
                     'cost_element_name' => 'Gaji Staf',
-                    'klasifikasi_code' => '1',
-                    'nilai' => rand(3000000, 8000000),
+                    'klasifikasi' => '1. Gaji',
+                    'value_obj_crcy' => rand(3000000, 8000000),
                 ]);
                 $count++;
             }
         }
 
-        $this->command->info("  ✓ DB BTL: {$count} baris");
+        $this->command->info("  ✓ DB BTL (db_ohc): {$count} baris");
     }
 
     private function seedAlokasiProduksi(Batch $batch): void

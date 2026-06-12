@@ -20,21 +20,6 @@ class Batch extends Model
         ];
     }
 
-    public function dbWbs(): HasMany
-    {
-        return $this->hasMany(DbWbs::class, 'batch_id');
-    }
-
-    public function dbBtl(): HasMany
-    {
-        return $this->hasMany(DbBtl::class, 'batch_id');
-    }
-
-    public function dbPks(): HasMany
-    {
-        return $this->hasMany(DbPks::class, 'batch_id');
-    }
-
     public function alokasiProduksi(): HasMany
     {
         return $this->hasMany(AlokasiProduksi::class, 'batch_id');
