@@ -129,13 +129,19 @@
         .app-main { flex: 1; min-width: 0; padding: 24px 26px 56px; background: var(--bg); }
 
         /* ---------------- Mode layar penuh (fokus, hanya area web) ---------------- */
-        /* Skala 67% (seperti zoom browser 67%) agar seluruh kolom tabel muat tanpa scroll horizontal. */
-        body.lm-focus { zoom: 0.67; }
+        /* Tanpa CSS zoom (zoom merusak header Tabulator). Sebagai gantinya kolom & font
+           dikecilkan (mode compact via JS) dan tinggi tabel diisi penuh ke bawah. */
         body.lm-focus .app-header,
         body.lm-focus .app-sidebar { display: none !important; }
         body.lm-focus .app-container { min-height: 100vh; }
-        body.lm-focus .app-main { padding: 14px 18px 28px; }
-        body.lm-focus .filter-bar { margin-bottom: 12px; }
+        body.lm-focus .app-main { padding: 10px 14px 12px; }
+        body.lm-focus .filter-bar { margin-bottom: 10px; padding: 12px 14px; }
+        body.lm-focus .report-card { box-shadow: none; }
+        body.lm-focus .lm-report-table .tabulator { font-size: 9px; }
+        body.lm-focus .lm-report-table .tabulator-header .tabulator-col,
+        body.lm-focus .lm-report-table .tabulator-header .tabulator-col .tabulator-col-title,
+        body.lm-focus .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-title { font-size: 9px !important; letter-spacing: 0; }
+        body.lm-focus .lm-report-table .tabulator-row .tabulator-cell { padding: 2px 5px; }
 
         /* ---------------- Filter bar ---------------- */
         .filter-bar {
@@ -333,7 +339,7 @@
     </header>
 
     <!-- Tombol keluar mode layar penuh (tampil hanya saat fokus, karena header disembunyikan) -->
-    <button type="button" class="lm-focus-exit" onclick="document.body.classList.remove('lm-focus')">
+    <button type="button" class="lm-focus-exit" onclick="document.body.classList.remove('lm-focus'); window.dispatchEvent(new Event('lm-focus-changed'))">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
         Keluar Layar Penuh (Esc)
     </button>
@@ -399,7 +405,10 @@
     <script>
         // Esc keluar dari mode layar penuh (fallback selain tombol mengambang).
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') { document.body.classList.remove('lm-focus'); }
+            if (e.key === 'Escape' && document.body.classList.contains('lm-focus')) {
+                document.body.classList.remove('lm-focus');
+                window.dispatchEvent(new Event('lm-focus-changed'));
+            }
         });
     </script>
 </body>
