@@ -116,12 +116,17 @@
         .sidebar-parent { width: 100%; background: transparent; border: none; cursor: pointer; font-family: inherit; }
         .nav-caret { width: 14px; height: 14px; margin-left: auto; flex: none; transition: transform .15s; opacity: .7; }
         .nav-caret.open { transform: rotate(90deg); }
-        .sidebar-subnav { list-style: none; margin: 3px 0 6px; padding: 0 0 0 38px; display: flex; flex-direction: column; gap: 2px; }
-        .sidebar-subnav li { margin: 0; }
+        /* submenu bergaya struktur folder (tree) */
+        .sidebar-subnav { list-style: none; margin: 2px 0 8px; padding: 0; position: relative; }
+        .sidebar-subnav li { position: relative; margin: 0; padding-left: 38px; }
+        .sidebar-subnav li::before { content: ""; position: absolute; left: 26px; top: 0; height: 100%; border-left: 1.5px solid var(--line-strong); }
+        .sidebar-subnav li:last-child::before { height: 16px; }
+        .sidebar-subnav li::after { content: ""; position: absolute; left: 26px; top: 16px; width: 12px; border-top: 1.5px solid var(--line-strong); }
         .sidebar-sublink {
-            display: block; padding: 8px 12px; border-radius: 7px; text-decoration: none;
+            display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 7px; text-decoration: none;
             color: var(--ink-500); font-size: 12.5px; font-weight: 600; transition: background .15s, color .15s;
         }
+        .sidebar-sublink .tree-ico { font-size: 12px; flex: none; }
         .sidebar-sublink:hover { background: var(--g-50); color: var(--g-800); }
         .sidebar-sublink.active { background: var(--g-50); color: var(--g-800); box-shadow: inset 2px 0 0 var(--g-700); }
 
@@ -137,11 +142,18 @@
         body.lm-focus .app-main { padding: 10px 14px 12px; }
         body.lm-focus .filter-bar { margin-bottom: 10px; padding: 12px 14px; }
         body.lm-focus .report-card { box-shadow: none; }
-        body.lm-focus .lm-report-table .tabulator { font-size: 9px; }
+        body.lm-focus .lm-report-table .tabulator { font-size: 8.5px; }
         body.lm-focus .lm-report-table .tabulator-header .tabulator-col,
         body.lm-focus .lm-report-table .tabulator-header .tabulator-col .tabulator-col-title,
-        body.lm-focus .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-title { font-size: 9px !important; letter-spacing: 0; }
+        body.lm-focus .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-title { font-size: 8.5px !important; letter-spacing: 0; }
         body.lm-focus .lm-report-table .tabulator-row .tabulator-cell { padding: 2px 5px; }
+        /* label subtotal/total: sesuaikan dgn lebar kolom compact (Kode 52 + Uraian 190) agar tidak menimpa kolom angka */
+        body.lm-focus .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"] > span,
+        body.lm-focus .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] > span {
+            margin-left: -52px;
+            width: 236px;
+            padding-left: 6px !important;
+        }
 
         /* ---------------- Filter bar ---------------- */
         .filter-bar {
@@ -352,22 +364,22 @@
                 <ul class="sidebar-nav">
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('kebun*') ? 'true' : 'false' }} }">
                         <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('kebun*') ? 'active' : '' }}" @click="open = !open">
-                            <span class="nav-ico">📄</span> KEBUN
+                            <span class="nav-ico">📁</span> KEBUN
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
                         <ul class="sidebar-subnav" x-show="open" x-cloak>
-                            <li><a href="{{ route('kebun.eksploitasi') }}" class="sidebar-sublink {{ request()->routeIs('kebun.eksploitasi') ? 'active' : '' }}">LM Eksploitasi</a></li>
-                            <li><a href="{{ route('kebun') }}" class="sidebar-sublink {{ request()->routeIs('kebun') ? 'active' : '' }}">LM Investasi</a></li>
+                            <li><a href="{{ route('kebun.eksploitasi') }}" class="sidebar-sublink {{ request()->routeIs('kebun.eksploitasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Eksploitasi</a></li>
+                            <li><a href="{{ route('kebun') }}" class="sidebar-sublink {{ request()->routeIs('kebun') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
                         </ul>
                     </li>
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('pabrik*') ? 'true' : 'false' }} }">
                         <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('pabrik*') ? 'active' : '' }}" @click="open = !open">
-                            <span class="nav-ico">📄</span> PABRIK
+                            <span class="nav-ico">📁</span> PABRIK
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
                         <ul class="sidebar-subnav" x-show="open" x-cloak>
-                            <li><a href="{{ route('pabrik.eksploitasi') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.eksploitasi') ? 'active' : '' }}">LM Eksploitasi</a></li>
-                            <li><a href="{{ route('pabrik') }}" class="sidebar-sublink {{ request()->routeIs('pabrik') ? 'active' : '' }}">LM Investasi</a></li>
+                            <li><a href="{{ route('pabrik.eksploitasi') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.eksploitasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Eksploitasi</a></li>
+                            <li><a href="{{ route('pabrik') }}" class="sidebar-sublink {{ request()->routeIs('pabrik') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
                         </ul>
                     </li>
                     @if (in_array(optional(optional(auth()->user())->role)->name, ['Operator', 'Admin'], true))
