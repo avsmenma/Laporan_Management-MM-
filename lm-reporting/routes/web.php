@@ -19,14 +19,24 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::redirect('/report', '/kebun');
     Route::redirect('/reports', '/kebun')->name('reports.index');
 
-    // Halaman Kebun & Pabrik
+    // Halaman Kebun & Pabrik — submenu LM Investasi (halaman saat ini) & LM Eksploitasi (segera hadir)
     Route::get('/kebun', function () {
         return view('kebun.index');
     })->name('kebun');
 
+    Route::view('/kebun/eksploitasi', 'coming-soon', [
+        'judul' => 'LM Eksploitasi — Kebun',
+        'subjudul' => 'Laporan LM Eksploitasi Kebun sedang disiapkan dan akan segera tersedia.',
+    ])->name('kebun.eksploitasi');
+
     Route::get('/pabrik', function () {
         return view('pabrik.index');
     })->name('pabrik');
+
+    Route::view('/pabrik/eksploitasi', 'coming-soon', [
+        'judul' => 'LM Eksploitasi — Pabrik',
+        'subjudul' => 'Laporan LM Eksploitasi Pabrik sedang disiapkan dan akan segera tersedia.',
+    ])->name('pabrik.eksploitasi');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
