@@ -34,12 +34,12 @@ Baris "Gaji Staf dari WBS" (`99-01`) memakai **DB BTL** (Kode CC `SP01`), bukan 
 | A Budidaya | kriteria komoditi | `komoditi` | H Komoditi |
 | B Plant | kriteria unit | `plant_code` (`plant`) | B Plant |
 | D Period | kriteria bulan | `period` | I Period |
-| E Aktifitas | **kriteria kode baris** | `aktivitas` | P Aktifitas |
+| E Aktifitas | **kriteria kode baris** | `aktifitas` | P Aktifitas |
 | J Nilai | **sum range** | `value` | Y Value |
 | I Klasifikasi | dipakai LM13 | `klasifikasi` | AQ Klasifikasi |
 | K Fisik | fisik/qty | `qty` | AC Qty |
 
-Verifikasi nilai nyata `db_wbs_raw`: `aktivitas` berisi `90-01/99-01/41-xx` (sama
+Verifikasi nilai nyata `db_wbs_raw`: `aktifitas` berisi `90-01/99-01/41-xx` (sama
 seperti acuan), `value` = nilai rupiah, `komoditi=KS`, `plant_code=5E01`, `period=5`. ✅
 
 ### DB BTL (acuan 10 kolom) → `db_ohc`  (PERLU KONFIRMASI)
@@ -72,7 +72,7 @@ WHERE  batch_id   = :batch_id
   AND  komoditi   = :komoditi      -- KS / KR
   AND  plant_code = :plant_code    -- 5E11
   AND  period     = :month
-  AND  aktivitas  = :kode;         -- 99-01, 41-01, ...
+  AND  aktifitas  = :kode;         -- 99-01, 41-01, ...
 
 -- Real Bulan Lalu / Real s.d : sama, ganti filter period
 --   bulan lalu   : period = :month-1  (tahun sama → JOIN batch.year)
