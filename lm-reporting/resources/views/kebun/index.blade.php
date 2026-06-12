@@ -48,36 +48,32 @@
         </div>
     </div>
 
-    <div class="report-card" x-show="reportData">
-        <div class="report-tabbar">
-            <div class="tabs">
-                <div class="tab" :class="{ 'active': activeTab === 'lm14' }" @click="switchTab('lm14')">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                    LM 14
-                </div>
-                <div class="tab" :class="{ 'active': activeTab === 'lm13' }" @click="switchTab('lm13')">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                    LM 13
-                </div>
-            </div>
-            <div class="report-actions">
-                <button type="button" class="btn"
-                    x-data="{ focus: false }"
-                    @click="focus = !focus; document.body.classList.toggle('lm-focus', focus)"
-                    @keydown.escape.window="if (focus) { focus = false; document.body.classList.remove('lm-focus') }"
-                    :class="{ 'btn-primary': focus }"
-                    :title="focus ? 'Keluar layar penuh (Esc)' : 'Layar penuh'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                    <span x-text="focus ? 'Keluar Layar Penuh' : 'Layar Penuh'"></span>
+    <!-- Kontrol laporan diteleport ke top header: dropdown tab (LM14/LM13) + dropdown aksi -->
+    <template x-teleport="#lm-header-controls">
+        <div class="lm-hc" x-show="reportData" x-cloak>
+            <select class="lm-hc-select" x-model="activeTab" @change="switchTab(activeTab)" title="Pilih laporan">
+                <option value="lm14">LM 14</option>
+                <option value="lm13">LM 13</option>
+            </select>
+            <div class="lm-menu" x-data="{ open: false }" @click.outside="open = false">
+                <button type="button" class="lm-hc-btn" @click="open = !open" :aria-expanded="open">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+                    Aksi
                 </button>
-                <button class="btn" @click="exportExcel()">Excel</button>
-                <button class="btn" @click="exportCSV()">CSV</button>
-                <button class="btn" @click="exportPDF()">PDF</button>
-                <button class="btn" @click="print()">Cetak</button>
-                <button class="btn btn-primary" @click="loadReport()">Refresh</button>
+                <div class="lm-menu-pop" x-show="open" x-cloak @click="open = false">
+                    <button type="button" class="lm-menu-item" @click="loadReport()">Segarkan</button>
+                    <button type="button" class="lm-menu-item" @click="toggleFocus()">Layar Penuh</button>
+                    <div class="lm-menu-sep"></div>
+                    <button type="button" class="lm-menu-item" @click="exportExcel()">Excel</button>
+                    <button type="button" class="lm-menu-item" @click="exportCSV()">CSV</button>
+                    <button type="button" class="lm-menu-item" @click="exportPDF()">PDF</button>
+                    <button type="button" class="lm-menu-item" @click="print()">Cetak</button>
+                </div>
             </div>
         </div>
+    </template>
 
+    <div class="report-card" x-show="reportData">
         <div class="tab-content" :class="{ 'active': activeTab === 'lm14' }">
             <div x-show="loadingLm14" style="padding: 2rem; text-align: center; color: #666;">Loading LM14...</div>
             <div x-show="!loadingLm14 && lm14Data" id="table-lm14" class="lm-report-table" @lm-cell-click="handleCellClick($event)"></div>
@@ -367,6 +363,11 @@ function kebunApp() {
 
         print() {
             window.print();
+        },
+
+        toggleFocus() {
+            const on = !document.body.classList.contains('lm-focus');
+            document.body.classList.toggle('lm-focus', on);
         },
 
         activeTable() {
