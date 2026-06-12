@@ -9,9 +9,11 @@ use App\Models\RefUnit;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use OpenSpout\Common\Entity\Cell\FormulaCell;
+use OpenSpout\Common\Entity\Row;
+use OpenSpout\Reader\XLSX\Options as XlsxReaderOptions;
+use OpenSpout\Reader\XLSX\Reader as XlsxReader;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 
 class SpreadsheetImportService
 {
@@ -78,12 +80,12 @@ class SpreadsheetImportService
         $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
         $filename = $file instanceof UploadedFile ? $file->getClientOriginalName() : basename($file);
 
-        [$headers, $rows] = $this->readSheetCached($path);
-
+        // Baris dibaca STREAMING (memori konstan) lalu disisipkan per-chunk. File mentah
+        // SAP berukuran besar (puluhan MB), jadi tidak boleh dimuat penuh ke memori.
         $result = DB::transaction(fn () => match ($type) {
-            'wbs' => $this->importRaw($batch, 'db_wbs_raw', self::WBS_COLUMNS, $headers, $rows, 'wbs'),
-            'ohc' => $this->importRaw($batch, 'db_ohc', self::OHC_COLUMNS, $headers, $rows, 'gcohc'),
-            'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $headers, $rows, 'gcohc'),
+            'wbs' => $this->importRaw($batch, 'db_wbs_raw', self::WBS_COLUMNS, $this->dataRows($path), 'wbs'),
+            'ohc' => $this->importRaw($batch, 'db_ohc', self::OHC_COLUMNS, $this->dataRows($path), 'gcohc'),
+            'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $this->dataRows($path), 'gcohc'),
         });
 
         ImportUploadLog::query()->create([
@@ -110,7 +112,18 @@ class SpreadsheetImportService
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
 
         $total = max(0, $this->totalDataRows($path));
-        [$headers, $rows] = $this->readSheetCached($path, $sampleSize);
+
+        $headers = [];
+        $rows = [];
+        $index = 0;
+        foreach ($this->streamRows($path, $sampleSize + 1) as $row) {
+            if ($index === 0) {
+                $headers = $row;
+            } else {
+                $rows[] = $row;
+            }
+            $index++;
+        }
 
         return [
             'type' => $type,
@@ -121,70 +134,173 @@ class SpreadsheetImportService
         ];
     }
 
+    /**
+     * Jumlah baris data (di luar header) tanpa memuat sel. Worksheet di dalam xlsx (zip)
+     * dibaca via ZipArchive: ambil dari atribut <dimension ref="A1:..">, atau—bila tidak
+     * ada—nomor baris <row> terbesar dengan membaca stream secara bertahap. Memori konstan
+     * dan handle dilepas eksplisit (ZipArchive::close) sehingga tidak mengunci file di Windows.
+     */
     private function totalDataRows(string $path): int
     {
-        try {
-            $info = (new \PhpOffice\PhpSpreadsheet\Reader\Xlsx)->listWorksheetInfo($path);
-
-            return (int) (($info[0]['totalRows'] ?? 1) - 1);
-        } catch (\Throwable) {
+        $zip = new \ZipArchive;
+        if ($zip->open($path) !== true) {
             return 0;
         }
-    }
 
-    /**
-     * Baca sheet pertama dan kembalikan nilai TERHITUNG (cache) untuk sel formula
-     * (mis. kolom Plant/Kode/Klasifikasi hasil VLOOKUP). Maatwebsite hanya memberi
-     * string rumus, jadi di sini dibaca langsung via PhpSpreadsheet.
-     *
-     * @return array{0: array<int, mixed>, 1: array<int, array<int, mixed>>}
-     */
-    private function readSheetCached(string $path, ?int $maxRows = null): array
-    {
-        $reader = IOFactory::createReaderForFile($path);
-        $reader->setReadDataOnly(true);
-
-        if ($maxRows !== null) {
-            $reader->setReadFilter(new class($maxRows + 1) implements IReadFilter {
-                public function __construct(private int $limit) {}
-
-                public function readCell($columnAddress, $row, $worksheetName = ''): bool
-                {
-                    return $row <= $this->limit;
-                }
-            });
-        }
-
-        $sheet = $reader->load($path)->getSheet(0);
-        $colCount = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
-        $rowCount = $sheet->getHighestDataRow();
-        if ($maxRows !== null) {
-            $rowCount = min($rowCount, $maxRows + 1);
-        }
-
-        $matrix = [];
-        for ($r = 1; $r <= $rowCount; $r++) {
-            $row = [];
-            for ($i = 1; $i <= $colCount; $i++) {
-                $cell = $sheet->getCell(Coordinate::stringFromColumnIndex($i).$r);
-                $row[] = $cell->isFormula() ? $cell->getOldCalculatedValue() : $cell->getValue();
+        try {
+            $entry = $this->firstWorksheetEntry($zip);
+            $stream = $zip->getStream($entry);
+            if ($stream === false) {
+                return 0;
             }
-            $matrix[] = $row;
+
+            // <dimension> muncul di awal sheet; cukup baca kepala file.
+            $head = (string) fread($stream, 8192);
+            if (preg_match('/<dimension ref="[A-Z]+\d+:[A-Z]+(\d+)"/', $head, $matches)) {
+                fclose($stream);
+
+                return max(0, (int) $matches[1] - 1);
+            }
+
+            // Fallback: pindai nomor baris <row r="N"> terbesar secara streaming.
+            $lastRow = 0;
+            $buffer = $head;
+            do {
+                if (preg_match_all('/<row r="(\d+)"/', $buffer, $all) === 1 || $all[1] !== []) {
+                    $lastRow = max($lastRow, (int) end($all[1]));
+                }
+                $buffer = substr($buffer, -16).(string) fread($stream, 262144);
+            } while (! feof($stream));
+            preg_match_all('/<row r="(\d+)"/', $buffer, $all);
+            if ($all[1] !== []) {
+                $lastRow = max($lastRow, (int) end($all[1]));
+            }
+            fclose($stream);
+
+            return max(0, $lastRow - 1);
+        } catch (\Throwable) {
+            return 0;
+        } finally {
+            $zip->close();
         }
-
-        $headers = array_shift($matrix) ?? [];
-
-        return [$headers, $matrix];
     }
 
     /**
-     * Impor data mentah (WBS/GC/OHC) ke tabel staging: ganti data batch, lalu insert semua baris.
+     * Nama entri worksheet pertama di dalam xlsx; default 'xl/worksheets/sheet1.xml'.
+     */
+    private function firstWorksheetEntry(\ZipArchive $zip): string
+    {
+        $default = 'xl/worksheets/sheet1.xml';
+        if ($zip->locateName($default) !== false) {
+            return $default;
+        }
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (preg_match('#^xl/worksheets/sheet\d+\.xml$#', $name)) {
+                return $name;
+            }
+        }
+
+        return $default;
+    }
+
+    /**
+     * Baca sheet pertama secara STREAMING (memori konstan) via OpenSpout dan kembalikan
+     * tiap baris sebagai array posisional 0-based. Untuk sel rumus (mis. kolom
+     * Plant/Kode/Klasifikasi hasil VLOOKUP) dipakai nilai TERHITUNG (cache) — sama
+     * seperti getOldCalculatedValue() pada PhpSpreadsheet, tapi tanpa memuat seluruh file.
+     *
+     * @return \Generator<int, array<int, mixed>>
+     */
+    private function streamRows(string $path, ?int $maxRows = null): \Generator
+    {
+        $reader = new XlsxReader(new XlsxReaderOptions);
+        $reader->open($path);
+        $sheet = $row = null;
+
+        try {
+            foreach ($reader->getSheetIterator() as $sheet) {
+                $emitted = 0;
+                foreach ($sheet->getRowIterator() as $row) {
+                    yield $this->rowToArray($row);
+
+                    if ($maxRows !== null && ++$emitted >= $maxRows) {
+                        return;
+                    }
+                }
+
+                break; // hanya sheet pertama
+            }
+        } finally {
+            // Di Windows, close() saja tidak melepas lock file selama masih ada objek yang
+            // memegang resource reader — termasuk variabel iterator sheet/row. Musnahkan
+            // semuanya secara eksplisit (unset + GC) agar handle benar-benar dilepas, mis.
+            // saat iterasi dihentikan dini untuk pratinjau.
+            $reader->close();
+            unset($reader, $sheet, $row);
+            gc_collect_cycles();
+        }
+    }
+
+    /**
+     * Baris data saja (tanpa header), untuk diumpankan langsung ke importRaw secara streaming.
+     *
+     * @return \Generator<int, array<int, mixed>>
+     */
+    private function dataRows(string $path): \Generator
+    {
+        $first = true;
+        foreach ($this->streamRows($path) as $row) {
+            if ($first) {
+                $first = false;
+
+                continue;
+            }
+
+            yield $row;
+        }
+    }
+
+    /**
+     * Ubah satu baris OpenSpout menjadi array posisional 0-based yang rapat (lubang
+     * kolom kosong diisi null agar indeks tetap selaras dengan urutan kolom file).
+     * Nilai rumus diambil dari cache; tanggal distringkan agar aman disimpan/ditampilkan.
+     *
+     * @return array<int, mixed>
+     */
+    private function rowToArray(Row $row): array
+    {
+        $cells = $row->cells;
+        if ($cells === []) {
+            return [];
+        }
+
+        $out = [];
+        $max = max(array_keys($cells));
+        for ($i = 0; $i <= $max; $i++) {
+            $cell = $cells[$i] ?? null;
+            if ($cell === null) {
+                $out[$i] = null;
+
+                continue;
+            }
+
+            $value = $cell instanceof FormulaCell ? $cell->getComputedValue() : $cell->getValue();
+            $out[$i] = $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : $value;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Impor data mentah (WBS/GC/OHC) ke tabel staging: ganti data batch, lalu insert
+     * semua baris per-chunk. $rows berupa generator streaming agar memori tetap konstan.
      *
      * @param  array<int, string>  $columns
-     * @param  array<int, mixed>  $headers
-     * @param  array<int, array<int, mixed>>  $rows
+     * @param  iterable<int, array<int, mixed>>  $rows
      */
-    private function importRaw(Batch $batch, string $table, array $columns, array $headers, array $rows, string $kind): ImportResult
+    private function importRaw(Batch $batch, string $table, array $columns, iterable $rows, string $kind): ImportResult
     {
         DB::table($table)->where('batch_id', $batch->id)->delete();
 
