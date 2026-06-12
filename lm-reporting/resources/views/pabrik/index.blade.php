@@ -132,6 +132,20 @@ function pabrikApp() {
             });
             this.$watch('filters.unit', () => this.emitTopbarUnit());
             this.$watch('reportData', (data) => this.emitTopbarKpi(data));
+
+            window.addEventListener('lm-focus-changed', () => setTimeout(() => this.rerenderActive(), 60));
+            window.addEventListener('resize', () => {
+                if (document.body.classList.contains('lm-focus')) {
+                    this.rerenderActive();
+                }
+            });
+        },
+
+        rerenderActive() {
+            if (this.lm16Data) {
+                this.lm16Table = window.LmReportTables.renderTable(document.getElementById('table-lm16'), 'LM16', this.lm16Data);
+                window.LmReportTables.applySearch(this.lm16Table, this.searchText);
+            }
         },
 
         emitTopbarUnit() {
@@ -359,6 +373,7 @@ function pabrikApp() {
         toggleFocus() {
             const on = !document.body.classList.contains('lm-focus');
             document.body.classList.toggle('lm-focus', on);
+            window.dispatchEvent(new Event('lm-focus-changed'));
         },
 
         footerText() {

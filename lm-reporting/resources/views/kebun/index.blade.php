@@ -144,6 +144,31 @@ function kebunApp() {
             });
             this.$watch('filters.unit', () => this.emitTopbarUnit());
             this.$watch('reportData', (data) => this.emitTopbarKpi(data));
+
+            // Saat mode fokus berubah (toggle/Esc/tombol keluar), render ulang tabel aktif
+            // agar memakai lebar compact + tinggi penuh layar dan header tetap muncul.
+            window.addEventListener('lm-focus-changed', () => setTimeout(() => this.rerenderActive(), 60));
+            window.addEventListener('resize', () => {
+                if (document.body.classList.contains('lm-focus')) {
+                    this.rerenderActive();
+                }
+            });
+        },
+
+        toggleFocus() {
+            const on = !document.body.classList.contains('lm-focus');
+            document.body.classList.toggle('lm-focus', on);
+            window.dispatchEvent(new Event('lm-focus-changed'));
+        },
+
+        rerenderActive() {
+            if (this.activeTab === 'lm14' && this.lm14Data) {
+                this.lm14Table = window.LmReportTables.renderTable(document.getElementById('table-lm14'), 'LM14', this.lm14Data);
+                window.LmReportTables.applySearch(this.lm14Table, this.searchText);
+            } else if (this.activeTab === 'lm13' && this.lm13Data) {
+                this.lm13Table = window.LmReportTables.renderTable(document.getElementById('table-lm13'), 'LM13', this.lm13Data);
+                window.LmReportTables.applySearch(this.lm13Table, this.searchText);
+            }
         },
 
         emitTopbarUnit() {
@@ -404,11 +429,6 @@ function kebunApp() {
 
         print() {
             window.print();
-        },
-
-        toggleFocus() {
-            const on = !document.body.classList.contains('lm-focus');
-            document.body.classList.toggle('lm-focus', on);
         },
 
         activeTable() {
