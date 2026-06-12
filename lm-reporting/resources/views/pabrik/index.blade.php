@@ -47,33 +47,29 @@
         </div>
     </div>
 
-    <div class="report-card" x-show="reportData">
-        <div class="report-tabbar">
-            <div class="tabs">
-                <div class="tab active">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                    LM 16
+    <!-- Kontrol laporan diteleport ke top header: label LM16 + dropdown aksi -->
+    <template x-teleport="#lm-header-controls">
+        <div class="lm-hc" x-show="reportData" x-cloak>
+            <span class="lm-hc-static">LM 16</span>
+            <div class="lm-menu" x-data="{ open: false }" @click.outside="open = false">
+                <button type="button" class="lm-hc-btn" @click="open = !open" :aria-expanded="open">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+                    Aksi
+                </button>
+                <div class="lm-menu-pop" x-show="open" x-cloak @click="open = false">
+                    <button type="button" class="lm-menu-item" @click="loadReport()">Segarkan</button>
+                    <button type="button" class="lm-menu-item" @click="toggleFocus()">Layar Penuh</button>
+                    <div class="lm-menu-sep"></div>
+                    <button type="button" class="lm-menu-item" @click="exportExcel()">Excel</button>
+                    <button type="button" class="lm-menu-item" @click="exportCSV()">CSV</button>
+                    <button type="button" class="lm-menu-item" @click="exportPDF()">PDF</button>
+                    <button type="button" class="lm-menu-item" @click="print()">Cetak</button>
                 </div>
             </div>
-            <div class="report-actions">
-                <button type="button" class="btn"
-                    x-data="{ focus: false }"
-                    @click="focus = !focus; document.body.classList.toggle('lm-focus', focus)"
-                    @keydown.escape.window="if (focus) { focus = false; document.body.classList.remove('lm-focus') }"
-                    :class="{ 'btn-primary': focus }"
-                    :title="focus ? 'Keluar layar penuh (Esc)' : 'Layar penuh'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                    <span x-text="focus ? 'Keluar Layar Penuh' : 'Layar Penuh'"></span>
-                </button>
-                <button class="btn" @click="exportExcel()">Excel</button>
-                <button class="btn" @click="exportCSV()">CSV</button>
-                <button class="btn" @click="exportPDF()">PDF</button>
-                <button class="btn" @click="print()">Cetak</button>
-                <button class="btn btn-primary" @click="loadReport()">Refresh</button>
-            </div>
         </div>
+    </template>
 
-
+    <div class="report-card" x-show="reportData">
         <div class="tab-content active">
             <div x-show="loadingLm16" style="padding: 2rem; text-align: center; color: #666;">Loading LM16...</div>
             <div x-show="!loadingLm16 && lm16Data" id="table-lm16" class="lm-report-table" @lm-cell-click="handleCellClick($event)"></div>
@@ -317,6 +313,11 @@ function pabrikApp() {
 
         print() {
             window.print();
+        },
+
+        toggleFocus() {
+            const on = !document.body.classList.contains('lm-focus');
+            document.body.classList.toggle('lm-focus', on);
         },
 
         footerText() {

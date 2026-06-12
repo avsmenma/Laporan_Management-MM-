@@ -217,6 +217,65 @@
 
         .hidden { display: none; }
 
+        /* ---------------- Header report controls (tab + aksi dropdown) ---------------- */
+        .lm-header-controls { display: flex; align-items: center; gap: 10px; }
+        .lm-hc { display: flex; align-items: center; gap: 10px; }
+        .lm-hc-select {
+            height: 32px; padding: 0 30px 0 12px; border-radius: 7px; cursor: pointer; appearance: none;
+            font-family: inherit; font-size: 12.5px; font-weight: 600; color: #eaf2ee;
+            background-color: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.18);
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23cfe6db' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+            background-repeat: no-repeat; background-position: right 9px center;
+        }
+        .lm-hc-select option { color: #14342a; }
+        .lm-hc-static {
+            display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 7px;
+            font-size: 12.5px; font-weight: 600; color: #eaf2ee;
+            background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.18);
+        }
+        .lm-menu { position: relative; }
+        .lm-hc-btn {
+            display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border-radius: 7px;
+            font-family: inherit; font-size: 12.5px; font-weight: 600; color: #14342a; cursor: pointer;
+            background: #eaf2ee; border: 1px solid rgba(255,255,255,.2);
+        }
+        .lm-hc-btn:hover { background: #fff; }
+        .lm-hc-btn svg { width: 14px; height: 14px; flex: none; }
+        .lm-menu-pop {
+            position: absolute; right: 0; top: calc(100% + 6px); min-width: 184px; z-index: 60;
+            background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 6px;
+            box-shadow: 0 12px 30px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px;
+        }
+        .lm-menu-item {
+            display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; height: 34px; padding: 0 12px;
+            border: none; background: transparent; border-radius: 7px; cursor: pointer; font-family: inherit;
+            font-size: 13px; font-weight: 500; color: var(--ink-700);
+        }
+        .lm-menu-item:hover { background: var(--g-50); color: var(--g-800); }
+        .lm-menu-sep { height: 1px; background: var(--line); margin: 4px 2px; }
+
+        /* tombol keluar layar penuh — hanya tampil saat mode fokus (header tersembunyi) */
+        .lm-focus-exit { display: none; }
+        body.lm-focus .lm-focus-exit {
+            display: inline-flex; align-items: center; gap: 6px; position: fixed; top: 10px; right: 12px; z-index: 70;
+            height: 32px; padding: 0 13px; border-radius: 8px; cursor: pointer; font-family: inherit;
+            font-size: 12.5px; font-weight: 600; color: #fff; background: var(--g-800); border: 1px solid var(--g-900);
+            box-shadow: var(--shadow-sm);
+        }
+        .lm-focus-exit:hover { background: var(--g-700); }
+        .lm-focus-exit svg { width: 14px; height: 14px; }
+
+        /* ---------------- Sidebar: tombol keluar di bawah ---------------- */
+        .app-sidebar { display: flex; flex-direction: column; }
+        .sidebar-spacer { flex: 1 1 auto; }
+        .sidebar-logout { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+        .sidebar-logout button {
+            display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 8px;
+            font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink-600); cursor: pointer;
+            background: transparent; border: 1px solid var(--line);
+        }
+        .sidebar-logout button:hover { background: var(--g-50); color: var(--g-800); border-color: var(--g-100); }
+
         @media (max-width: 820px) {
             .app-sidebar { width: 64px; padding: 16px 8px; }
             .sidebar-nav-link { justify-content: center; padding: 10px; font-size: 0; gap: 0; }
@@ -245,16 +304,9 @@
         </div>
 
         <div class="topbar-spacer"></div>
-        <div class="topbar-kpis" x-data="{ kpi: null }" x-cloak x-show="kpi"
-             @lm-topbar-kpi.window="kpi = $event.detail.kpi">
-            <div class="tk"><span class="tk-l">Jlh. Hari Sebulan</span><b><span x-text="kpi?.jumlah_hari ?? 0"></span><small>hari</small></b></div>
-            <div class="tk"><span class="tk-l">Hari Dijalani</span><b><span x-text="kpi?.hari_dijalani ?? 0"></span><small>hari</small></b></div>
-            <div class="tk"><span class="tk-l">Sisa Hari</span><b><span x-text="kpi?.sisa_hari ?? 0"></span><small>hari</small></b></div>
-        </div>
-        <div class="topbar-spacer"></div>
 
         <div class="app-header-right">
-            <span class="role-badge"><span class="dot"></span>{{ auth()->user()?->role?->name ?? 'Guest' }}</span>
+            <div id="lm-header-controls" class="lm-header-controls"></div>
             <div class="user-profile">
                 @php
                     $lmName = auth()->user()->name ?? 'User';
@@ -264,15 +316,16 @@
                 <div class="user-avatar">{{ $lmInitials ?: 'U' }}</div>
                 <div class="user-meta">
                     <div class="user-name">{{ $lmName }}</div>
-                    <div class="user-role">{{ auth()->user()?->role?->name ?? 'Guest' }}</div>
                 </div>
             </div>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="logout-btn">Keluar</button>
-            </form>
         </div>
     </header>
+
+    <!-- Tombol keluar mode layar penuh (tampil hanya saat fokus, karena header disembunyikan) -->
+    <button type="button" class="lm-focus-exit" onclick="document.body.classList.remove('lm-focus')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        Keluar Layar Penuh (Esc)
+    </button>
 
     <!-- Main Container -->
     <div class="app-container">
@@ -304,6 +357,15 @@
                     @endif
                 </ul>
             </nav>
+            <div class="sidebar-spacer"></div>
+            <div class="sidebar-logout">
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit">
+                        <span style="font-size:15px">🚪</span> Keluar
+                    </button>
+                </form>
+            </div>
         </aside>
 
         <!-- Main Content -->
@@ -313,5 +375,11 @@
     </div>
 
     @stack('scripts')
+    <script>
+        // Esc keluar dari mode layar penuh (fallback selain tombol mengambang).
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { document.body.classList.remove('lm-focus'); }
+        });
+    </script>
 </body>
 </html>
