@@ -97,11 +97,12 @@ class Lm14ServiceTest extends TestCase
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'kode_cc' => 'SP01', 'cost_element' => null, 'nilai' => 100],
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'kode_cc' => 'SUP', 'cost_element' => '51100200', 'nilai' => 25],
         ]);
-        DB::table('db_wbs')->insert([
-            // Gaji staf "dari WBS": realisasi bulan lalu ada di db_wbs aktivitas 99-01.
-            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktivitas' => '99-01', 'nilai' => 50],
-            ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'aktivitas' => '99-01.', 'nilai' => 200],
-            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktivitas' => '99-01.', 'nilai' => 75],
+        DB::table('db_wbs_raw')->insert([
+            // Sumber WBS kini dari db_wbs_raw (kolom value). Gaji staf "dari WBS":
+            // realisasi bulan lalu ada di db_wbs_raw aktivitas 99-01.
+            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktifitas' => '99-01', 'value' => 50],
+            ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'aktifitas' => '99-01.', 'value' => 200],
+            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktifitas' => '99-01.', 'value' => 75],
         ]);
         DB::table('realisasi_tahun_lalu')->insert([
             ['year' => 2025, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'report_type' => 'LM14', 'kode' => '99-01', 'period' => 4, 'nilai' => 30],

@@ -189,7 +189,7 @@ class Lm14Service
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('period', $batch->month)
-            ->sum('nilai');
+            ->sum($this->valueColumn($template->source));
     }
 
     private function sumSourceYearPeriod(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template, int $period): float
@@ -208,7 +208,7 @@ class Lm14Service
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('period', $period)
-            ->sum('nilai');
+            ->sum($this->valueColumn($template->source));
     }
 
     private function sumSourceBeforeMonth(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float
@@ -227,7 +227,7 @@ class Lm14Service
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
             ->where('period', '<', $batch->month)
-            ->sum('nilai');
+            ->sum($this->valueColumn($template->source));
     }
 
     private function isStafGaji(LmTemplateRow $template): bool
@@ -252,19 +252,19 @@ class Lm14Service
     }
 
     /**
-     * Kolom bulan lalu untuk baris "Gaji Staf dari WBS" mengikuti db_wbs
-     * aktivitas 99-01 pada periode sebelumnya.
+     * Kolom bulan lalu untuk baris "Gaji Staf dari WBS" mengikuti db_wbs_raw
+     * aktifitas 99-01 pada periode sebelumnya.
      */
     private function sumStafGajiWbs(RefUnit $unit, string $komoditi, callable $scope): float
     {
-        $wbs = DB::table('db_wbs')
+        $wbs = DB::table('db_wbs_raw')
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
-            ->where('aktivitas', self::STAF_GAJI_KODE);
+            ->where('aktifitas', self::STAF_GAJI_KODE);
 
         $scope($wbs);
 
-        return (float) $wbs->sum('nilai');
+        return (float) $wbs->sum('value');
     }
 
     private function sourceQuery(?string $source, ?string $kode): \Illuminate\Database\Query\Builder
@@ -273,7 +273,7 @@ class Lm14Service
         $codeColumn = match (true) {
             $source === 'BTL' && str_starts_with((string) $kode, '511') => 'cost_element',
             $source === 'BTL' => 'kode_cc',
-            default => 'aktivitas',
+            default => 'aktifitas', // kolom db_wbs_raw (ejaan file: "Aktifitas")
         };
 
         return DB::table($table)->where($codeColumn, $kode);
@@ -281,7 +281,14 @@ class Lm14Service
 
     private function sourceTable(?string $source): string
     {
-        return $source === 'BTL' ? 'db_btl' : 'db_wbs';
+        // Sumber WBS kini dari tabel mentah db_wbs_raw (kolom value), BTL masih db_btl
+        // sampai pemetaan db_ohc dikonfirmasi. Lihat docs/MIGRASI_SUMBER_LM14_LM13.md.
+        return $source === 'BTL' ? 'db_btl' : 'db_wbs_raw';
+    }
+
+    private function valueColumn(?string $source): string
+    {
+        return $source === 'BTL' ? 'nilai' : 'value';
     }
 
     private function sumTahunLalu(Batch $batch, RefUnit $unit, string $komoditi, string $kode, int $period): float
