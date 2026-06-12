@@ -72,7 +72,7 @@ function textColumn(field, title, width) {
     return {
         title,
         field,
-        width: field === 'uraian' ? cw(width, 200) : cw(width, Math.round(width * 0.66)),
+        width: field === 'uraian' ? cw(width, 190) : cw(width, 52),
         frozen: true,
         headerSort: false,
         formatter(cell) {
@@ -317,7 +317,7 @@ function renderTable(element, reportType, reportData) {
         data: rows,
         columns: tableColumns(reportType, payload.meta ?? {}),
         height: COMPACT ? focusHeight(element) : '65vh',
-        layout: 'fitDataStretch',
+        layout: COMPACT ? 'fitColumns' : 'fitDataStretch',
         columnHeaderVertAlign: 'bottom',
         movableColumns: false,
         rowFormatter,
