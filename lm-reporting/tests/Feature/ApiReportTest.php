@@ -86,7 +86,16 @@ class ApiReportTest extends TestCase
             ->getJson("/api/report/drilldown?type=LM14&batch={$batch->id}&unit={$unit->code}&komoditi=KS&kode=41-01&column=bi_jumlah")
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('context.column_key', 'bi_jumlah');
+            ->assertJsonPath('context.column_key', 'bi_jumlah')
+            // Pivot rincian sumber: grand total = nilai sel (baris db_wbs_raw yang di-seed).
+            ->assertJsonPath('pivot.grand_total', 1000)
+            ->assertJsonPath('pivot.categories.0', '1. Gaji');
+
+        // Kolom non-sumber (anggaran) tidak memiliki pivot rincian.
+        $this->actingAs($operator)
+            ->getJson("/api/report/drilldown?type=LM14&batch={$batch->id}&unit={$unit->code}&komoditi=KS&kode=41-01&column=bi_rko")
+            ->assertOk()
+            ->assertJsonPath('pivot', null);
     }
 
     public function test_report_endpoint_accepts_authenticated_web_session(): void
