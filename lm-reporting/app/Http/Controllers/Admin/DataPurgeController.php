@@ -4,11 +4,21 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domain\Admin\DataPurgeService;
 use App\Http\Controllers\Controller;
+use App\Models\Batch;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 
 class DataPurgeController extends Controller
 {
+    public function index(): View
+    {
+        return view('admin.purge', [
+            'years' => Batch::query()->select('year')->distinct()->orderByDesc('year')->pluck('year'),
+            'batches' => Batch::query()->orderByDesc('year')->orderByDesc('month')->get(),
+        ]);
+    }
+
     public function purge(Request $request, DataPurgeService $service): RedirectResponse
     {
         $data = $request->validate([

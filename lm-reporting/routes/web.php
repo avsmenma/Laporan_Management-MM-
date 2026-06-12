@@ -65,5 +65,6 @@ Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
 });
 
 Route::middleware(['auth', 'role:Admin'])->group(function () {
+    Route::get('/data', [\App\Http\Controllers\Admin\DataPurgeController::class, 'index'])->name('data.index');
     Route::post('/data/purge', [\App\Http\Controllers\Admin\DataPurgeController::class, 'purge'])->name('data.purge');
 });
