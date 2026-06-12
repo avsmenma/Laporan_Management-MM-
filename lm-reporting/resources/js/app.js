@@ -55,11 +55,24 @@ function formatNumber(value, field, percent = isPercent(field)) {
     });
 }
 
+// Mode "compact" dipakai saat layar penuh: kolom & font dikecilkan supaya semua
+// kolom muat tanpa CSS zoom (zoom merusak rendering header Tabulator).
+let COMPACT = false;
+function cw(normal, compact) {
+    return COMPACT ? compact : normal;
+}
+
+// Tinggi tabel agar memenuhi sisa layar saat mode fokus (tanpa zoom).
+function focusHeight(element) {
+    const top = element.getBoundingClientRect().top;
+    return `${Math.max(window.innerHeight - top - 40, 320)}px`;
+}
+
 function textColumn(field, title, width) {
     return {
         title,
         field,
-        width,
+        width: field === 'uraian' ? cw(width, 200) : cw(width, Math.round(width * 0.66)),
         frozen: true,
         headerSort: false,
         formatter(cell) {
@@ -76,7 +89,7 @@ function numberColumn(field, title, minWidth = 104) {
     return {
         title,
         field,
-        minWidth,
+        minWidth: cw(minWidth, Math.round(minWidth * 0.6)),
         hozAlign: 'right',
         headerHozAlign: 'center',
         headerSort: false,
@@ -296,12 +309,14 @@ function rowFormatter(row) {
 function renderTable(element, reportType, reportData) {
     const payload = reportData ?? { rows: [], meta: {} };
     const rows = tableRows(reportType, Array.isArray(payload.rows) ? payload.rows : []);
+    // Deteksi mode fokus saat render: kolom compact + tinggi penuh layar.
+    COMPACT = document.body.classList.contains('lm-focus');
     element.innerHTML = '';
 
     return new Tabulator(element, {
         data: rows,
         columns: tableColumns(reportType, payload.meta ?? {}),
-        height: '65vh',
+        height: COMPACT ? focusHeight(element) : '65vh',
         layout: 'fitDataStretch',
         columnHeaderVertAlign: 'bottom',
         movableColumns: false,
