@@ -36,16 +36,6 @@
             </div>
 
             <div class="filter-group">
-                <label class="filter-label">Batch</label>
-                <select class="filter-select" x-model="filters.batch" @change="onBatchChange()">
-                    <option value="">- Pilih Batch -</option>
-                    <template x-for="batch in filteredBatches()" :key="batch.id">
-                        <option :value="batch.id" x-text="batch.label"></option>
-                    </template>
-                </select>
-            </div>
-
-            <div class="filter-group">
                 <label class="filter-label">Unit Pabrik</label>
                 <select class="filter-select" x-model="filters.unit" @change="onUnitChange()">
                     <option value="">- Pilih Unit -</option>
@@ -97,7 +87,7 @@
     <div x-show="!reportData" style="background: white; padding: 4rem; text-align: center; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
         <div style="font-size: 3rem; margin-bottom: 1rem;">LM</div>
         <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
-        <p style="color: #999; margin-top: 0.5rem;">Pilih Komoditas, Batch, dan Unit Pabrik</p>
+        <p style="color: #999; margin-top: 0.5rem;">Pilih Tahun, Bulan, dan Unit Pabrik</p>
     </div>
 </div>
 
@@ -189,6 +179,7 @@ function pabrikApp() {
         },
 
         onYearChange() {
+            this.filters.period = '';
             this.filters.batch = '';
             this.filters.unit = '';
             this.selectedBatch = null;
@@ -196,11 +187,16 @@ function pabrikApp() {
             this.resetReport();
         },
 
-        filteredBatches() {
-            return this.batches.filter(batch =>
-                (!this.filters.year || String(batch.year) === String(this.filters.year)) &&
-                (!this.filters.period || String(batch.period) === String(this.filters.period))
+        // Batch ditentukan otomatis dari Tahun + Bulan (unik per year+month),
+        // jadi tidak perlu dropdown batch terpisah.
+        resolveBatch() {
+            const batch = this.batches.find(b =>
+                String(b.year) === String(this.filters.year) &&
+                String(b.period) === String(this.filters.period)
             );
+            this.selectedBatch = batch ?? null;
+            this.filters.batch = batch ? batch.id : '';
+            return !!batch;
         },
 
         async loadUnits() {
@@ -238,23 +234,13 @@ function pabrikApp() {
         },
 
         onPeriodChange() {
-            if (this.selectedBatch && String(this.selectedBatch.period) !== String(this.filters.period)) {
-                this.filters.batch = '';
-                this.filters.unit = '';
-                this.selectedBatch = null;
-                this.units = [];
-                this.resetReport();
-            }
-        },
-
-        onBatchChange() {
-            this.selectedBatch = this.batches.find(b => b.id == this.filters.batch);
-            if (this.selectedBatch) {
-                this.filters.period = this.selectedBatch.period;
-                this.filters.year = this.selectedBatch.year;
-            }
             this.filters.unit = '';
+            this.units = [];
             this.resetReport();
+            if (this.filters.year && this.filters.period && !this.resolveBatch()) {
+                this.errorMessage = 'Belum ada data untuk periode tersebut.';
+                return;
+            }
             this.loadUnits();
         },
 
