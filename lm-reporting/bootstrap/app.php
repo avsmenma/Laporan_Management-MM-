@@ -13,11 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Tambahkan session middleware ke API routes
-        $middleware->api(prepend: [
-            \Illuminate\Session\Middleware\StartSession::class,
-            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-        ]);
+        // CATATAN: JANGAN menambahkan StartSession ke grup API tanpa EncryptCookies +
+        // AddQueuedCookiesToResponse. Endpoint /api/* (units, batches) publik & stateless.
+        // Bila StartSession jalan tanpa enkripsi cookie, ia gagal membaca cookie sesi
+        // terenkripsi, membuat sesi tamu baru, lalu MENIMPA cookie sesi pengguna dengan
+        // versi tak-terenkripsi → request web berikutnya gagal didekripsi → selalu terlempar
+        // ke halaman login setiap ganti menu. Jadi grup API dibiarkan tanpa sesi.
 
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureUserHasRole::class,
