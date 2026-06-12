@@ -113,6 +113,17 @@
             background: var(--surface-2); border: 1px solid var(--line); font-size: 14px;
         }
         .sidebar-nav-link.active .nav-ico { background: #fff; border-color: var(--g-100); }
+        .sidebar-parent { width: 100%; background: transparent; border: none; cursor: pointer; font-family: inherit; }
+        .nav-caret { width: 14px; height: 14px; margin-left: auto; flex: none; transition: transform .15s; opacity: .7; }
+        .nav-caret.open { transform: rotate(90deg); }
+        .sidebar-subnav { list-style: none; margin: 3px 0 6px; padding: 0 0 0 38px; display: flex; flex-direction: column; gap: 2px; }
+        .sidebar-subnav li { margin: 0; }
+        .sidebar-sublink {
+            display: block; padding: 8px 12px; border-radius: 7px; text-decoration: none;
+            color: var(--ink-500); font-size: 12.5px; font-weight: 600; transition: background .15s, color .15s;
+        }
+        .sidebar-sublink:hover { background: var(--g-50); color: var(--g-800); }
+        .sidebar-sublink.active { background: var(--g-50); color: var(--g-800); box-shadow: inset 2px 0 0 var(--g-700); }
 
         /* ---------------- Main content ---------------- */
         .app-main { flex: 1; min-width: 0; padding: 24px 26px 56px; background: var(--bg); }
@@ -333,15 +344,25 @@
         <aside class="app-sidebar">
             <nav>
                 <ul class="sidebar-nav">
-                    <li class="sidebar-nav-item">
-                        <a href="{{ route('kebun') }}" class="sidebar-nav-link {{ request()->routeIs('kebun') ? 'active' : '' }}">
-                            <span class="nav-ico">🌱</span> KEBUN
-                        </a>
+                    <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('kebun*') ? 'true' : 'false' }} }">
+                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('kebun*') ? 'active' : '' }}" @click="open = !open">
+                            <span class="nav-ico">📄</span> KEBUN
+                            <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <ul class="sidebar-subnav" x-show="open" x-cloak>
+                            <li><a href="{{ route('kebun.eksploitasi') }}" class="sidebar-sublink {{ request()->routeIs('kebun.eksploitasi') ? 'active' : '' }}">LM Eksploitasi</a></li>
+                            <li><a href="{{ route('kebun') }}" class="sidebar-sublink {{ request()->routeIs('kebun') ? 'active' : '' }}">LM Investasi</a></li>
+                        </ul>
                     </li>
-                    <li class="sidebar-nav-item">
-                        <a href="{{ route('pabrik') }}" class="sidebar-nav-link {{ request()->routeIs('pabrik') ? 'active' : '' }}">
-                            <span class="nav-ico">🏭</span> PABRIK
-                        </a>
+                    <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('pabrik*') ? 'true' : 'false' }} }">
+                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('pabrik*') ? 'active' : '' }}" @click="open = !open">
+                            <span class="nav-ico">📄</span> PABRIK
+                            <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <ul class="sidebar-subnav" x-show="open" x-cloak>
+                            <li><a href="{{ route('pabrik.eksploitasi') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.eksploitasi') ? 'active' : '' }}">LM Eksploitasi</a></li>
+                            <li><a href="{{ route('pabrik') }}" class="sidebar-sublink {{ request()->routeIs('pabrik') ? 'active' : '' }}">LM Investasi</a></li>
+                        </ul>
                     </li>
                     @if (in_array(optional(optional(auth()->user())->role)->name, ['Operator', 'Admin'], true))
                         <li class="sidebar-nav-item" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
