@@ -72,7 +72,9 @@ function textColumn(field, title, width) {
     return {
         title,
         field,
-        width: field === 'uraian' ? cw(width, 240) : cw(width, 64),
+        // Tanpa lebar tetap: biarkan Tabulator menyesuaikan dengan isi (fitData).
+        // minWidth hanya lantai aman; uraian tumbuh penuh mengikuti teks terpanjang.
+        minWidth: field === 'uraian' ? cw(200, 150) : cw(76, 60),
         frozen: true,
         headerSort: false,
         formatter(cell) {
@@ -90,9 +92,9 @@ function numberColumn(field, title, minWidth = 116) {
     return {
         title,
         field,
-        // Lebar tetap supaya kolom nilai tidak menyusut & angka tidak tumpang tindih.
-        // Compact (layar penuh): lebar pas untuk angka rupiah terpanjang.
-        ...(COMPACT ? { width: 96 } : { minWidth }),
+        // Tanpa lebar tetap: Tabulator (fitData) tumbuh mengikuti angka terpanjang.
+        // minWidth = lantai aman yang sudah memuat nilai rupiah miliaran sekalipun.
+        minWidth: cw(120, 84),
         hozAlign: 'right',
         headerHozAlign: 'center',
         headerSort: false,
@@ -301,71 +303,6 @@ function tableColumns(reportType, meta) {
     return lm16Columns(meta);
 }
 
-// Pengukur lebar teks pakai canvas (akurat dengan font yang dipakai sel/header).
-let _measureCanvas = null;
-function measureText(text, bold) {
-    if (!_measureCanvas) {
-        _measureCanvas = document.createElement('canvas');
-    }
-    const ctx = _measureCanvas.getContext('2d');
-    const size = COMPACT ? 8.5 : 12;
-    ctx.font = `${bold ? '600' : '400'} ${size}px "IBM Plex Sans", system-ui, -apple-system, sans-serif`;
-    return ctx.measureText(String(text ?? '')).width;
-}
-
-// Header boleh turun baris antar-kata, jadi kolom cukup memuat KATA terpanjang.
-function headerWordWidth(title) {
-    return String(title ?? '')
-        .split(/\s+/)
-        .reduce((max, word) => Math.max(max, measureText(word, true)), 0);
-}
-
-// Hitung lebar tiap kolom dari isi sebenarnya (data + header) supaya tidak ada
-// uraian terpotong "…" atau angka tersembunyi. Lebar = konten terpanjang + padding.
-function autosizeColumns(columns, rows) {
-    for (const column of columns) {
-        if (column.columns) {
-            autosizeColumns(column.columns, rows);
-            continue;
-        }
-
-        const field = column.field;
-        if (!field) {
-            continue;
-        }
-
-        const isText = field === 'uraian' || field === 'kode';
-        const percent = isPercent(field);
-        let max = headerWordWidth(column.title);
-
-        for (const row of rows) {
-            let text;
-            let extra = 0;
-            if (isText) {
-                text = row[field] ?? '';
-                if (field === 'uraian') {
-                    extra = Number(row.indent ?? 0) * 14; // indentasi level baris
-                }
-            } else {
-                const isRendemenRow = String(row.uraian ?? '').toLowerCase().includes('rendemen');
-                text = formatNumber(row[field], field, percent || isRendemenRow);
-            }
-
-            const width = measureText(text, false) + extra;
-            if (width > max) {
-                max = width;
-            }
-        }
-
-        const padding = COMPACT ? 14 : 22; // padding kiri+kanan + garis
-        const buffer = COMPACT ? 6 : 10;   // cadangan agar tak pernah terpotong
-        const minWidth = isText ? (COMPACT ? 56 : 76) : (COMPACT ? 52 : 68);
-
-        column.width = Math.max(Math.ceil(max) + padding + buffer, minWidth);
-        delete column.minWidth;
-    }
-}
-
 function rowFormatter(row) {
     const data = row.getData();
     const element = row.getElement();
@@ -381,14 +318,13 @@ function renderTable(element, reportType, reportData) {
     COMPACT = document.body.classList.contains('lm-focus');
     element.innerHTML = '';
 
-    const columns = tableColumns(reportType, payload.meta ?? {});
-    autosizeColumns(columns, rows);
-
     return new Tabulator(element, {
         data: rows,
-        columns,
+        columns: tableColumns(reportType, payload.meta ?? {}),
         height: COMPACT ? focusHeight(element) : '65vh',
-        // fitData: hormati lebar kolom hasil perhitungan; tabel menggulir mendatar bila perlu.
+        // fitData: Tabulator mengukur isi sel sebenarnya lalu menyesuaikan lebar tiap
+        // kolom (pakai font yang benar-benar dirender), jadi tak ada teks/angka terpotong.
+        // Tabel menggulir mendatar bila total lebar melebihi layar.
         layout: 'fitData',
         columnHeaderVertAlign: 'bottom',
         movableColumns: false,
