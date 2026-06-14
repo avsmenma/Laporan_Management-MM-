@@ -104,23 +104,21 @@
          @keydown.escape.window="drill.open && closeDrill()" @click.self="closeDrill()">
         <div class="lm-dd-modal">
             <div class="lm-dd-head">
+                <button type="button" class="lm-dd-back" x-show="drill.view==='deep'" @click="backToPivot()" title="Kembali ke rincian">&larr;</button>
                 <div class="lm-dd-titles">
-                    <div class="lm-dd-title">
-                        <button type="button" class="lm-dd-back" x-show="drill.view==='deep'" @click="backToPivot()" title="Kembali ke rincian">&larr;</button>
-                        <span x-text="drill.title"></span>
+                    <div class="lm-dd-title" x-text="drill.title"></div>
+                    <div class="lm-dd-bc" x-show="drill.view==='pivot'">
+                        <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
+                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.value)"></span></span>
                     </div>
-                    <div class="lm-dd-sub" x-show="drill.view==='pivot'">
-                        <span x-text="drill.columnLabel"></span>
-                        <span class="lm-dd-dot">·</span>
-                        <span>Rp <span x-text="fmtNum(drill.value)"></span></span>
-                    </div>
-                    <div class="lm-dd-sub" x-show="drill.view==='deep'">
-                        <span x-text="drill.deep.pb7"></span>
-                        <span class="lm-dd-dot">›</span>
-                        <span x-text="drill.deep.pb712"></span>
-                        <span x-show="drill.deep.klasifikasi"><span class="lm-dd-dot">›</span> <span x-text="drill.deep.klasifikasi"></span></span>
-                        <span class="lm-dd-dot">·</span>
-                        <span>Rp <span x-text="fmtNum(drill.deep.value)"></span></span>
+                    <div class="lm-dd-bc" x-show="drill.view==='deep'">
+                        <span class="lm-dd-chip" x-text="drill.deep.pb7"></span>
+                        <span class="lm-dd-bc-sep">›</span>
+                        <span class="lm-dd-chip" x-text="drill.deep.pb712"></span>
+                        <template x-if="drill.deep.klasifikasi">
+                            <span style="display:flex;align-items:center;gap:10px"><span class="lm-dd-bc-sep">›</span><span class="lm-dd-chip" x-text="drill.deep.klasifikasi"></span></span>
+                        </template>
+                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.deep.value)"></span></span>
                     </div>
                 </div>
                 <button type="button" class="lm-dd-close" @click="closeDrill()" aria-label="Tutup">&times;</button>
@@ -145,9 +143,9 @@
                                     <th class="lm-dd-l">Pekerjaan PB7-I</th>
                                     <th class="lm-dd-l">Pekerjaan PB712-II</th>
                                     <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
-                                        <th x-text="cat"></th>
+                                        <th class="lm-dd-n" x-text="cat"></th>
                                     </template>
-                                    <th>Grand Total</th>
+                                    <th class="lm-dd-n">Grand Total</th>
                                 </tr>
                             </thead>
                             <template x-for="(group, gi) in (drill.pivot?.groups ?? [])" :key="gi">
@@ -218,25 +216,35 @@
                                     <tr>
                                         <td class="lm-dd-l" x-text="it.pb7"></td>
                                         <td class="lm-dd-l" x-text="it.pb712"></td>
-                                        <td class="lm-dd-l" x-text="it.cost_element"></td>
+                                        <td class="lm-dd-l"><span class="lm-dd-pill" x-text="it.cost_element"></span></td>
                                         <td class="lm-dd-l" x-text="it.cost_element_desc"></td>
                                         <td class="lm-dd-l" x-text="it.aktifitas"></td>
-                                        <td class="lm-dd-l" x-text="it.job_name"></td>
-                                        <td class="lm-dd-l" x-text="it.material"></td>
-                                        <td class="lm-dd-l" x-text="it.mat_desc"></td>
-                                        <td class="lm-dd-n" x-text="fmtNum(it.qty)"></td>
-                                        <td class="lm-dd-l" x-text="it.uom"></td>
+                                        <td class="lm-dd-l lm-dd-job" x-text="it.job_name"></td>
+                                        <td class="lm-dd-l">
+                                            <span x-show="it.material" x-text="it.material"></span>
+                                            <span class="lm-dd-dash" x-show="!it.material">–</span>
+                                        </td>
+                                        <td class="lm-dd-l">
+                                            <span x-show="it.mat_desc" x-text="it.mat_desc"></span>
+                                            <span class="lm-dd-dash" x-show="!it.mat_desc">–</span>
+                                        </td>
+                                        <td class="lm-dd-n">
+                                            <span x-show="fmtNum(it.qty)" x-text="fmtNum(it.qty)"></span>
+                                            <span class="lm-dd-dash" x-show="!fmtNum(it.qty)">–</span>
+                                        </td>
+                                        <td class="lm-dd-l">
+                                            <span x-show="it.uom" x-text="it.uom"></span>
+                                            <span class="lm-dd-dash" x-show="!it.uom">–</span>
+                                        </td>
                                         <td class="lm-dd-n lm-dd-rowtot" x-text="fmtNum(it.total)"></td>
                                     </tr>
                                 </template>
                             </tbody>
-                            <tfoot>
-                                <tr class="lm-dd-grandrow">
-                                    <td class="lm-dd-l" colspan="10">Grand Total</td>
-                                    <td class="lm-dd-n" x-text="fmtNum(drill.deep.data?.grand_total)"></td>
-                                </tr>
-                            </tfoot>
                         </table>
+                    </div>
+                    <div class="lm-dd-grand" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
+                        <span>Grand Total</span>
+                        <span class="lm-dd-grand-amt">Rp <span x-text="fmtNum(drill.deep.data?.grand_total)"></span></span>
                     </div>
                 </div>
             </div>
