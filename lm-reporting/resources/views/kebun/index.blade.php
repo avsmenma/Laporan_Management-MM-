@@ -200,6 +200,8 @@
                         <table class="lm-dd-table lm-dd-deep">
                             <thead>
                                 <tr>
+                                    <th class="lm-dd-l">Pekerjaan PB7-I</th>
+                                    <th class="lm-dd-l">Pekerjaan PB712-II</th>
                                     <th class="lm-dd-l">Cost Element</th>
                                     <th class="lm-dd-l">Cost Element Desc</th>
                                     <th class="lm-dd-l">Aktifitas</th>
@@ -214,6 +216,8 @@
                             <tbody>
                                 <template x-for="(it, ii) in (drill.deep.data?.items ?? [])" :key="ii">
                                     <tr>
+                                        <td class="lm-dd-l" x-text="it.pb7"></td>
+                                        <td class="lm-dd-l" x-text="it.pb712"></td>
                                         <td class="lm-dd-l" x-text="it.cost_element"></td>
                                         <td class="lm-dd-l" x-text="it.cost_element_desc"></td>
                                         <td class="lm-dd-l" x-text="it.aktifitas"></td>
@@ -228,7 +232,7 @@
                             </tbody>
                             <tfoot>
                                 <tr class="lm-dd-grandrow">
-                                    <td class="lm-dd-l" colspan="8">Grand Total</td>
+                                    <td class="lm-dd-l" colspan="10">Grand Total</td>
                                     <td class="lm-dd-n" x-text="fmtNum(drill.deep.data?.grand_total)"></td>
                                 </tr>
                             </tfoot>

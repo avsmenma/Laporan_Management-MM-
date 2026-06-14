@@ -298,6 +298,8 @@ class ReportController extends Controller
         $agg = [];
         foreach ($rows as $row) {
             $key = implode('|', [
+                (string) $row->pb7,
+                (string) $row->pb712,
                 (string) $row->cost_element,
                 (string) $row->aktifitas,
                 (string) $row->job_name,
@@ -307,6 +309,8 @@ class ReportController extends Controller
 
             if (! isset($agg[$key])) {
                 $agg[$key] = [
+                    'pb7' => (string) $row->pb7,
+                    'pb712' => (string) $row->pb712,
                     'cost_element' => (string) $row->cost_element,
                     'cost_element_desc' => (string) $row->cost_element_desc,
                     'aktifitas' => (string) $row->aktifitas,
@@ -923,9 +927,14 @@ class ReportController extends Controller
             ];
         }
 
+        $pb7Col = $table.'.pekerjaan_pb7_i';
+        $pb712Col = $table.'.pekerjaan_pb712_ii';
+
         return $query
-            ->groupBy($ce, $ceDesc, $akt, $job, $mat, $matDesc, $uom)
+            ->groupBy($pb7Col, $pb712Col, $ce, $ceDesc, $akt, $job, $mat, $matDesc, $uom)
             ->select(
+                DB::raw($pb7Col.' as pb7'),
+                DB::raw($pb712Col.' as pb712'),
                 DB::raw($ce.' as cost_element'),
                 DB::raw($ceDesc.' as cost_element_desc'),
                 DB::raw($akt.' as aktifitas'),
