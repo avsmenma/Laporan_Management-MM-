@@ -466,9 +466,10 @@ select.field-control { padding-right: 8px; }
     color: #fff !important;
 }
 
-/* make the "Jumlah ..." label read as one merged cell across Kode + Uraian:
-   drop the divider on the Kode cell and pull the label left into the Kode column
-   (Kode column width = 110px, see textColumn('kode', 'Kode', 110) in app.js) */
+/* Baris "Jumlah ..." (subtotal/grand total): hilangkan garis pemisah kolom Kode
+   supaya menyatu dengan band hijau. Label TIDAK ditarik ke kiri (kolom Kode kini
+   lebar otomatis), jadi tampil utuh satu baris di kolom Uraian — yang lebarnya
+   ikut menyesuaikan label terpanjang sehingga tak pernah terpotong. */
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="kode"],
 .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="kode"] {
     box-shadow: none !important;
@@ -477,18 +478,11 @@ select.field-control { padding-right: 8px; }
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"],
 .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] {
     overflow: visible !important;
-    white-space: normal !important;
+    white-space: nowrap !important;
 }
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"] > span,
 .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] > span {
-    position: relative;
-    z-index: 1;
-    margin-left: -110px;          /* tarik label masuk ke kolom Kode */
-    padding-left: 12px !important;
-    width: 418px;                 /* batas Kode (110) + Uraian (320), beri jarak ke kolom angka */
-    white-space: normal;          /* turun ke baris berikutnya bila panjang */
-    overflow-wrap: anywhere;
-    line-height: 1.25;
+    white-space: nowrap;
 }
 
 /* numeric cells: tabular mono, right aligned */
