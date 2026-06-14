@@ -58,9 +58,6 @@
         .brand-text { line-height: 1.15; min-width: 0; }
         .brand-name { font-weight: 600; font-size: 14.5px; color: #fff; white-space: nowrap; }
         .brand-sub { font-size: 11px; color: #9dc3b4; letter-spacing: .02em; white-space: nowrap; }
-        .topbar-divider { width: 1px; height: 26px; background: rgba(255,255,255,.14); flex: none; }
-        .topbar-unit { font-size: 12px; color: #bcd7cc; white-space: nowrap; }
-        .topbar-unit b { color: #fff; font-weight: 600; margin-left: 4px; }
         .app-header-right { display: flex; align-items: center; gap: 12px; }
 
         /* day KPIs inside the topbar */
@@ -342,12 +339,6 @@
                 <div class="brand-name">PT. Perkebunan Nusantara</div>
                 <div class="brand-sub">Sistem Pelaporan LM &middot; Regional V</div>
             </div>
-        </div>
-
-        <div class="topbar-divider"></div>
-        <div class="topbar-unit" x-data="{ unit: '' }" x-cloak x-show="unit"
-             @lm-topbar-unit.window="unit = $event.detail.label">
-            @yield('unit-label', 'Unit')<b x-text="unit"></b>
         </div>
 
         <div class="topbar-spacer"></div>
