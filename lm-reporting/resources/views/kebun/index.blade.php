@@ -105,67 +105,135 @@
         <div class="lm-dd-modal">
             <div class="lm-dd-head">
                 <div class="lm-dd-titles">
-                    <div class="lm-dd-title" x-text="drill.title"></div>
-                    <div class="lm-dd-sub">
+                    <div class="lm-dd-title">
+                        <button type="button" class="lm-dd-back" x-show="drill.view==='deep'" @click="backToPivot()" title="Kembali ke rincian">&larr;</button>
+                        <span x-text="drill.title"></span>
+                    </div>
+                    <div class="lm-dd-sub" x-show="drill.view==='pivot'">
                         <span x-text="drill.columnLabel"></span>
                         <span class="lm-dd-dot">·</span>
                         <span>Rp <span x-text="fmtNum(drill.value)"></span></span>
+                    </div>
+                    <div class="lm-dd-sub" x-show="drill.view==='deep'">
+                        <span x-text="drill.deep.pb7"></span>
+                        <span class="lm-dd-dot">›</span>
+                        <span x-text="drill.deep.pb712"></span>
+                        <span x-show="drill.deep.klasifikasi"><span class="lm-dd-dot">›</span> <span x-text="drill.deep.klasifikasi"></span></span>
+                        <span class="lm-dd-dot">·</span>
+                        <span>Rp <span x-text="fmtNum(drill.deep.value)"></span></span>
                     </div>
                 </div>
                 <button type="button" class="lm-dd-close" @click="closeDrill()" aria-label="Tutup">&times;</button>
             </div>
 
             <div class="lm-dd-body">
-                <div x-show="drill.loading" class="lm-dd-state">Memuat rincian sumber…</div>
-                <div x-show="!drill.loading && drill.error" class="lm-dd-state lm-dd-err" x-text="drill.error"></div>
-                <div x-show="!drill.loading && !drill.error && (!drill.pivot || !drill.pivot.row_count)" class="lm-dd-state"
-                     x-text="drill.message || (drill.pivot && !drill.pivot.row_count ? 'Tidak ada baris sumber mentah untuk sel ini pada periode terpilih (data WBS/OHC mungkin belum diimpor untuk batch ini).' : 'Tidak ada rincian sumber untuk sel ini.')"></div>
+                <!-- VIEW: pivot rincian sumber (level 1) -->
+                <div x-show="drill.view==='pivot'">
+                    <div x-show="drill.loading" class="lm-dd-state">Memuat rincian sumber…</div>
+                    <div x-show="!drill.loading && drill.error" class="lm-dd-state lm-dd-err" x-text="drill.error"></div>
+                    <div x-show="!drill.loading && !drill.error && (!drill.pivot || !drill.pivot.row_count)" class="lm-dd-state"
+                         x-text="drill.message || (drill.pivot && !drill.pivot.row_count ? 'Tidak ada baris sumber mentah untuk sel ini pada periode terpilih (data WBS/OHC mungkin belum diimpor untuk batch ini).' : 'Tidak ada rincian sumber untuk sel ini.')"></div>
 
-                <div class="lm-dd-tablewrap" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
-                    <template x-if="drill.pivot && drill.pivot.row_count">
-                    <table class="lm-dd-table">
-                        <thead>
-                            <tr>
-                                <th class="lm-dd-l">Pekerjaan PB7-I</th>
-                                <th class="lm-dd-l">Pekerjaan PB712-II</th>
-                                <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
-                                    <th x-text="cat"></th>
-                                </template>
-                                <th>Grand Total</th>
-                            </tr>
-                        </thead>
-                        <template x-for="(group, gi) in (drill.pivot?.groups ?? [])" :key="gi">
-                            <tbody>
-                                <template x-for="(r, ri) in group.rows" :key="ri">
-                                    <tr>
-                                        <td class="lm-dd-l lm-dd-pb7" x-text="ri === 0 ? group.pb7 : ''"></td>
-                                        <td class="lm-dd-l" x-text="r.pb712"></td>
+                    <div class="lm-dd-hint" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
+                        Klik salah satu angka untuk melihat rincian lebih dalam (Cost Element, Aktifitas, Material).
+                    </div>
+                    <div class="lm-dd-tablewrap" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
+                        <template x-if="drill.pivot && drill.pivot.row_count">
+                        <table class="lm-dd-table">
+                            <thead>
+                                <tr>
+                                    <th class="lm-dd-l">Pekerjaan PB7-I</th>
+                                    <th class="lm-dd-l">Pekerjaan PB712-II</th>
+                                    <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
+                                        <th x-text="cat"></th>
+                                    </template>
+                                    <th>Grand Total</th>
+                                </tr>
+                            </thead>
+                            <template x-for="(group, gi) in (drill.pivot?.groups ?? [])" :key="gi">
+                                <tbody>
+                                    <template x-for="(r, ri) in group.rows" :key="ri">
+                                        <tr>
+                                            <td class="lm-dd-l lm-dd-pb7" x-text="ri === 0 ? group.pb7 : ''"></td>
+                                            <td class="lm-dd-l" x-text="r.pb712"></td>
+                                            <template x-for="cat in drill.pivot.categories" :key="cat">
+                                                <td class="lm-dd-n" :class="{ 'lm-dd-clickable': r.values[cat] }"
+                                                    @click="openDeep(group.pb7, r.pb712, cat, r.values[cat])"
+                                                    x-text="fmtNum(r.values[cat])"></td>
+                                            </template>
+                                            <td class="lm-dd-n lm-dd-rowtot lm-dd-clickable"
+                                                @click="openDeep(group.pb7, r.pb712, null, r.total)"
+                                                x-text="fmtNum(r.total)"></td>
+                                        </tr>
+                                    </template>
+                                    <tr class="lm-dd-subrow">
+                                        <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' — Subtotal'"></td>
                                         <template x-for="cat in drill.pivot.categories" :key="cat">
-                                            <td class="lm-dd-n" x-text="fmtNum(r.values[cat])"></td>
+                                            <td class="lm-dd-n" x-text="fmtNum(group.subtotal[cat])"></td>
                                         </template>
-                                        <td class="lm-dd-n lm-dd-rowtot" x-text="fmtNum(r.total)"></td>
+                                        <td class="lm-dd-n" x-text="fmtNum(group.subtotal_total)"></td>
+                                    </tr>
+                                </tbody>
+                            </template>
+                            <tfoot>
+                                <tr class="lm-dd-grandrow">
+                                    <td class="lm-dd-l" colspan="2">Grand Total</td>
+                                    <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
+                                        <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand[cat])"></td>
+                                    </template>
+                                    <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand_total)"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- VIEW: rincian lebih dalam (level 2) -->
+                <div x-show="drill.view==='deep'">
+                    <div x-show="drill.deep.loading" class="lm-dd-state">Memuat rincian lebih dalam…</div>
+                    <div x-show="!drill.deep.loading && drill.deep.error" class="lm-dd-state lm-dd-err" x-text="drill.deep.error"></div>
+                    <div x-show="!drill.deep.loading && !drill.deep.error && (!drill.deep.data || !drill.deep.data.row_count)" class="lm-dd-state">
+                        Tidak ada rincian lebih dalam untuk sel ini.
+                    </div>
+                    <div class="lm-dd-tablewrap" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
+                        <table class="lm-dd-table lm-dd-deep">
+                            <thead>
+                                <tr>
+                                    <th class="lm-dd-l">Cost Element</th>
+                                    <th class="lm-dd-l">Cost Element Desc</th>
+                                    <th class="lm-dd-l">Aktifitas</th>
+                                    <th class="lm-dd-l">Job Name</th>
+                                    <th class="lm-dd-l">Material</th>
+                                    <th class="lm-dd-l">Mat. Desc.</th>
+                                    <th class="lm-dd-n">Qty</th>
+                                    <th class="lm-dd-l">UoM</th>
+                                    <th class="lm-dd-n">Nilai (Rp)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(it, ii) in (drill.deep.data?.items ?? [])" :key="ii">
+                                    <tr>
+                                        <td class="lm-dd-l" x-text="it.cost_element"></td>
+                                        <td class="lm-dd-l" x-text="it.cost_element_desc"></td>
+                                        <td class="lm-dd-l" x-text="it.aktifitas"></td>
+                                        <td class="lm-dd-l" x-text="it.job_name"></td>
+                                        <td class="lm-dd-l" x-text="it.material"></td>
+                                        <td class="lm-dd-l" x-text="it.mat_desc"></td>
+                                        <td class="lm-dd-n" x-text="fmtNum(it.qty)"></td>
+                                        <td class="lm-dd-l" x-text="it.uom"></td>
+                                        <td class="lm-dd-n lm-dd-rowtot" x-text="fmtNum(it.total)"></td>
                                     </tr>
                                 </template>
-                                <tr class="lm-dd-subrow">
-                                    <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' — Subtotal'"></td>
-                                    <template x-for="cat in drill.pivot.categories" :key="cat">
-                                        <td class="lm-dd-n" x-text="fmtNum(group.subtotal[cat])"></td>
-                                    </template>
-                                    <td class="lm-dd-n" x-text="fmtNum(group.subtotal_total)"></td>
-                                </tr>
                             </tbody>
-                        </template>
-                        <tfoot>
-                            <tr class="lm-dd-grandrow">
-                                <td class="lm-dd-l" colspan="2">Grand Total</td>
-                                <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
-                                    <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand[cat])"></td>
-                                </template>
-                                <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand_total)"></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                    </template>
+                            <tfoot>
+                                <tr class="lm-dd-grandrow">
+                                    <td class="lm-dd-l" colspan="8">Grand Total</td>
+                                    <td class="lm-dd-n" x-text="fmtNum(drill.deep.data?.grand_total)"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -196,7 +264,12 @@ function kebunApp() {
         loadingLm13: false,
         lm14Table: null,
         lm13Table: null,
-        drill: { open: false, loading: false, error: null, title: '', columnLabel: '', value: 0, pivot: null, message: null },
+        drill: {
+            open: false, view: 'pivot', loading: false, error: null,
+            title: '', columnLabel: '', value: 0, pivot: null, message: null,
+            ctx: { kode: '', column: '' },
+            deep: { loading: false, error: null, data: null, pb7: '', pb712: '', klasifikasi: '', value: 0 },
+        },
         errorMessage: null,
 
         async init() {
@@ -508,6 +581,7 @@ function kebunApp() {
             const dd = event.detail.drilldown;
             this.drill = {
                 open: true,
+                view: 'pivot',
                 loading: true,
                 error: null,
                 title: String(event.detail.row?.uraian ?? '').trim() || dd.kode_baris,
@@ -515,6 +589,8 @@ function kebunApp() {
                 value: Number(event.detail.value ?? 0),
                 pivot: null,
                 message: null,
+                ctx: { kode: dd.kode_baris, column: dd.column_key },
+                deep: { loading: false, error: null, data: null, pb7: '', pb712: '', klasifikasi: '', value: 0 },
             };
 
             try {
@@ -535,6 +611,46 @@ function kebunApp() {
             } finally {
                 this.drill.loading = false;
             }
+        },
+
+        // Rincian LEBIH DALAM: klik salah satu nilai di pivot untuk lihat sumber per
+        // Cost Element / Aktifitas / Material. klasifikasi null = seluruh klasifikasi (total baris).
+        async openDeep(pb7, pb712, klasifikasi, value) {
+            if (!value || Math.abs(Number(value)) < 0.5) {
+                return;
+            }
+            this.drill.view = 'deep';
+            this.drill.deep = {
+                loading: true, error: null, data: null,
+                pb7: pb7 || '(Tanpa Keterangan)',
+                pb712: pb712 || '(Tanpa Keterangan)',
+                klasifikasi: klasifikasi || '',
+                value: Number(value || 0),
+            };
+
+            try {
+                const params = new URLSearchParams({
+                    type: this.activeReportType(),
+                    batch: this.filters.batch,
+                    unit: this.filters.unit,
+                    komoditi: this.filters.komoditi,
+                    kode: this.drill.ctx.kode,
+                    column: this.drill.ctx.column,
+                });
+                if (pb7 != null) params.set('pb7', pb7);
+                if (pb712 != null) params.set('pb712', pb712);
+                if (klasifikasi != null) params.set('klasifikasi', klasifikasi);
+                const data = await this.fetchReport(`/report-data/drilldown-deep?${params.toString()}`);
+                this.drill.deep.data = data.detail;
+            } catch (error) {
+                this.drill.deep.error = error.message;
+            } finally {
+                this.drill.deep.loading = false;
+            }
+        },
+
+        backToPivot() {
+            this.drill.view = 'pivot';
         },
 
         closeDrill() {
