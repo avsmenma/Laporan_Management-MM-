@@ -576,8 +576,9 @@ select.field-control { padding-right: 8px; }
     background: #fff;
     border-radius: 10px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
-    width: min(1100px, 96vw);
-    max-height: 88vh;
+    width: min(1800px, 97vw);
+    height: 92vh;
+    max-height: 92vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -609,10 +610,14 @@ select.field-control { padding-right: 8px; }
 }
 .lm-dd-close:hover { opacity: 1; }
 
-.lm-dd-body { padding: 0; overflow: auto; }
-.lm-dd-state { padding: 40px; text-align: center; color: #666; }
+.lm-dd-body { padding: 0; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* tiap "view" (pivot / rincian dalam) mengisi tinggi modal; tabel di dalamnya yang menggulir */
+.lm-dd-body > div { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lm-dd-state { padding: 40px; text-align: center; color: #666; flex: none; }
 .lm-dd-err { color: #b3261e; }
-.lm-dd-tablewrap { overflow: auto; }
+.lm-dd-hint { flex: none; }
+.lm-dd-tablewrap { flex: 1; min-height: 0; overflow: auto; }
+.lm-dd-tablewrap > template + table, .lm-dd-tablewrap > table { width: 100%; }
 
 .lm-dd-table {
     border-collapse: collapse;
