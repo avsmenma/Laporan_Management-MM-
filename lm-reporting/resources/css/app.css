@@ -398,15 +398,28 @@ select.field-control { padding-right: 8px; }
     overflow: visible !important;
 }
 .lm-report-table .lm-number-cell {
+    white-space: nowrap !important;
     text-overflow: clip !important;
-    overflow: visible !important;
+    overflow: hidden !important;
 }
-/* Uraian column: tampilkan teks penuh, turun ke bawah bila panjang */
+/* Uraian column: SATU baris, lebar tetap; bila panjang dipotong dengan "…" */
 .lm-report-table .tabulator-cell[tabulator-field="uraian"] {
-    white-space: normal !important;
-    text-overflow: clip !important;
-    overflow: visible !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    overflow: hidden !important;
     line-height: 1.3;
+}
+.lm-report-table .tabulator-cell[tabulator-field="uraian"] > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Baris subtotal/total: label panjang boleh melampaui lebar kolom (tidak dipotong) */
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"],
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"],
+.lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"] > span,
+.lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] > span {
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
 /* frozen identity columns (Kode / Uraian) */

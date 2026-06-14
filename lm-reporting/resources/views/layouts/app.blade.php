@@ -151,11 +151,11 @@
         body.lm-focus .lm-report-table .tabulator-header .tabulator-col .tabulator-col-title,
         body.lm-focus .lm-report-table .tabulator-header .tabulator-col-group .tabulator-col-title { font-size: 8.5px !important; letter-spacing: 0; }
         body.lm-focus .lm-report-table .tabulator-row .tabulator-cell { padding: 2px 5px; }
-        /* label subtotal/total: sesuaikan dgn lebar kolom compact (Kode 52 + Uraian 190) agar tidak menimpa kolom angka */
+        /* label subtotal/total: sesuaikan dgn lebar kolom compact (WBS/GL/CC 64 + Uraian 240) agar mulai dari kolom kode */
         body.lm-focus .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"] > span,
         body.lm-focus .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] > span {
-            margin-left: -52px;
-            width: 236px;
+            margin-left: -64px;
+            width: 304px;
             padding-left: 6px !important;
         }
 

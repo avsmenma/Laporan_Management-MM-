@@ -72,24 +72,27 @@ function textColumn(field, title, width) {
     return {
         title,
         field,
-        width: field === 'uraian' ? cw(width, 190) : cw(width, 52),
+        width: field === 'uraian' ? cw(width, 240) : cw(width, 64),
         frozen: true,
         headerSort: false,
         formatter(cell) {
             const data = cell.getRow().getData();
             const value = cell.getValue() ?? '';
             const indent = field === 'uraian' ? Number(data.indent ?? 0) * 14 : 0;
+            const title = String(value).replace(/"/g, '&quot;');
 
-            return `<span style="display:block;padding-left:${indent}px">${value}</span>`;
+            return `<span title="${title}" style="display:block;padding-left:${indent}px">${value}</span>`;
         },
     };
 }
 
-function numberColumn(field, title, minWidth = 104) {
+function numberColumn(field, title, minWidth = 116) {
     return {
         title,
         field,
-        minWidth: cw(minWidth, Math.round(minWidth * 0.6)),
+        // Lebar tetap supaya kolom nilai tidak menyusut & angka tidak tumpang tindih.
+        // Compact (layar penuh): lebar pas untuk angka rupiah terpanjang.
+        ...(COMPACT ? { width: 96 } : { minWidth }),
         hozAlign: 'right',
         headerHozAlign: 'center',
         headerSort: false,
@@ -122,7 +125,7 @@ function numberColumn(field, title, minWidth = 104) {
 
 function baseColumns(includeKode = true) {
     return [
-        ...(includeKode ? [textColumn('kode', 'Kode', 110)] : []),
+        ...(includeKode ? [textColumn('kode', 'WBS/GL/CC', 110)] : []),
         textColumn('uraian', 'Uraian', 320),
     ];
 }
@@ -317,7 +320,7 @@ function renderTable(element, reportType, reportData) {
         data: rows,
         columns: tableColumns(reportType, payload.meta ?? {}),
         height: COMPACT ? focusHeight(element) : '65vh',
-        layout: COMPACT ? 'fitColumns' : 'fitDataStretch',
+        layout: COMPACT ? 'fitData' : 'fitDataStretch',
         columnHeaderVertAlign: 'bottom',
         movableColumns: false,
         rowFormatter,
