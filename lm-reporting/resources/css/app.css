@@ -402,16 +402,12 @@ select.field-control { padding-right: 8px; }
     text-overflow: clip !important;
     overflow: hidden !important;
 }
-/* Uraian column: SATU baris, lebar tetap; bila panjang dipotong dengan "…" */
+/* Uraian column: SATU baris; lebar kolom dihitung agar muat penuh (tak dipotong) */
 .lm-report-table .tabulator-cell[tabulator-field="uraian"] {
     white-space: nowrap !important;
-    text-overflow: ellipsis !important;
+    text-overflow: clip !important;
     overflow: hidden !important;
     line-height: 1.3;
-}
-.lm-report-table .tabulator-cell[tabulator-field="uraian"] > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 /* Baris subtotal/total: label panjang boleh melampaui lebar kolom (tidak dipotong) */
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"],

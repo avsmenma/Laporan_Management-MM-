@@ -301,6 +301,71 @@ function tableColumns(reportType, meta) {
     return lm16Columns(meta);
 }
 
+// Pengukur lebar teks pakai canvas (akurat dengan font yang dipakai sel/header).
+let _measureCanvas = null;
+function measureText(text, bold) {
+    if (!_measureCanvas) {
+        _measureCanvas = document.createElement('canvas');
+    }
+    const ctx = _measureCanvas.getContext('2d');
+    const size = COMPACT ? 8.5 : 12;
+    ctx.font = `${bold ? '600' : '400'} ${size}px "IBM Plex Sans", system-ui, -apple-system, sans-serif`;
+    return ctx.measureText(String(text ?? '')).width;
+}
+
+// Header boleh turun baris antar-kata, jadi kolom cukup memuat KATA terpanjang.
+function headerWordWidth(title) {
+    return String(title ?? '')
+        .split(/\s+/)
+        .reduce((max, word) => Math.max(max, measureText(word, true)), 0);
+}
+
+// Hitung lebar tiap kolom dari isi sebenarnya (data + header) supaya tidak ada
+// uraian terpotong "…" atau angka tersembunyi. Lebar = konten terpanjang + padding.
+function autosizeColumns(columns, rows) {
+    for (const column of columns) {
+        if (column.columns) {
+            autosizeColumns(column.columns, rows);
+            continue;
+        }
+
+        const field = column.field;
+        if (!field) {
+            continue;
+        }
+
+        const isText = field === 'uraian' || field === 'kode';
+        const percent = isPercent(field);
+        let max = headerWordWidth(column.title);
+
+        for (const row of rows) {
+            let text;
+            let extra = 0;
+            if (isText) {
+                text = row[field] ?? '';
+                if (field === 'uraian') {
+                    extra = Number(row.indent ?? 0) * 14; // indentasi level baris
+                }
+            } else {
+                const isRendemenRow = String(row.uraian ?? '').toLowerCase().includes('rendemen');
+                text = formatNumber(row[field], field, percent || isRendemenRow);
+            }
+
+            const width = measureText(text, false) + extra;
+            if (width > max) {
+                max = width;
+            }
+        }
+
+        const padding = COMPACT ? 14 : 22; // padding kiri+kanan + garis
+        const buffer = COMPACT ? 6 : 10;   // cadangan agar tak pernah terpotong
+        const minWidth = isText ? (COMPACT ? 56 : 76) : (COMPACT ? 52 : 68);
+
+        column.width = Math.max(Math.ceil(max) + padding + buffer, minWidth);
+        delete column.minWidth;
+    }
+}
+
 function rowFormatter(row) {
     const data = row.getData();
     const element = row.getElement();
@@ -316,11 +381,15 @@ function renderTable(element, reportType, reportData) {
     COMPACT = document.body.classList.contains('lm-focus');
     element.innerHTML = '';
 
+    const columns = tableColumns(reportType, payload.meta ?? {});
+    autosizeColumns(columns, rows);
+
     return new Tabulator(element, {
         data: rows,
-        columns: tableColumns(reportType, payload.meta ?? {}),
+        columns,
         height: COMPACT ? focusHeight(element) : '65vh',
-        layout: COMPACT ? 'fitData' : 'fitDataStretch',
+        // fitData: hormati lebar kolom hasil perhitungan; tabel menggulir mendatar bila perlu.
+        layout: 'fitData',
         columnHeaderVertAlign: 'bottom',
         movableColumns: false,
         rowFormatter,
