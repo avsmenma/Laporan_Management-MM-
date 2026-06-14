@@ -478,11 +478,15 @@ select.field-control { padding-right: 8px; }
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"],
 .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] {
     overflow: visible !important;
-    white-space: nowrap !important;
+    /* Label panjang TURUN ke baris berikutnya di dalam kolom Uraian (tinggi baris
+       menyesuaikan), jadi tidak menumpuk ke kolom angka. */
+    white-space: normal !important;
 }
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="uraian"] > span,
 .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="uraian"] > span {
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
 }
 
 /* numeric cells: tabular mono, right aligned */
