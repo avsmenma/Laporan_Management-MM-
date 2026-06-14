@@ -224,6 +224,116 @@ class ReportController extends Controller
     }
 
     /**
+     * GET /api/report/drilldown-deep — rincian LEBIH DALAM untuk satu sel pivot
+     * (Pekerjaan PB7-I × PB712-II × Klasifikasi tertentu) yang diklik di popup.
+     */
+    public function drilldownDeep(Request $request): JsonResponse
+    {
+        $this->authenticateReportRequest($request);
+
+        $request->validate([
+            'type' => 'required|in:LM14,lm14',
+            'batch' => 'required',
+            'unit' => 'required',
+            'kode' => 'required',
+            'column' => 'required',
+            'komoditi' => 'nullable|in:KS,KR,ks,kr',
+            'pb7' => 'nullable|string',
+            'pb712' => 'nullable|string',
+            'klasifikasi' => 'nullable|string',
+        ]);
+
+        $type = strtoupper((string) $request->type);
+        $batch = $this->findBatch((string) $request->batch);
+        $unit = $this->findUnit((string) $request->unit);
+        $komoditi = $request->filled('komoditi') ? strtoupper((string) $request->komoditi) : null;
+
+        $this->checkBatchAccess($batch);
+
+        $template = LmTemplateRow::query()
+            ->where('report_type', $type)
+            ->where('komoditi', $komoditi)
+            ->where(fn ($query) => $query
+                ->where('kode', $request->kode)
+                ->orWhere('urutan', is_numeric($request->kode) ? (int) $request->kode : 0))
+            ->orderBy('urutan')
+            ->first();
+
+        $scope = $this->columnPeriodScope((string) $request->column);
+
+        $rows = [];
+        if ($template !== null && $scope !== null) {
+            $pb7 = $request->filled('pb7') ? (string) $request->pb7 : null;
+            $pb712 = $request->filled('pb712') ? (string) $request->pb712 : null;
+            $klasifikasi = $request->filled('klasifikasi') ? (string) $request->klasifikasi : null;
+
+            foreach ($this->contributingDetailTemplates($template, $type, $komoditi) as $detail) {
+                foreach ($this->rawDeepRows($detail, $batch, $unit, $komoditi, $scope, $pb7, $pb712, $klasifikasi) as $row) {
+                    $rows[] = $row;
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'context' => [
+                'pb7' => $request->pb7,
+                'pb712' => $request->pb712,
+                'klasifikasi' => $request->klasifikasi,
+                'column_label' => $this->columnLabel($type, (string) $request->column),
+            ],
+            'detail' => $this->buildDeepList($rows),
+        ]);
+    }
+
+    /**
+     * Gabungkan baris rincian dalam (jumlahkan duplikat antar baris detail), urutkan
+     * nilai terbesar dulu, sertakan grand total.
+     *
+     * @param  array<int, object>  $rows
+     * @return array<string, mixed>
+     */
+    private function buildDeepList(array $rows): array
+    {
+        $agg = [];
+        foreach ($rows as $row) {
+            $key = implode('|', [
+                (string) $row->cost_element,
+                (string) $row->aktifitas,
+                (string) $row->job_name,
+                (string) $row->material,
+                (string) $row->uom,
+            ]);
+
+            if (! isset($agg[$key])) {
+                $agg[$key] = [
+                    'cost_element' => (string) $row->cost_element,
+                    'cost_element_desc' => (string) $row->cost_element_desc,
+                    'aktifitas' => (string) $row->aktifitas,
+                    'job_name' => (string) $row->job_name,
+                    'material' => (string) $row->material,
+                    'mat_desc' => (string) $row->mat_desc,
+                    'uom' => (string) $row->uom,
+                    'qty' => 0.0,
+                    'total' => 0.0,
+                ];
+            }
+
+            $agg[$key]['qty'] += (float) $row->qty;
+            $agg[$key]['total'] += (float) $row->total;
+        }
+
+        $items = array_values($agg);
+        usort($items, fn ($a, $b) => $b['total'] <=> $a['total']);
+
+        return [
+            'items' => $items,
+            'grand_total' => array_sum(array_column($items, 'total')),
+            'row_count' => count($items),
+        ];
+    }
+
+    /**
      * Build metadata untuk response report.
      */
     private function buildMeta(Batch $batch, RefUnit $unit, string $reportType, ?string $komoditi = null): array
@@ -580,6 +690,11 @@ class ReportController extends Controller
     /** Urutan kanonik kolom klasifikasi pada pivot rincian sumber. */
     private const KLASIFIKASI_ORDER = ['1. Gaji', '2. SPK', '3. Bahan', '4. EAP', '5. Depresiasi', '6.Lain-Lain'];
 
+    /** Placeholder untuk nilai kosong pada pivot (dipakai pivot & filter rincian dalam). */
+    private const PIVOT_BLANK = '(Tanpa Keterangan)';
+
+    private const PIVOT_BLANK_KLAS = '(Tanpa Klasifikasi)';
+
     /**
      * Label kolom yang diklik (untuk judul popup rincian).
      */
@@ -689,17 +804,18 @@ class ReportController extends Controller
     }
 
     /**
-     * Baris mentah (pekerjaan_pb7_i, pekerjaan_pb712_ii, klasifikasi, total) untuk
-     * satu baris detail, mengikuti kriteria sumber yang SAMA dengan Lm14Service.
+     * Bangun query dasar tabel sumber untuk satu baris detail (tabel, kolom nilai,
+     * filter kode/komoditi/plant, dan lingkup periode) — kriteria SAMA dgn Lm14Service.
+     * Dipakai bersama oleh pivot rincian (level-1) dan rincian lebih dalam (level-2).
      *
-     * @return \Illuminate\Support\Collection<int, object>
+     * @return array{query: \Illuminate\Database\Query\Builder, table: string, value: string}|null
      */
-    private function rawBreakdownRows(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope): \Illuminate\Support\Collection
+    private function rawSourceQuery(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope): ?array
     {
         $source = $detail->source;
         $kode = (string) $detail->kode;
         if ($source === null || $kode === '') {
-            return collect();
+            return null;
         }
 
         $isStafGaji = $source === 'BTL' && $kode === '99-01';
@@ -724,7 +840,7 @@ class ReportController extends Controller
                 $codeValue = $kode;
             }
         } else {
-            return collect();
+            return null;
         }
 
         $query = DB::table($table)
@@ -745,15 +861,103 @@ class ReportController extends Controller
                 ->where($table.'.period', $batch->month - 1);
         }
 
-        return $query
+        return ['query' => $query, 'table' => $table, 'value' => $valueColumn];
+    }
+
+    /**
+     * Baris mentah (pekerjaan_pb7_i, pekerjaan_pb712_ii, klasifikasi, total) untuk
+     * satu baris detail.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function rawBreakdownRows(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope): \Illuminate\Support\Collection
+    {
+        $ctx = $this->rawSourceQuery($detail, $batch, $unit, $komoditi, $scope);
+        if ($ctx === null) {
+            return collect();
+        }
+        $table = $ctx['table'];
+
+        return $ctx['query']
             ->groupBy($table.'.pekerjaan_pb7_i', $table.'.pekerjaan_pb712_ii', $table.'.klasifikasi')
             ->select(
                 $table.'.pekerjaan_pb7_i as pb7',
                 $table.'.pekerjaan_pb712_ii as pb712',
                 $table.'.klasifikasi as klasifikasi',
-                DB::raw('SUM('.$table.'.'.$valueColumn.') as total'),
+                DB::raw('SUM('.$table.'.'.$ctx['value'].') as total'),
             )
             ->get();
+    }
+
+    /**
+     * Rincian LEBIH DALAM untuk satu sel pivot (pb7 × pb712 × klasifikasi tertentu):
+     * baris mentah dikelompokkan per Cost Element / Aktifitas / Job Name / Material,
+     * lengkap dgn Qty, UoM, dan nilai — selaras format sheet "RINCIAN" pada contoh.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function rawDeepRows(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope, ?string $pb7, ?string $pb712, ?string $klasifikasi): \Illuminate\Support\Collection
+    {
+        $ctx = $this->rawSourceQuery($detail, $batch, $unit, $komoditi, $scope);
+        if ($ctx === null) {
+            return collect();
+        }
+        $table = $ctx['table'];
+        $query = $ctx['query'];
+
+        // Sempitkan ke sel pivot yang diklik.
+        $this->applyGroupFilter($query, $table.'.pekerjaan_pb7_i', $pb7, self::PIVOT_BLANK);
+        $this->applyGroupFilter($query, $table.'.pekerjaan_pb712_ii', $pb712, self::PIVOT_BLANK);
+        $this->applyGroupFilter($query, $table.'.klasifikasi', $klasifikasi, self::PIVOT_BLANK_KLAS);
+
+        // Pemetaan kolom rincian sesuai tabel sumber (db_ohc tak punya aktifitas/job_name asli).
+        if ($table === 'db_ohc') {
+            [$ce, $ceDesc, $akt, $job, $mat, $matDesc, $qty, $uom] = [
+                'db_ohc.cost_element', 'db_ohc.cost_element_name', 'db_ohc.kode', 'db_ohc.co_object_name',
+                'db_ohc.material', 'db_ohc.material_description', 'db_ohc.total_quantity', 'db_ohc.posted_uom',
+            ];
+        } else { // db_wbs_raw
+            [$ce, $ceDesc, $akt, $job, $mat, $matDesc, $qty, $uom] = [
+                'db_wbs_raw.cost_element', 'db_wbs_raw.cost_element_desc', 'db_wbs_raw.aktifitas', 'db_wbs_raw.job_name',
+                'db_wbs_raw.material', 'db_wbs_raw.mat_desc', 'db_wbs_raw.qty', 'db_wbs_raw.uom',
+            ];
+        }
+
+        return $query
+            ->groupBy($ce, $ceDesc, $akt, $job, $mat, $matDesc, $uom)
+            ->select(
+                DB::raw($ce.' as cost_element'),
+                DB::raw($ceDesc.' as cost_element_desc'),
+                DB::raw($akt.' as aktifitas'),
+                DB::raw($job.' as job_name'),
+                DB::raw($mat.' as material'),
+                DB::raw($matDesc.' as mat_desc'),
+                DB::raw($uom.' as uom'),
+                DB::raw('SUM('.$qty.') as qty'),
+                DB::raw('SUM('.$table.'.'.$ctx['value'].') as total'),
+            )
+            ->get();
+    }
+
+    /**
+     * Terapkan filter kelompok pivot ke query rincian dalam. null = tanpa filter;
+     * placeholder/kosong = cocokkan nilai NULL atau string kosong.
+     */
+    private function applyGroupFilter(\Illuminate\Database\Query\Builder $query, string $column, ?string $value, string $blankPlaceholder): void
+    {
+        if ($value === null) {
+            return;
+        }
+
+        if ($value === $blankPlaceholder || $value === '') {
+            $query->where(function ($q) use ($column) {
+                $q->whereNull($column)->orWhere($column, '');
+            });
+
+            return;
+        }
+
+        $query->where($column, $value);
     }
 
     /**
@@ -765,8 +969,8 @@ class ReportController extends Controller
      */
     private function buildPivot(array $rows): array
     {
-        $blank = '(Tanpa Keterangan)';
-        $blankKlas = '(Tanpa Klasifikasi)';
+        $blank = self::PIVOT_BLANK;
+        $blankKlas = self::PIVOT_BLANK_KLAS;
 
         // Agregasi ke map: pb7 -> pb712 -> klasifikasi -> total.
         $agg = [];

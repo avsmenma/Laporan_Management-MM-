@@ -45,6 +45,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
         Route::get('/lm13', [ReportController::class, 'lm13']);
         Route::get('/lm16', [ReportController::class, 'lm16']);
         Route::get('/drilldown', [ReportController::class, 'drilldown']);
+        Route::get('/drilldown-deep', [ReportController::class, 'drilldownDeep']);
     });
 });
 
@@ -53,6 +54,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/lm13', [ReportController::class, 'lm13']);
     Route::get('/lm16', [ReportController::class, 'lm16']);
     Route::get('/drilldown', [ReportController::class, 'drilldown']);
+    Route::get('/drilldown-deep', [ReportController::class, 'drilldownDeep']);
 });
 
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
