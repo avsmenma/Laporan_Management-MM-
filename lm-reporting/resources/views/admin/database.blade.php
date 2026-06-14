@@ -58,11 +58,6 @@
             </span>
         </div>
         <div class="panel-body">
-            <p class="field-hint" style="margin-top:0;margin-bottom:16px">
-                Lihat isi tabel database tanpa membuka MySQL. Data dimuat per halaman dari server (read-only),
-                jadi tabel besar pun tidak membuat halaman berat.
-            </p>
-
             <div class="db-controls">
                 <div class="db-field">
                     <label>Tabel</label>
@@ -71,33 +66,6 @@
                             <option value="{{ $t['name'] }}">{{ $t['name'] }} (~{{ number_format($t['rows'], 0, ',', '.') }})</option>
                         @endforeach
                     </select>
-                </div>
-                <div class="db-field">
-                    <label>Filter kolom</label>
-                    <select x-model="filter.column">
-                        <option value="">— tidak ada —</option>
-                        <template x-for="col in columns" :key="col">
-                            <option :value="col" x-text="col"></option>
-                        </template>
-                    </select>
-                </div>
-                <div class="db-field">
-                    <label>Cara</label>
-                    <select x-model="filter.op">
-                        <option value="contains">mengandung</option>
-                        <option value="eq">sama persis</option>
-                    </select>
-                </div>
-                <div class="db-field">
-                    <label>Nilai</label>
-                    <input type="text" x-model="filter.value" @keydown.enter="applyFilter()" placeholder="ketik lalu Enter…">
-                </div>
-                <div class="db-field">
-                    <label>&nbsp;</label>
-                    <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" @click="applyFilter()">Terapkan</button>
-                        <button class="btn" @click="resetFilter()" x-show="filter.column || filter.value">Reset</button>
-                    </div>
                 </div>
                 <div class="db-field" style="margin-left:auto">
                     <label>Baris / halaman</label>
@@ -173,22 +141,13 @@ function databaseViewer() {
         error: null,
         perPage: 50,
         pageInput: 1,
-        filter: { column: '', op: 'contains', value: '' },
         pagination: { total: 0, per_page: 50, page: 1, last_page: 1, from: 0, to: 0 },
 
         init() {
             if (this.table) this.load(1, true);
         },
-        // Ganti tabel/filter/ukuran halaman → hitung ulang total (count=1).
-        onTableChange() {
-            this.filter = { column: '', op: 'contains', value: '' };
-            this.load(1, true);
-        },
-        applyFilter() { this.load(1, true); },
-        resetFilter() {
-            this.filter = { column: '', op: 'contains', value: '' };
-            this.load(1, true);
-        },
+        // Ganti tabel/ukuran halaman → hitung ulang total (count=1).
+        onTableChange() { this.load(1, true); },
         changePerPage() { this.load(1, true); },
         // Navigasi antar-halaman → tidak menghitung COUNT lagi (cepat).
         goto(page) {
@@ -207,11 +166,6 @@ function databaseViewer() {
                     per_page: this.perPage,
                     count: withCount ? 1 : 0,
                 });
-                if (this.filter.column && this.filter.value !== '') {
-                    params.set('column', this.filter.column);
-                    params.set('op', this.filter.op);
-                    params.set('value', this.filter.value);
-                }
                 const res = await fetch(`{{ route('database.data') }}?${params.toString()}`, {
                     headers: { 'Accept': 'application/json' },
                 });

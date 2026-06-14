@@ -21,6 +21,9 @@ class DatabaseViewerController extends Controller
 
     private const DEFAULT_PER_PAGE = 50;
 
+    /** Hanya tabel sumber mentah yang boleh dijelajahi. */
+    private const ALLOWED_TABLES = ['db_wbs_raw', 'db_ohc', 'db_gc'];
+
     /** Batas panjang teks sel yang dikirim ke frontend (jaga DOM tetap ringan). */
     private const MAX_CELL_LEN = 300;
 
@@ -51,19 +54,7 @@ class DatabaseViewerController extends Controller
         $perPage = $this->clampPerPage((int) $request->query('per_page', self::DEFAULT_PER_PAGE));
         $page = max(1, (int) $request->query('page', 1));
 
-        // Filter opsional: kolom = nilai (exact) atau LIKE (contains). Hanya kolom
-        // yang benar-benar ada yang diterima; nilai selalu di-bind (parameterized).
-        $filterColumn = (string) $request->query('column', '');
-        $filterOp = $request->query('op') === 'eq' ? 'eq' : 'contains';
-        $filterValue = (string) $request->query('value', '');
-        $applyFilter = $filterColumn !== '' && in_array($filterColumn, $columns, true) && $filterValue !== '';
-
         $query = DB::table($table);
-        if ($applyFilter) {
-            $filterOp === 'eq'
-                ? $query->where($filterColumn, $filterValue)
-                : $query->where($filterColumn, 'like', '%'.$filterValue.'%');
-        }
 
         // COUNT(*) pada tabel besar (ratusan ribu baris) berat, jadi hanya dihitung
         // saat tabel/filter berubah (count=1). Navigasi antar-halaman memakai count=0
@@ -156,12 +147,12 @@ class DatabaseViewerController extends Controller
      */
     private function tableNames(): array
     {
-        return collect(DB::select('SHOW TABLES'))
+        $existing = collect(DB::select('SHOW TABLES'))
             ->map(fn ($row) => array_values((array) $row)[0])
-            ->filter(fn ($name) => is_string($name) && ! str_starts_with($name, 'migrations'))
-            ->sort()
-            ->values()
             ->all();
+
+        // Hanya tabel yang di-whitelist DAN benar-benar ada di database.
+        return array_values(array_intersect(self::ALLOWED_TABLES, $existing));
     }
 
     private function clampPerPage(int $perPage): int
