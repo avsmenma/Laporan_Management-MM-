@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+        // Terapkan status sidebar (buka/tutup) sebelum render agar tidak berkedip.
+        try { if (localStorage.getItem('lm-sidebar-collapsed') === '1') document.documentElement.classList.add('sidebar-collapsed'); } catch (e) {}
+    </script>
     @auth
         <meta name="lm-report-user" content="{{ auth()->id() }}">
         <meta name="lm-report-token" content="{{ hash_hmac('sha256', auth()->id().'|'.auth()->user()->email.'|'.auth()->user()->role_id, config('app.key')) }}">
@@ -305,6 +309,24 @@
         }
         .sidebar-logout button:hover { background: var(--g-50); color: var(--g-800); border-color: var(--g-100); }
 
+        /* ---------------- Sidebar: tombol buka/tutup ---------------- */
+        .app-sidebar { transition: width .18s ease, padding .18s ease; }
+        .sidebar-toggle {
+            display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+            border-radius: 8px; cursor: pointer; flex: none; color: #dff0e8; padding: 0;
+            background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.16);
+        }
+        .sidebar-toggle:hover { background: rgba(255,255,255,.18); color: #fff; }
+        .sidebar-toggle svg { width: 18px; height: 18px; }
+
+        /* Saat sidebar ditutup: hanya ikon yang tampil; konten menyesuaikan (flex). */
+        html.sidebar-collapsed .app-sidebar { width: 64px; padding: 16px 8px; }
+        html.sidebar-collapsed .sidebar-nav-link { justify-content: center; padding: 10px; font-size: 0; gap: 0; }
+        html.sidebar-collapsed .sidebar-nav-link .nav-ico { font-size: 16px; }
+        html.sidebar-collapsed .nav-caret { display: none; }
+        html.sidebar-collapsed .sidebar-subnav { display: none !important; }
+        html.sidebar-collapsed .sidebar-logout button { justify-content: center; font-size: 0; gap: 0; padding: 10px; }
+
         @media (max-width: 820px) {
             .app-sidebar { width: 64px; padding: 16px 8px; }
             .sidebar-nav-link { justify-content: center; padding: 10px; font-size: 0; gap: 0; }
@@ -319,6 +341,9 @@
     <!-- Header / Topbar -->
     <header class="app-header">
         <div class="app-header-left">
+            <button type="button" class="sidebar-toggle" onclick="lmToggleSidebar()" aria-label="Buka/Tutup menu" title="Buka/Tutup menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <div class="brand-mark">PN</div>
             <div class="brand-text">
                 <div class="brand-name">PT. Perkebunan Nusantara</div>
@@ -363,7 +388,7 @@
             <nav>
                 <ul class="sidebar-nav">
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('kebun*') ? 'true' : 'false' }} }">
-                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('kebun*') ? 'active' : '' }}" @click="open = !open">
+                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('kebun*') ? 'active' : '' }}" @click="if (document.documentElement.classList.contains('sidebar-collapsed')) { lmToggleSidebar(); open = true } else { open = !open }">
                             <span class="nav-ico">📁</span> KEBUN
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
@@ -373,7 +398,7 @@
                         </ul>
                     </li>
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('pabrik*') ? 'true' : 'false' }} }">
-                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('pabrik*') ? 'active' : '' }}" @click="open = !open">
+                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('pabrik*') ? 'active' : '' }}" @click="if (document.documentElement.classList.contains('sidebar-collapsed')) { lmToggleSidebar(); open = true } else { open = !open }">
                             <span class="nav-ico">📁</span> PABRIK
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
@@ -427,6 +452,15 @@
 
     @stack('scripts')
     <script>
+        // Buka/tutup sidebar; status disimpan agar konsisten antar-halaman.
+        function lmToggleSidebar() {
+            const collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
+            try { localStorage.setItem('lm-sidebar-collapsed', collapsed ? '1' : '0'); } catch (e) {}
+            // Setelah transisi lebar selesai, beri tahu tabel (Tabulator) agar menyesuaikan.
+            setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 220);
+        }
+        window.lmToggleSidebar = lmToggleSidebar;
+
         // Esc keluar dari mode layar penuh (fallback selain tombol mengambang).
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && document.body.classList.contains('lm-focus')) {
