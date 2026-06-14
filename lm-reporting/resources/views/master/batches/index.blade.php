@@ -78,6 +78,7 @@
                             <th>Bulan</th>
                             <th>Status</th>
                             <th>Diproses</th>
+                            <th>Ubah Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -91,9 +92,19 @@
                                     <span class="pill {{ $st === 'locked' ? 'pill-info' : ($st === 'final' ? 'pill-ok' : 'pill-idle') }}"><span class="dot"></span>{{ $st }}</span>
                                 </td>
                                 <td class="mono">{{ optional($batch->processed_at)->format('Y-m-d H:i') }}</td>
+                                <td>
+                                    <form method="POST" action="{{ route('batches.store') }}" style="display:inline-flex;gap:6px">
+                                        @csrf
+                                        <input type="hidden" name="year" value="{{ $batch->year }}">
+                                        <input type="hidden" name="month" value="{{ $batch->month }}">
+                                        <button class="btn" style="height:28px;padding:0 10px;font-size:11.5px" name="status" value="final" @disabled($st === 'final')>Final</button>
+                                        <button class="btn" style="height:28px;padding:0 10px;font-size:11.5px" name="status" value="locked" @disabled($st === 'locked')>Kunci</button>
+                                        <button class="btn" style="height:28px;padding:0 10px;font-size:11.5px" name="status" value="draft" @disabled($st === 'draft')>Draft</button>
+                                    </form>
+                                </td>
                             </tr>
                         @empty
-                            <tr><td class="empty-cell" colspan="5">Belum ada batch.</td></tr>
+                            <tr><td class="empty-cell" colspan="6">Belum ada batch.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
