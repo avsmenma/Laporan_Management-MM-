@@ -62,6 +62,9 @@ Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
     Route::post('/import', [ImportController::class, 'store'])->name('import.store');
     Route::post('/import/confirm', [ImportController::class, 'confirm'])->name('import.confirm');
     Route::post('/import/cancel', [ImportController::class, 'cancel'])->name('import.cancel');
+
+    Route::get('/database', [\App\Http\Controllers\Admin\DatabaseViewerController::class, 'index'])->name('database.index');
+    Route::get('/database/data', [\App\Http\Controllers\Admin\DatabaseViewerController::class, 'data'])->name('database.data');
 });
 
 Route::middleware(['auth', 'role:Admin'])->group(function () {

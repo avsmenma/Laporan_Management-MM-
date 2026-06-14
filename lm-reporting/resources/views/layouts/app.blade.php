@@ -393,6 +393,11 @@
                                 <span class="nav-ico">🗂️</span> BATCH
                             </a>
                         </li>
+                        <li class="sidebar-nav-item">
+                            <a href="{{ route('database.index') }}" class="sidebar-nav-link {{ request()->routeIs('database.*') ? 'active' : '' }}">
+                                <span class="nav-ico">🗃️</span> DATABASE
+                            </a>
+                        </li>
                     @endif
                     @if (auth()->user()?->hasRole('Admin'))
                         <li class="sidebar-nav-item">
