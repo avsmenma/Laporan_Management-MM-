@@ -118,11 +118,11 @@
             <div class="lm-dd-body">
                 <div x-show="drill.loading" class="lm-dd-state">Memuat rincian sumber…</div>
                 <div x-show="!drill.loading && drill.error" class="lm-dd-state lm-dd-err" x-text="drill.error"></div>
-                <div x-show="!drill.loading && !drill.error && !drill.pivot" class="lm-dd-state"
-                     x-text="drill.message || 'Tidak ada rincian sumber untuk sel ini.'"></div>
+                <div x-show="!drill.loading && !drill.error && (!drill.pivot || !drill.pivot.row_count)" class="lm-dd-state"
+                     x-text="drill.message || (drill.pivot && !drill.pivot.row_count ? 'Tidak ada baris sumber mentah untuk sel ini pada periode terpilih (data WBS/OHC mungkin belum diimpor untuk batch ini).' : 'Tidak ada rincian sumber untuk sel ini.')"></div>
 
-                <div class="lm-dd-tablewrap" x-show="!drill.loading && !drill.error && drill.pivot">
-                    <template x-if="drill.pivot">
+                <div class="lm-dd-tablewrap" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
+                    <template x-if="drill.pivot && drill.pivot.row_count">
                     <table class="lm-dd-table">
                         <thead>
                             <tr>
