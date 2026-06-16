@@ -966,7 +966,7 @@ class ReportController extends Controller
             $valueColumn = 'value_obj_crcy';
             if ($isStafGaji) {
                 $codeColumn = 'lock';
-                $codeValue = 'SP01';
+                $codeValue = strtoupper((string) $komoditi) === 'KR' ? 'SR01' : 'SP01'; // SP01=Sawit, SR01=Karet
             } elseif (str_starts_with($kode, '511')) {
                 $codeColumn = 'cost_element';
                 $codeValue = $kode;

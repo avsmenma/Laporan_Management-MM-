@@ -13,11 +13,16 @@ class Lm14Service
     /**
      * Baris "Gaji/Upah & Biaya Kary. Staf dari WBS" memakai kode LM 99-01.
      * Workbook sumber menghitung bulan ini dan s.d. bulan ini dari db_ohc lock
-     * SP01, sedangkan kolom bulan lalu memakai db_wbs_raw aktifitas 99-01.
+     * SP01 (Sawit) / SR01 (Karet) — selaras formula =CONCATENATE(IF(KS,"SP","SR"),"01"),
+     * sedangkan kolom bulan lalu memakai db_wbs_raw aktifitas 99-01.
      */
     private const STAF_GAJI_KODE = '99-01';
 
-    private const STAF_GAJI_OHC_LOCK = 'SP01';
+    /** Kode CC db_ohc untuk Gaji Staf, bergantung komoditi (SP01=KS, SR01=KR). */
+    private function stafGajiOhcLock(string $komoditi): string
+    {
+        return strtoupper($komoditi) === 'KR' ? 'SR01' : 'SP01';
+    }
 
     /**
      * @return Collection<int, array<string, mixed>>
@@ -244,7 +249,7 @@ class Lm14Service
         $ohc = DB::table('db_ohc')
             ->where('komoditi', $komoditi)
             ->where('plant_code', $unit->code)
-            ->where('lock', self::STAF_GAJI_OHC_LOCK);
+            ->where('lock', $this->stafGajiOhcLock($komoditi));
 
         $scope($ohc);
 
