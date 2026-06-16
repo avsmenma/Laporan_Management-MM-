@@ -8,6 +8,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <style>
+        /* kartu akun seed yang bisa diklik untuk mengisi email otomatis */
+        .da-card[data-email] { cursor: pointer; transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease; }
+        .da-card[data-email]:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+        .da-card[data-email]:active { transform: translateY(0); }
+    </style>
 </head>
 <body>
     <div class="login-stage">
@@ -45,7 +51,7 @@
                     <div class="field">
                         <label for="email">Email</label>
                         <div class="input">
-                            <input id="email" name="email" type="email" value="{{ old('email', 'viewer@lm.test') }}" required autofocus>
+                            <input id="email" name="email" type="email" value="{{ old('email', 'admin@lm.test') }}" required autofocus>
                         </div>
                     </div>
 
@@ -62,21 +68,21 @@
                 <div class="demo-accounts">
                     <div class="da-h">Akun seed</div>
                     <div class="da-grid">
-                        <div class="da-card">
+                        <div class="da-card" data-email="viewer@lm.test" role="button" tabindex="0" title="Isi email dengan viewer@lm.test">
                             <div class="da-av" style="background:var(--ink-500)">V</div>
                             <div>
                                 <div class="da-name">Viewer</div>
                                 <div class="da-role">viewer@lm.test</div>
                             </div>
                         </div>
-                        <div class="da-card">
+                        <div class="da-card" data-email="operator@lm.test" role="button" tabindex="0" title="Isi email dengan operator@lm.test">
                             <div class="da-av" style="background:var(--g-600)">O</div>
                             <div>
                                 <div class="da-name">Operator</div>
                                 <div class="da-role">operator@lm.test</div>
                             </div>
                         </div>
-                        <div class="da-card">
+                        <div class="da-card" data-email="admin@lm.test" role="button" tabindex="0" title="Isi email dengan admin@lm.test">
                             <div class="da-av" style="background:var(--g-800)">A</div>
                             <div>
                                 <div class="da-name">Admin</div>
@@ -95,5 +101,23 @@
             </section>
         </main>
     </div>
+
+    <script>
+        // Klik kartu "Akun seed" → isi otomatis field email sesuai akun yang dipilih.
+        (function () {
+            var emailInput = document.getElementById('email');
+            document.querySelectorAll('.da-card[data-email]').forEach(function (card) {
+                var fill = function () {
+                    if (!emailInput) return;
+                    emailInput.value = card.getAttribute('data-email');
+                    emailInput.focus();
+                };
+                card.addEventListener('click', fill);
+                card.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fill(); }
+                });
+            });
+        })();
+    </script>
 </body>
 </html>
