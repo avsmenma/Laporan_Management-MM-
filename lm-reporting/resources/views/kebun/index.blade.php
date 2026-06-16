@@ -133,7 +133,7 @@
                          x-text="drill.message || (drill.pivot && !drill.pivot.row_count ? 'Tidak ada baris sumber mentah untuk sel ini pada periode terpilih (data WBS/OHC mungkin belum diimpor untuk batch ini).' : 'Tidak ada rincian sumber untuk sel ini.')"></div>
 
                     <div class="lm-dd-hint" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
-                        Klik salah satu angka untuk melihat rincian lebih dalam (Cost Element, Aktifitas, Material).
+                        Klik salah satu angka untuk melihat data sumber apa adanya (rincian per baris transaksi).
                     </div>
                     <div class="lm-dd-tablewrap" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
                         <template x-if="drill.pivot && drill.pivot.row_count">
@@ -194,53 +194,65 @@
                     <div x-show="!drill.deep.loading && !drill.deep.error && (!drill.deep.data || !drill.deep.data.row_count)" class="lm-dd-state">
                         Tidak ada rincian lebih dalam untuk sel ini.
                     </div>
+                    <div class="lm-dd-hint" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
+                        Data sumber apa adanya (mentah) — <span x-text="fmtInt(drill.deep.data?.row_count)"></span> baris.
+                        Geser ke kanan untuk melihat seluruh kolom file asli.
+                    </div>
                     <div class="lm-dd-tablewrap" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
-                        <table class="lm-dd-table lm-dd-deep">
-                            <thead>
-                                <tr>
-                                    <th class="lm-dd-l">Pekerjaan PB7-I</th>
-                                    <th class="lm-dd-l">Pekerjaan PB712-II</th>
-                                    <th class="lm-dd-l">Cost Element</th>
-                                    <th class="lm-dd-l">Cost Element Desc</th>
-                                    <th class="lm-dd-l">Aktifitas</th>
-                                    <th class="lm-dd-l">Job Name</th>
-                                    <th class="lm-dd-l">Material</th>
-                                    <th class="lm-dd-l">Mat. Desc.</th>
-                                    <th class="lm-dd-n">Qty</th>
-                                    <th class="lm-dd-l">UoM</th>
-                                    <th class="lm-dd-n">Nilai (Rp)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <template x-for="(it, ii) in (drill.deep.data?.items ?? [])" :key="ii">
-                                    <tr>
-                                        <td class="lm-dd-l" x-text="it.pb7"></td>
-                                        <td class="lm-dd-l" x-text="it.pb712"></td>
-                                        <td class="lm-dd-l"><span class="lm-dd-pill" x-text="it.cost_element"></span></td>
-                                        <td class="lm-dd-l" x-text="it.cost_element_desc"></td>
-                                        <td class="lm-dd-l" x-text="it.aktifitas"></td>
-                                        <td class="lm-dd-l lm-dd-job" x-text="it.job_name"></td>
-                                        <td class="lm-dd-l">
-                                            <span x-show="it.material" x-text="it.material"></span>
-                                            <span class="lm-dd-dash" x-show="!it.material">–</span>
-                                        </td>
-                                        <td class="lm-dd-l">
-                                            <span x-show="it.mat_desc" x-text="it.mat_desc"></span>
-                                            <span class="lm-dd-dash" x-show="!it.mat_desc">–</span>
-                                        </td>
-                                        <td class="lm-dd-n">
-                                            <span x-show="fmtNum(it.qty)" x-text="fmtNum(it.qty)"></span>
-                                            <span class="lm-dd-dash" x-show="!fmtNum(it.qty)">–</span>
-                                        </td>
-                                        <td class="lm-dd-l">
-                                            <span x-show="it.uom" x-text="it.uom"></span>
-                                            <span class="lm-dd-dash" x-show="!it.uom">–</span>
-                                        </td>
-                                        <td class="lm-dd-n lm-dd-rowtot" x-text="fmtNum(it.total)"></td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
+                        <template x-for="(sec, si) in (drill.deep.data?.sections ?? [])" :key="si">
+                            <div class="lm-dd-section">
+                                <div class="lm-dd-section-head">
+                                    <span class="lm-dd-section-name" x-text="sec.label"></span>
+                                    <span class="lm-dd-section-meta">
+                                        <span x-text="fmtInt(sec.row_count)"></span> baris ·
+                                        Rp <span x-text="fmtNum(sec.subtotal)"></span>
+                                    </span>
+                                </div>
+                                <table class="lm-dd-table lm-dd-raw">
+                                    <thead>
+                                        <tr>
+                                            <th class="lm-dd-n">#</th>
+                                            <template x-for="(col, ci) in sec.columns" :key="ci">
+                                                <th :class="col.numeric ? 'lm-dd-n' : 'lm-dd-l'" x-text="col.label"></th>
+                                            </template>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="(it, ii) in sec.rows" :key="ii">
+                                            <tr>
+                                                <td class="lm-dd-n lm-dd-rownum" x-text="ii + 1"></td>
+                                                <template x-for="(col, ci) in sec.columns" :key="ci">
+                                                    <td :class="col.numeric ? 'lm-dd-n' : 'lm-dd-l'">
+                                                        <template x-if="col.numeric">
+                                                            <span>
+                                                                <span x-show="fmtNum(it[col.field])" x-text="fmtNum(it[col.field])"></span>
+                                                                <span class="lm-dd-dash" x-show="!fmtNum(it[col.field])">–</span>
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="!col.numeric">
+                                                            <span>
+                                                                <span x-show="it[col.field] !== null && it[col.field] !== ''" x-text="it[col.field]"></span>
+                                                                <span class="lm-dd-dash" x-show="it[col.field] === null || it[col.field] === ''">–</span>
+                                                            </span>
+                                                        </template>
+                                                    </td>
+                                                </template>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="lm-dd-subrow">
+                                            <td class="lm-dd-n"></td>
+                                            <template x-for="(col, ci) in sec.columns" :key="ci">
+                                                <td :class="col.numeric ? 'lm-dd-n' : 'lm-dd-l'">
+                                                    <span x-show="col.field === sec.value_field">Subtotal: <span x-text="fmtNum(sec.subtotal)"></span></span>
+                                                </td>
+                                            </template>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </template>
                     </div>
                     <div class="lm-dd-grand" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
                         <span>Grand Total</span>
@@ -675,6 +687,11 @@ function kebunApp() {
                 return '';
             }
             return n.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+        },
+
+        fmtInt(value) {
+            const n = Number(value ?? 0);
+            return Number.isFinite(n) ? n.toLocaleString('id-ID') : '0';
         }
     }
 }

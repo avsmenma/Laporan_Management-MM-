@@ -282,58 +282,105 @@ class ReportController extends Controller
                 'klasifikasi' => $request->klasifikasi,
                 'column_label' => $this->columnLabel($type, (string) $request->column),
             ],
-            'detail' => $this->buildDeepList($rows),
+            'detail' => $this->buildRawDetail($rows),
         ]);
     }
 
     /**
-     * Gabungkan baris rincian dalam (jumlahkan duplikat antar baris detail), urutkan
-     * nilai terbesar dulu, sertakan grand total.
+     * Susun baris rincian dalam APA ADANYA (data mentah, bukan summary): tiap baris
+     * sumber ditampilkan utuh, dikelompokkan per tabel asal (DB WBS / DB OHC) lengkap
+     * dengan definisi kolom file asli, subtotal nilai per blok, dan grand total.
      *
      * @param  array<int, object>  $rows
      * @return array<string, mixed>
      */
-    private function buildDeepList(array $rows): array
+    private function buildRawDetail(array $rows): array
     {
-        $agg = [];
+        // Kelompokkan baris per tabel sumber, pertahankan urutan kemunculan.
+        $byTable = [];
         foreach ($rows as $row) {
-            $key = implode('|', [
-                (string) $row->pb7,
-                (string) $row->pb712,
-                (string) $row->cost_element,
-                (string) $row->aktifitas,
-                (string) $row->job_name,
-                (string) $row->material,
-                (string) $row->uom,
-            ]);
-
-            if (! isset($agg[$key])) {
-                $agg[$key] = [
-                    'pb7' => (string) $row->pb7,
-                    'pb712' => (string) $row->pb712,
-                    'cost_element' => (string) $row->cost_element,
-                    'cost_element_desc' => (string) $row->cost_element_desc,
-                    'aktifitas' => (string) $row->aktifitas,
-                    'job_name' => (string) $row->job_name,
-                    'material' => (string) $row->material,
-                    'mat_desc' => (string) $row->mat_desc,
-                    'uom' => (string) $row->uom,
-                    'qty' => 0.0,
-                    'total' => 0.0,
-                ];
-            }
-
-            $agg[$key]['qty'] += (float) $row->qty;
-            $agg[$key]['total'] += (float) $row->total;
+            $byTable[(string) $row->_table][] = $row;
         }
 
-        $items = array_values($agg);
-        usort($items, fn ($a, $b) => $b['total'] <=> $a['total']);
+        $sections = [];
+        $grandTotal = 0.0;
+        $rowCount = 0;
+
+        // Urut blok: DB WBS dulu, lalu DB OHC, sisanya menyusul.
+        $order = ['db_wbs_raw', 'db_ohc'];
+        $tables = array_values(array_unique(array_merge(
+            array_values(array_filter($order, fn ($t) => isset($byTable[$t]))),
+            array_keys($byTable),
+        )));
+
+        foreach ($tables as $table) {
+            if (empty($byTable[$table])) {
+                continue;
+            }
+
+            $meta = $this->rawTableMeta($table);
+            $valueField = $meta['value_field'];
+
+            $items = [];
+            $subtotal = 0.0;
+            foreach ($byTable[$table] as $row) {
+                $arr = (array) $row;
+                unset($arr['_table'], $arr['id'], $arr['batch_id'], $arr['plant_code']);
+                $items[] = $arr;
+                $subtotal += (float) ($row->{$valueField} ?? 0);
+            }
+
+            $grandTotal += $subtotal;
+            $rowCount += count($items);
+
+            $sections[] = [
+                'table' => $table,
+                'label' => $meta['label'],
+                'value_field' => $valueField,
+                'columns' => $meta['columns'],
+                'rows' => $items,
+                'subtotal' => $subtotal,
+                'row_count' => count($items),
+            ];
+        }
 
         return [
-            'items' => $items,
-            'grand_total' => array_sum(array_column($items, 'total')),
-            'row_count' => count($items),
+            'sections' => $sections,
+            'grand_total' => $grandTotal,
+            'row_count' => $rowCount,
+        ];
+    }
+
+    /**
+     * Definisi kolom file asli untuk satu tabel sumber mentah: label kolom (urut
+     * sesuai file) + flag numerik + field nilai (uang) untuk subtotal.
+     *
+     * @return array{label: string, value_field: string, columns: array<int, array{field: string, label: string, numeric: bool}>}
+     */
+    private function rawTableMeta(string $table): array
+    {
+        if ($table === 'db_ohc') {
+            $label = 'DB OHC';
+            $labels = self::OHC_RAW_LABELS;
+        } else {
+            $label = 'DB WBS';
+            $labels = self::WBS_RAW_LABELS;
+        }
+
+        $numeric = self::RAW_NUMERIC_FIELDS[$table] ?? [];
+        $columns = [];
+        foreach ($labels as $field => $colLabel) {
+            $columns[] = [
+                'field' => $field,
+                'label' => $colLabel,
+                'numeric' => in_array($field, $numeric, true),
+            ];
+        }
+
+        return [
+            'label' => $label,
+            'value_field' => self::RAW_VALUE_FIELD[$table] ?? 'value',
+            'columns' => $columns,
         ];
     }
 
@@ -700,6 +747,65 @@ class ReportController extends Controller
     private const PIVOT_BLANK_KLAS = '(Tanpa Klasifikasi)';
 
     /**
+     * Kolom mentah db_wbs_raw (field DB => judul kolom file asli), urut sesuai file
+     * sumber DB WBS (A..AV). Dipakai menampilkan rincian "data apa adanya" per baris.
+     */
+    private const WBS_RAW_LABELS = [
+        'company_code' => 'Company Code', 'plant' => 'Plant', 'plant_desc' => 'Desc.',
+        'divisi_afdeling' => 'Divisi/Afdeling', 'blok' => 'Blok', 'status_blok' => 'Status Blok',
+        'tahun_tanam' => 'Tahun Tanam', 'komoditi' => 'Komoditi', 'period' => 'Period',
+        'project' => 'Project', 'wbs' => 'WBS', 'wbs_desc' => 'WBS Desc.', 'fase' => 'Fase.',
+        'group_aktifitas' => 'Group Aktifitas', 'group_desc' => 'Group Desc', 'aktifitas' => 'Aktifitas',
+        'job_name' => 'Job Name', 'hierarchy_area' => 'Hierarchy Area', 'cost_center' => 'Cost Center',
+        'cc_desc' => 'CC Desc.', 'partner_cctr' => 'Partner-CCtr', 'partner_cctr_desc' => 'Partner-CCtr Desc.',
+        'cost_element' => 'Cost Element', 'cost_element_desc' => 'Cost Element Desc', 'value' => 'Value',
+        'currency' => 'Currency', 'material' => 'Material', 'mat_desc' => 'Mat. Desc.', 'qty' => 'Qty',
+        'uom' => 'UoM', 'object_num' => 'Object Num.', 'object_type' => 'Object Type',
+        'profit_center' => 'Profit Center', 'value_type' => 'Value Type', 'reference_procedure' => 'Reference Procedure',
+        'order_no' => 'Order', 'order_type' => 'Order Type', 'order_category' => 'Order Category',
+        'order_desc' => 'Order Desc.', 'hectare_planted' => 'Hectare Planted',
+        'co_business_transaction' => 'CO Business Transaction', 'mapping_cogm' => 'Mapping COGM',
+        'klasifikasi' => 'Klasifikasi', 'kode' => 'Kode', 'pekerjaan_pb712_ii' => 'Pekerjaan PB712-II',
+        'pekerjaan_pb7_i' => 'Pekerjaan PB7-I', 'source' => 'Source', 'keterangan' => 'Keterangan',
+    ];
+
+    /**
+     * Kolom mentah db_ohc (field DB => judul kolom file asli), urut sesuai file
+     * sumber DB OHC (A..AR).
+     */
+    private const OHC_RAW_LABELS = [
+        'cost_center' => 'Cost Center', 'co_object_name' => 'CO Object Name',
+        'business_transaction' => 'Business Transaction', 'document_number' => 'Document Number',
+        'ref_document_number' => 'Ref. document number', 'cost_element' => 'Cost Element',
+        'cost_element_name' => 'Cost element name', 'period' => 'Period', 'posting_date' => 'Posting Date',
+        'value_obj_crcy' => 'Value in Obj. Crcy', 'total_quantity' => 'Total quantity',
+        'posted_uom' => 'Posted unit of meas.', 'name' => 'Name', 'user_name' => 'User Name',
+        'material' => 'Material', 'material_description' => 'Material Description',
+        'reference_procedure' => 'Reference procedure', 'dr_cr_indicator' => 'Dr/Cr indicator',
+        'reference_key' => 'Reference Key', 'partner_object_class' => 'Partner Object Class',
+        'object_type' => 'Object Type', 'partner_object_name' => 'Partner object name',
+        'partner_object_type' => 'Partner Object Type', 'offsetting_account' => 'Offsetting Account',
+        'name_offsetting_account' => 'Name of offsetting account',
+        'name_offsetting_account_2' => 'Name of offsetting account2',
+        'document_header_text' => 'Document Header Text', 'partner_object' => 'Partner Object',
+        'partner_object_type3' => 'Partner object type3', 'partner_cctr' => 'Partner-CCtr',
+        'source_object' => 'Source Object', 'source_object_name' => 'Source object name',
+        'origin_obj_type' => 'Origin-obj. type', 'source_object_type' => 'Source object type',
+        'cost_element_descr' => 'Cost element descr.', 'plant' => 'Plant', 'lock' => 'lock',
+        'kode' => 'Kode', 'pekerjaan_pb712_ii' => 'Pekerjaan PB712-II', 'klasifikasi' => 'Klasifikasi',
+        'pekerjaan_pb7_i' => 'Pekerjaan PB7-I', 'komoditi' => 'Komoditi', 'unit_kerja' => 'Unit Kerja',
+        'pekerjaan_pb712_iii' => 'Pekerjaan PB712-III',
+    ];
+
+    /** Field nilai (uang) & field numerik per tabel sumber mentah. */
+    private const RAW_VALUE_FIELD = ['db_wbs_raw' => 'value', 'db_ohc' => 'value_obj_crcy'];
+
+    private const RAW_NUMERIC_FIELDS = [
+        'db_wbs_raw' => ['period', 'value', 'qty', 'hectare_planted'],
+        'db_ohc' => ['period', 'value_obj_crcy', 'total_quantity'],
+    ];
+
+    /**
      * Label kolom yang diklik (untuk judul popup rincian).
      */
     private function columnLabel(string $type, string $columnKey): string
@@ -895,8 +1001,8 @@ class ReportController extends Controller
 
     /**
      * Rincian LEBIH DALAM untuk satu sel pivot (pb7 × pb712 × klasifikasi tertentu):
-     * baris mentah dikelompokkan per Cost Element / Aktifitas / Job Name / Material,
-     * lengkap dgn Qty, UoM, dan nilai — selaras format sheet "RINCIAN" pada contoh.
+     * baris mentah APA ADANYA (tanpa agregasi/summary), seluruh kolom file sumber.
+     * Tiap baris ditandai tabel asalnya (`_table`) agar bisa ditampilkan per-blok.
      *
      * @return \Illuminate\Support\Collection<int, object>
      */
@@ -914,38 +1020,16 @@ class ReportController extends Controller
         $this->applyGroupFilter($query, $table.'.pekerjaan_pb712_ii', $pb712, self::PIVOT_BLANK);
         $this->applyGroupFilter($query, $table.'.klasifikasi', $klasifikasi, self::PIVOT_BLANK_KLAS);
 
-        // Pemetaan kolom rincian sesuai tabel sumber (db_ohc tak punya aktifitas/job_name asli).
-        if ($table === 'db_ohc') {
-            [$ce, $ceDesc, $akt, $job, $mat, $matDesc, $qty, $uom] = [
-                'db_ohc.cost_element', 'db_ohc.cost_element_name', 'db_ohc.kode', 'db_ohc.co_object_name',
-                'db_ohc.material', 'db_ohc.material_description', 'db_ohc.total_quantity', 'db_ohc.posted_uom',
-            ];
-        } else { // db_wbs_raw
-            [$ce, $ceDesc, $akt, $job, $mat, $matDesc, $qty, $uom] = [
-                'db_wbs_raw.cost_element', 'db_wbs_raw.cost_element_desc', 'db_wbs_raw.aktifitas', 'db_wbs_raw.job_name',
-                'db_wbs_raw.material', 'db_wbs_raw.mat_desc', 'db_wbs_raw.qty', 'db_wbs_raw.uom',
-            ];
-        }
-
-        $pb7Col = $table.'.pekerjaan_pb7_i';
-        $pb712Col = $table.'.pekerjaan_pb712_ii';
-
+        // Ambil baris mentah apa adanya (seluruh kolom tabel sumber), urut sesuai id asli.
         return $query
-            ->groupBy($pb7Col, $pb712Col, $ce, $ceDesc, $akt, $job, $mat, $matDesc, $uom)
-            ->select(
-                DB::raw($pb7Col.' as pb7'),
-                DB::raw($pb712Col.' as pb712'),
-                DB::raw($ce.' as cost_element'),
-                DB::raw($ceDesc.' as cost_element_desc'),
-                DB::raw($akt.' as aktifitas'),
-                DB::raw($job.' as job_name'),
-                DB::raw($mat.' as material'),
-                DB::raw($matDesc.' as mat_desc'),
-                DB::raw($uom.' as uom'),
-                DB::raw('SUM('.$qty.') as qty'),
-                DB::raw('SUM('.$table.'.'.$ctx['value'].') as total'),
-            )
-            ->get();
+            ->select($table.'.*')
+            ->orderBy($table.'.id')
+            ->get()
+            ->map(function ($row) use ($table) {
+                $row->_table = $table;
+
+                return $row;
+            });
     }
 
     /**

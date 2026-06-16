@@ -642,3 +642,18 @@ select.field-control { padding-right: 8px; }
 
 /* tabel rincian dalam: batasi lebar kolom teks agar rapi */
 .lm-dd-deep td.lm-dd-l { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+
+/* RINCIAN DALAM = data mentah apa adanya: blok per tabel sumber (DB WBS / DB OHC) */
+.lm-dd-section { margin-bottom: 18px; }
+.lm-dd-section-head {
+    position: sticky; left: 0;
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 10px 16px; background: #eef6f1; border-bottom: 2px solid #0f4c3a;
+}
+.lm-dd-section-name { font-weight: 700; color: #0f4c3a; font-size: 14px; letter-spacing: .3px; }
+.lm-dd-section-meta { font-size: 12.5px; color: #5a6b62; }
+.lm-dd-raw { font-size: 12.5px; }
+.lm-dd-raw thead th { padding: 9px 12px; font-size: 11.5px; }
+.lm-dd-raw tbody td { padding: 7px 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.lm-dd-rownum { color: #9aa5a0; font-weight: 600; }
+.lm-dd-raw tfoot td { background: #eef2ea; font-weight: 700; color: #4b5b3f; padding: 9px 12px; }
