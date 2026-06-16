@@ -100,8 +100,10 @@ function textColumn(field, title, width) {
     };
 }
 
-function numberColumn(field, title, minWidth = 116) {
-    return {
+// clickable=false → sel tidak membuka popup sumber data & tidak tampak bisa diklik.
+// Dipakai LM13 yang tak punya rincian sumber mentah (drilldown hanya untuk LM14).
+function numberColumn(field, title, clickable = true) {
+    const column = {
         title,
         field,
         // Tanpa lebar tetap: Tabulator (fitData) tumbuh mengikuti angka terpanjang.
@@ -110,14 +112,17 @@ function numberColumn(field, title, minWidth = 116) {
         hozAlign: 'right',
         headerHozAlign: 'center',
         headerSort: false,
-        cssClass: 'lm-number-cell',
+        cssClass: clickable ? 'lm-number-cell' : 'lm-number-cell lm-number-static',
         formatter(cell) {
             const row = cell.getRow().getData();
             const isRendemenRow = String(row.uraian ?? '').toLowerCase().includes('rendemen');
 
             return formatNumber(cell.getValue(), field, isPercent(field) || isRendemenRow);
         },
-        cellClick(event, cell) {
+    };
+
+    if (clickable) {
+        column.cellClick = function (event, cell) {
             const data = cell.getRow().getData();
             const meta = data.__cells?.[field]?.drilldown;
             if (!meta || Math.abs(Number(cell.getValue() ?? 0)) < 0.000001) {
@@ -133,8 +138,10 @@ function numberColumn(field, title, minWidth = 116) {
                     drilldown: meta,
                 },
             }));
-        },
-    };
+        };
+    }
+
+    return column;
 }
 
 function baseColumns(includeKode = true) {
@@ -265,19 +272,19 @@ function lm13Columns(meta) {
                 {
                     title: monthLabel(meta),
                     columns: [
-                        numberColumn(`${block}_real_thn_lalu`, 'Real Thn Lalu'),
-                        numberColumn(`${block}_bi_jumlah`, 'Real Bln Ini'),
-                        numberColumn(`${block}_bi_rko`, 'RKO'),
-                        numberColumn(`${block}_bi_rkap`, 'RKAP'),
+                        numberColumn(`${block}_real_thn_lalu`, 'Real Thn Lalu', false),
+                        numberColumn(`${block}_bi_jumlah`, 'Real Bln Ini', false),
+                        numberColumn(`${block}_bi_rko`, 'RKO', false),
+                        numberColumn(`${block}_bi_rkap`, 'RKAP', false),
                     ],
                 },
                 {
                     title: `s.d ${monthLabel(meta)}`,
                     columns: [
-                        numberColumn(`${block}_sd_real_thn_lalu`, 'Real Thn Lalu'),
-                        numberColumn(`${block}_sd_jumlah`, 'Real s.d'),
-                        numberColumn(`${block}_sd_rko`, 'RKO'),
-                        numberColumn(`${block}_sd_rkap`, 'RKAP'),
+                        numberColumn(`${block}_sd_real_thn_lalu`, 'Real Thn Lalu', false),
+                        numberColumn(`${block}_sd_jumlah`, 'Real s.d', false),
+                        numberColumn(`${block}_sd_rko`, 'RKO', false),
+                        numberColumn(`${block}_sd_rkap`, 'RKAP', false),
                     ],
                 },
             ],

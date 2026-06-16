@@ -520,6 +520,14 @@ select.field-control { padding-right: 8px; }
     background: var(--g-50);
 }
 
+/* sel angka tanpa drilldown (mis. LM13): tidak tampak bisa diklik */
+.lm-report-table .lm-number-cell.lm-number-static {
+    cursor: default;
+}
+.lm-report-table .lm-number-cell.lm-number-static:hover {
+    background: transparent;
+}
+
 .lm-report-footer {
     display: flex;
     flex-wrap: wrap;
