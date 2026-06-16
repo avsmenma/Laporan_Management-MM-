@@ -443,6 +443,23 @@ select.field-control { padding-right: 8px; }
     font-size: 11px;
 }
 
+/* ===== Baris "Luas Area Kebun" (header LM13): pita terang dengan angka tampil ===== */
+.lm-report-table .tabulator-row.lm-row-area .tabulator-cell,
+.lm-report-table .tabulator-row.lm-row-area .tabulator-cell.tabulator-frozen,
+.lm-report-table .tabulator-row.lm-row-area.tabulator-row-even .tabulator-cell.tabulator-frozen {
+    background: #f3f7f4 !important;
+    color: var(--g-800);
+    font-weight: 600;
+}
+.lm-report-table .tabulator-row.lm-row-area-total .tabulator-cell,
+.lm-report-table .tabulator-row.lm-row-area-total .tabulator-cell.tabulator-frozen,
+.lm-report-table .tabulator-row.lm-row-area-total.tabulator-row-even .tabulator-cell.tabulator-frozen {
+    background: #e3ede7 !important;
+    color: var(--g-900);
+    font-weight: 800;
+    border-bottom: 2px solid var(--g-700) !important;
+}
+
 /* ===== "Jumlah ..." subtotal & grand-total rows: solid green band, white text ===== */
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell,
 .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell.tabulator-frozen,

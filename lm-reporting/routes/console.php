@@ -8,6 +8,8 @@ use App\Models\Batch;
 use App\Models\RefUnit;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use OpenSpout\Reader\XLSX\Reader as XlsxReader;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -69,6 +71,117 @@ Artisan::command('lm:import-raw {--type=} {--file=} {--year=} {--month=} {--batc
 
     return 0;
 })->purpose('Impor file mentah SAP (wbs/ohc/gc) ke tabel staging secara streaming.');
+
+Artisan::command('alokasi:import-areal {--file=} {--year=}', function (): int {
+    // Impor blok "III. Areal" dari sheet "Alokasi" (Luas Area Kebun per unit) ke
+    // tabel alokasi_areal. Header sheet ini ("Real Tahun Lalu" dst) tidak cocok
+    // dengan importer generik, jadi dibaca posisional: deteksi baris header lalu
+    // ambil kolom Unit Kebun + 4 kolom nilai sampai "Grand Total"/baris kosong.
+    $file = (string) $this->option('file');
+    $year = (int) $this->option('year');
+
+    if ($file === '' || ! is_file($file)) {
+        $this->error("Berkas tidak ditemukan: {$file}");
+
+        return 1;
+    }
+    if ($year < 2000) {
+        $this->error('Opsi --year wajib (>=2000), mis. --year=2026.');
+
+        return 1;
+    }
+
+    $norm = fn ($v) => strtolower(trim(preg_replace('/\s+/', ' ', (string) $v)));
+    $number = function ($v): float {
+        $v = trim((string) $v);
+        if ($v === '' || $v === '-') {
+            return 0.0;
+        }
+        // Hilangkan pemisah ribuan; dukung format Indonesia (1.730,63) & Inggris (1730.63).
+        if (str_contains($v, ',')) {
+            $v = str_replace('.', '', $v);
+            $v = str_replace(',', '.', $v);
+        }
+
+        return (float) preg_replace('/[^0-9.\-]/', '', $v);
+    };
+
+    $knownKebun = RefUnit::query()->where('type', 'KEBUN')->pluck('code')->map(fn ($c) => strtoupper($c))->all();
+    $knownKebun = array_flip($knownKebun);
+
+    $reader = new XlsxReader();
+    $reader->open($file);
+
+    $headerCols = null;       // ['kebun'=>idx,'real_thn_lalu'=>idx,...]
+    $upserted = 0;
+    $skipped = [];
+
+    foreach ($reader->getSheetIterator() as $sheet) {
+        if ($sheet->getName() !== 'Alokasi') {
+            continue;
+        }
+
+        foreach ($sheet->getRowIterator() as $row) {
+            $cells = $row->toArray();
+
+            if ($headerCols === null) {
+                // Cari baris header areal: ada "Unit Kebun" + "Real Tahun Lalu".
+                $map = [];
+                foreach ($cells as $idx => $cell) {
+                    $map[$norm($cell)] = $idx;
+                }
+                if (isset($map['unit kebun'], $map['real tahun lalu'], $map['real tahun ini'])) {
+                    $headerCols = [
+                        'kebun' => $map['unit kebun'],
+                        'real_thn_lalu' => $map['real tahun lalu'],
+                        'real_thn_ini' => $map['real tahun ini'],
+                        'rko' => $map['rko tw'] ?? ($map['rko'] ?? null),
+                        'rkap' => $map['rkap'] ?? null,
+                    ];
+                }
+
+                continue;
+            }
+
+            $kebun = strtoupper(trim((string) ($cells[$headerCols['kebun']] ?? '')));
+            if ($kebun === '' || $norm($kebun) === 'grand total') {
+                break; // akhir blok areal
+            }
+            if (! isset($knownKebun[$kebun])) {
+                $skipped[] = $kebun;
+
+                continue;
+            }
+
+            DB::table('alokasi_areal')->updateOrInsert(
+                ['year' => $year, 'kebun_code' => $kebun],
+                [
+                    'real_thn_lalu' => $number($cells[$headerCols['real_thn_lalu']] ?? 0),
+                    'real_thn_ini' => $number($cells[$headerCols['real_thn_ini']] ?? 0),
+                    'rko' => $headerCols['rko'] !== null ? $number($cells[$headerCols['rko']] ?? 0) : 0,
+                    'rkap' => $headerCols['rkap'] !== null ? $number($cells[$headerCols['rkap']] ?? 0) : 0,
+                ],
+            );
+            $upserted++;
+        }
+
+        break;
+    }
+    $reader->close();
+
+    if ($headerCols === null) {
+        $this->error('Header "III. Areal" (Unit Kebun / Real Tahun Lalu / ...) tidak ditemukan di sheet Alokasi.');
+
+        return 1;
+    }
+
+    $this->info("Selesai: {$upserted} unit kebun di-upsert ke alokasi_areal untuk tahun {$year}.");
+    if ($skipped !== []) {
+        $this->warn('Dilewati (bukan kebun dikenal): '.implode(', ', array_unique($skipped)));
+    }
+
+    return 0;
+})->purpose('Impor Luas Area Kebun (blok III. Areal) dari sheet Alokasi ke alokasi_areal.');
 
 Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}', function (Lm13Service $lm13Service, Lm14Service $lm14Service, Lm16Service $lm16Service): int {
     $type = strtoupper((string) $this->option('type'));

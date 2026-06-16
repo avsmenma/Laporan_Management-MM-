@@ -110,12 +110,37 @@ class ReportController extends Controller
             ], 404);
         }
 
+        $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
+        $meta['area'] = $this->lm13AreaValues($batch, $unit);
+
         return response()->json([
             'success' => true,
-            'meta' => $this->buildMeta($batch, $unit, 'LM13', $komoditi),
+            'meta' => $meta,
             'columns' => $this->getLm13Columns(),
             'rows' => $rows->map(fn ($row) => $this->formatLm13Row($row)),
         ]);
+    }
+
+    /**
+     * Luas Area Kebun (Ha) untuk header LM13 — sumber tabel alokasi_areal (blok
+     * "III. Areal" sheet Alokasi). Nilai sama untuk Bulan Ini & s.d, dan sama di
+     * semua blok (OLAH_JUAL/OLAH/JUAL) karena luas areal milik kebun, bukan per olah.
+     *
+     * @return array<string, float>
+     */
+    private function lm13AreaValues(Batch $batch, RefUnit $unit): array
+    {
+        $area = DB::table('alokasi_areal')
+            ->where('year', $batch->year)
+            ->where('kebun_code', $unit->code)
+            ->first();
+
+        return [
+            'real_thn_lalu' => (float) ($area->real_thn_lalu ?? 0),
+            'real_thn_ini' => (float) ($area->real_thn_ini ?? 0),
+            'rko' => (float) ($area->rko ?? 0),
+            'rkap' => (float) ($area->rkap ?? 0),
+        ];
     }
 
     /**

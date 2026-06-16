@@ -177,7 +177,43 @@ const lm13Blocks = [
     ['JUAL', 'Di Jual'],
 ];
 
-function pivotLm13Rows(rows) {
+// Baris header "Luas Area Kebun" (TM Inti / TM Plasma/Pihak III / Jumlah) di atas
+// tabel LM13 — mengikuti sheet {kebun}-B (baris luas area). Nilai dari meta.area
+// (alokasi_areal), sama untuk Bulan Ini & s.d, dan diulang di semua blok.
+// Plasma/Pihak III belum dipisah di sumber data → 0; Jumlah = Inti + Plasma.
+function lm13AreaRows(meta) {
+    const a = meta?.area;
+    if (!a) {
+        return [];
+    }
+
+    const inti = { lalu: Number(a.real_thn_lalu ?? 0), ini: Number(a.real_thn_ini ?? 0), rko: Number(a.rko ?? 0), rkap: Number(a.rkap ?? 0) };
+    const plasma = { lalu: 0, ini: 0, rko: 0, rkap: 0 };
+    const jumlah = { lalu: inti.lalu + plasma.lalu, ini: inti.ini + plasma.ini, rko: inti.rko + plasma.rko, rkap: inti.rkap + plasma.rkap };
+
+    const makeRow = (urutan, uraian, v, rowType) => {
+        const row = { urutan, kode: '', uraian, row_type: rowType, indent: 0, __cells: {} };
+        for (const [block] of lm13Blocks) {
+            row[`${block}_real_thn_lalu`] = v.lalu;
+            row[`${block}_bi_jumlah`] = v.ini;
+            row[`${block}_bi_rko`] = v.rko;
+            row[`${block}_bi_rkap`] = v.rkap;
+            row[`${block}_sd_real_thn_lalu`] = v.lalu;
+            row[`${block}_sd_jumlah`] = v.ini;
+            row[`${block}_sd_rko`] = v.rko;
+            row[`${block}_sd_rkap`] = v.rkap;
+        }
+        return row;
+    };
+
+    return [
+        makeRow(-3, 'Luas Area Kebun TM Inti', inti, 'area'),
+        makeRow(-2, 'Luas Area Kebun TM Plasma/Pihak III', plasma, 'area'),
+        makeRow(-1, 'Jumlah', jumlah, 'area-total'),
+    ];
+}
+
+function pivotLm13Rows(rows, meta) {
     const grouped = new Map();
 
     for (const row of rows) {
@@ -202,7 +238,10 @@ function pivotLm13Rows(rows) {
         grouped.set(key, target);
     }
 
-    return [...grouped.values()].sort((left, right) => left.urutan - right.urutan);
+    const dataRows = [...grouped.values()].sort((left, right) => left.urutan - right.urutan);
+
+    // Sisipkan baris luas area di paling atas (urutan negatif), persis seperti Excel.
+    return [...lm13AreaRows(meta), ...dataRows];
 }
 
 function lm13Columns(meta) {
@@ -287,8 +326,8 @@ function lm16Columns(meta) {
     ];
 }
 
-function tableRows(reportType, rows) {
-    return reportType === 'LM13' ? pivotLm13Rows(rows) : normalizeRows(rows);
+function tableRows(reportType, rows, meta) {
+    return reportType === 'LM13' ? pivotLm13Rows(rows, meta) : normalizeRows(rows);
 }
 
 function tableColumns(reportType, meta) {
@@ -309,11 +348,13 @@ function rowFormatter(row) {
     element.classList.toggle('lm-row-header', data.row_type === 'header');
     element.classList.toggle('lm-row-subtotal', data.row_type === 'subtotal');
     element.classList.toggle('lm-row-total', data.row_type === 'total');
+    element.classList.toggle('lm-row-area', data.row_type === 'area' || data.row_type === 'area-total');
+    element.classList.toggle('lm-row-area-total', data.row_type === 'area-total');
 }
 
 function renderTable(element, reportType, reportData) {
     const payload = reportData ?? { rows: [], meta: {} };
-    const rows = tableRows(reportType, Array.isArray(payload.rows) ? payload.rows : []);
+    const rows = tableRows(reportType, Array.isArray(payload.rows) ? payload.rows : [], payload.meta ?? {});
     // Deteksi mode fokus saat render: kolom compact + tinggi penuh layar.
     COMPACT = document.body.classList.contains('lm-focus');
     element.innerHTML = '';
