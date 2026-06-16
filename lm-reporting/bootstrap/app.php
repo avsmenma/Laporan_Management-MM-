@@ -34,7 +34,18 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions) {
         // Token/sesi kedaluwarsa (419) pada form lain (mis. login) → arahkan ke halaman
         // login dengan pesan ramah, bukan halaman "PAGE EXPIRED" yang membingungkan.
-        $exceptions->render(function (\Illuminate\Session\TokenMismatchException $e, $request) {
+        // Catatan: framework mengonversi TokenMismatchException menjadi HttpException 419
+        // sebelum render callback dijalankan, jadi dideteksi via status 419 (kembalikan
+        // null untuk exception lain agar penanganan default tetap berjalan).
+        $exceptions->render(function (\Throwable $e, $request) {
+            $is419 = $e instanceof \Illuminate\Session\TokenMismatchException
+                || ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+                    && $e->getStatusCode() === 419);
+
+            if (! $is419) {
+                return null;
+            }
+
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Sesi berakhir. Silakan muat ulang.'], 419);
             }
