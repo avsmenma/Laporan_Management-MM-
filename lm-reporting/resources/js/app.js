@@ -34,8 +34,20 @@ const valueColumns = new Set([
     'rp_kg_mi',
 ]);
 
+const MONTH_NAMES = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
 function monthLabel(meta) {
-    return `Bulan ${meta?.batch?.period ?? ''}`.trim();
+    const period = Number(meta?.batch?.period ?? 0);
+    const name = MONTH_NAMES[period] ?? '';
+    return name ? `Bulan ${name}` : 'Bulan';
+}
+
+// LM13: kolom "WBS/GL/CC" pada spreadsheet hanya memuat huruf bagian (A., B., ...).
+// Kode internal (PLSM, PHTG, =L2, "Beban Produksi", "-") tidak ada di spreadsheet,
+// jadi dikosongkan agar tampilan identik.
+function cleanLm13Kode(kode) {
+    const k = String(kode ?? '').trim();
+    return /^[A-Z]\.$/.test(k) ? k : '';
 }
 
 function isPercent(field) {
@@ -221,7 +233,7 @@ function pivotLm13Rows(rows, meta) {
         const block = row.block;
         const target = grouped.get(key) ?? {
             urutan: row.urutan,
-            kode: row.kode,
+            kode: cleanLm13Kode(row.kode),
             uraian: row.uraian,
             row_type: row.row_type,
             indent: row.indent,
