@@ -196,6 +196,13 @@ const lm13Blocks = [
     ['JUAL', 'Di Jual'],
 ];
 
+// Karet hanya punya 1 blok ("Kebun Sendiri + Pihak III") di acuan -B; sawit 3 blok.
+function lm13BlocksFor(komoditi) {
+    return String(komoditi ?? '').toUpperCase() === 'KR'
+        ? [['OLAH_JUAL', 'Kebun Sendiri + Pihak III']]
+        : lm13Blocks;
+}
+
 // Baris header "Luas Area Kebun" (TM Inti / TM Plasma/Pihak III / Jumlah) di atas
 // tabel LM13 — mengikuti sheet {kebun}-B (baris luas area). Nilai dari meta.area
 // (alokasi_areal), sama untuk Bulan Ini & s.d, dan diulang di semua blok.
@@ -210,9 +217,10 @@ function lm13AreaRows(meta) {
     const plasma = { lalu: 0, ini: 0, rko: 0, rkap: 0 };
     const jumlah = { lalu: inti.lalu + plasma.lalu, ini: inti.ini + plasma.ini, rko: inti.rko + plasma.rko, rkap: inti.rkap + plasma.rkap };
 
+    const blocks = lm13BlocksFor(meta?.unit?.komoditi);
     const makeRow = (urutan, uraian, v, rowType) => {
         const row = { urutan, kode: '', uraian, row_type: rowType, indent: 0, __cells: {} };
-        for (const [block] of lm13Blocks) {
+        for (const [block] of blocks) {
             row[`${block}_real_thn_lalu`] = v.lalu;
             row[`${block}_bi_jumlah`] = v.ini;
             row[`${block}_bi_rko`] = v.rko;
@@ -266,7 +274,7 @@ function pivotLm13Rows(rows, meta) {
 function lm13Columns(meta) {
     return [
         ...baseColumns(),
-        ...lm13Blocks.map(([block, title]) => ({
+        ...lm13BlocksFor(meta?.unit?.komoditi).map(([block, title]) => ({
             title,
             columns: [
                 {

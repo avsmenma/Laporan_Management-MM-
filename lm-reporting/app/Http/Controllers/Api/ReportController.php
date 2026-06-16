@@ -111,7 +111,7 @@ class ReportController extends Controller
         }
 
         $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
-        $meta['area'] = $this->lm13AreaValues($batch, $unit);
+        $meta['area'] = $this->lm13AreaValues($batch, $unit, $komoditi);
 
         return response()->json([
             'success' => true,
@@ -128,8 +128,14 @@ class ReportController extends Controller
      *
      * @return array<string, float>
      */
-    private function lm13AreaValues(Batch $batch, RefUnit $unit): array
+    private function lm13AreaValues(Batch $batch, RefUnit $unit, string $komoditi): array
     {
+        // Luas areal karet belum tersedia sumbernya; alokasi_areal hanya berisi sawit
+        // (tanpa kolom komoditi) → jangan pakai nilai sawit untuk karet.
+        if (strtoupper($komoditi) === 'KR') {
+            return ['real_thn_lalu' => 0.0, 'real_thn_ini' => 0.0, 'rko' => 0.0, 'rkap' => 0.0];
+        }
+
         $area = DB::table('alokasi_areal')
             ->where('year', $batch->year)
             ->where('kebun_code', $unit->code)

@@ -23,16 +23,16 @@ class Lm13Service
             ->orderBy('urutan')
             ->get();
 
-        $area = $this->areaValues($batch, $unit);
+        $area = $this->areaValues($batch, $unit, $komoditi);
         $rows = collect();
 
         foreach (self::BLOCKS as $block) {
             foreach ($templates as $template) {
                 $values = match (true) {
                     $template->row_type === 'header' => $this->zeroValues(),
-                    $this->productionProduct($template->urutan) !== null => $this->productionValues($batch, $unit, $block, $this->productionProduct($template->urutan)),
-                    $this->lm14SourceLabel($template->urutan) !== null => $this->lm14Values($batch, $unit, $komoditi, $block, $this->lm14SourceLabel($template->urutan)),
-                    default => $this->calculatedValues($template->urutan, $block, $rows, $area),
+                    $this->productionProduct($template->urutan, $komoditi) !== null => $this->productionValues($batch, $unit, $block, $this->productionProduct($template->urutan, $komoditi)),
+                    $this->lm14SourceLabel($template->urutan, $komoditi) !== null => $this->lm14Values($batch, $unit, $komoditi, $block, $this->lm14SourceLabel($template->urutan, $komoditi)),
+                    default => $this->calculatedValues($template->urutan, $komoditi, $block, $rows, $area),
                 };
 
                 $rows->push([
@@ -66,8 +66,14 @@ class Lm13Service
         return $rows;
     }
 
-    private function productionProduct(int $urutan): ?string
+    private function productionProduct(int $urutan, string $komoditi): ?string
     {
+        // Karet: data produksi (Lump/RSS/SIR) belum tersedia sumbernya (tak ada sheet
+        // Alokasi pada workbook karet) → baris produksi 0 sampai sumber diimpor.
+        if (strtoupper($komoditi) === 'KR') {
+            return null;
+        }
+
         return [
             2 => 'Stok Awal TBS',
             6 => 'TBS Diterima',
@@ -81,17 +87,30 @@ class Lm13Service
         ][$urutan] ?? null;
     }
 
-    private function lm14SourceLabel(int $urutan): ?string
+    private function lm14SourceLabel(int $urutan, string $komoditi): ?string
     {
-        return [
-            48 => 'Jumlah Gaji',
-            49 => 'JUMLAH BIAYA PEMELIHARAAN',
-            50 => 'JUMLAH BIAYA PEMUPUKAN',
-            51 => 'JUMLAH BIAYA PANEN',
-            52 => 'JUMLAH BIAYA PENGANGKUTAN',
-            54 => 'Jumlah Overhead (Biaya Tidak Langsung)',
-            59 => 'Jumlah Depresiasi',
-        ][$urutan] ?? null;
+        // Struktur beban identik sawit, hanya urutan bergeser (karet = sawit − 20).
+        $map = strtoupper($komoditi) === 'KR'
+            ? [
+                28 => 'Jumlah Gaji',
+                29 => 'JUMLAH BIAYA PEMELIHARAAN',
+                30 => 'JUMLAH BIAYA PEMUPUKAN',
+                31 => 'JUMLAH BIAYA PANEN',
+                32 => 'JUMLAH BIAYA PENGANGKUTAN',
+                34 => 'Jumlah Overhead (Biaya Tidak Langsung)',
+                39 => 'Jumlah Depresiasi',
+            ]
+            : [
+                48 => 'Jumlah Gaji',
+                49 => 'JUMLAH BIAYA PEMELIHARAAN',
+                50 => 'JUMLAH BIAYA PEMUPUKAN',
+                51 => 'JUMLAH BIAYA PANEN',
+                52 => 'JUMLAH BIAYA PENGANGKUTAN',
+                54 => 'Jumlah Overhead (Biaya Tidak Langsung)',
+                59 => 'Jumlah Depresiasi',
+            ];
+
+        return $map[$urutan] ?? null;
     }
 
     /**
@@ -149,8 +168,12 @@ class Lm13Service
      * @param  array<string, float>  $area
      * @return array<string, float>
      */
-    private function calculatedValues(int $urutan, string $block, Collection $rows, array $area): array
+    private function calculatedValues(int $urutan, string $komoditi, string $block, Collection $rows, array $area): array
     {
+        if (strtoupper($komoditi) === 'KR') {
+            return $this->calculatedValuesKaret($urutan, $block, $rows, $area);
+        }
+
         return match ($urutan) {
             9 => $this->sumRows($rows, $block, [6, 7, 8]),
             14 => $this->sumRows($rows, $block, [11, 12, 13]),
@@ -171,6 +194,35 @@ class Lm13Service
             70 => $this->divideValues($this->subtractRows($rows, $block, 68, 61), $area),
             71 => $this->divideRowsByArea($rows, $block, 68, $area),
             72, 73, 74 => $this->hppValues($rows, $block, 68, 25),
+            default => $this->zeroValues(),
+        };
+    }
+
+    /**
+     * Subtotal/total & rasio LM13 Karet. Bagian beban (urutan 28..54) berstruktur
+     * sama dgn sawit (sawit − 20). Bagian produksi (9,14,22) 0 sampai sumber produksi
+     * karet tersedia (per-Ha & HPP otomatis 0 saat area/produksi 0 via safeDiv).
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @param  array<string, float>  $area
+     * @return array<string, float>
+     */
+    private function calculatedValuesKaret(int $urutan, string $block, Collection $rows, array $area): array
+    {
+        return match ($urutan) {
+            9 => $this->sumRows($rows, $block, [6, 7, 8]),
+            14 => $this->sumRows($rows, $block, [11, 12, 13]),
+            22 => $this->sumRows($rows, $block, [16, 17, 18, 19, 20, 21]),
+            33 => $this->sumRows($rows, $block, [28, 29, 30, 31, 32]),
+            35 => $this->sumRows($rows, $block, [33, 34]),
+            38 => $this->sumRows($rows, $block, [36, 37]),
+            41 => $this->sumRows($rows, $block, [39, 40]),
+            42 => $this->sumRows($rows, $block, [35, 38, 41]),
+            48 => $this->sumRows($rows, $block, [42, 43, 44, 45, 46, 47]),
+            49 => $this->divideRowsByArea($rows, $block, 33, $area),
+            50 => $this->divideValues($this->subtractRows($rows, $block, 48, 41), $area),
+            51 => $this->divideRowsByArea($rows, $block, 48, $area),
+            52, 53, 54 => $this->hppValues($rows, $block, 48, 22),
             default => $this->zeroValues(),
         };
     }
@@ -291,8 +343,15 @@ class Lm13Service
     /**
      * @return array<string, float>
      */
-    private function areaValues(Batch $batch, RefUnit $unit): array
+    private function areaValues(Batch $batch, RefUnit $unit, string $komoditi): array
     {
+        // alokasi_areal hanya berisi luas SAWIT (tanpa kolom komoditi). Untuk karet
+        // sumber luas areal belum tersedia → 0 (per-Ha jadi 0 via safeDiv, bukan nilai
+        // sawit yang menyesatkan). Hapus gate ini saat sumber luas areal karet ada.
+        if (strtoupper($komoditi) === 'KR') {
+            return ['real_thn_lalu' => 0.0, 'real_thn_ini' => 0.0, 'rko' => 0.0, 'rkap' => 0.0];
+        }
+
         $area = DB::table('alokasi_areal')
             ->where('year', $batch->year)
             ->where('kebun_code', $unit->code)
