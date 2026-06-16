@@ -194,70 +194,15 @@
                     <div x-show="!drill.deep.loading && !drill.deep.error && (!drill.deep.data || !drill.deep.data.row_count)" class="lm-dd-state">
                         Tidak ada rincian lebih dalam untuk sel ini.
                     </div>
-                    <div class="lm-dd-hint" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
-                        Data sumber apa adanya (mentah) — <span x-text="fmtInt(drill.deep.data?.row_count)"></span> baris.
-                        Geser ke kanan untuk melihat seluruh kolom file asli.
-                    </div>
-                    <div class="lm-dd-tablewrap" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
-                        <template x-for="(sec, si) in (drill.deep.data?.sections ?? [])" :key="si">
-                            <div class="lm-dd-section">
-                                <div class="lm-dd-section-head">
-                                    <span class="lm-dd-section-name" x-text="sec.label"></span>
-                                    <span class="lm-dd-section-meta">
-                                        <span x-text="fmtInt(sec.row_count)"></span> baris ·
-                                        Rp <span x-text="fmtNum(sec.subtotal)"></span>
-                                    </span>
-                                </div>
-                                <table class="lm-dd-table lm-dd-raw">
-                                    <thead>
-                                        <tr>
-                                            <th class="lm-dd-n">#</th>
-                                            <template x-for="(col, ci) in sec.columns" :key="ci">
-                                                <th :class="col.numeric ? 'lm-dd-n' : 'lm-dd-l'" x-text="col.label"></th>
-                                            </template>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <template x-for="(it, ii) in sec.rows" :key="ii">
-                                            <tr>
-                                                <td class="lm-dd-n lm-dd-rownum" x-text="ii + 1"></td>
-                                                <template x-for="(col, ci) in sec.columns" :key="ci">
-                                                    <td :class="col.numeric ? 'lm-dd-n' : 'lm-dd-l'">
-                                                        <template x-if="col.numeric">
-                                                            <span>
-                                                                <span x-show="fmtNum(it[col.field])" x-text="fmtNum(it[col.field])"></span>
-                                                                <span class="lm-dd-dash" x-show="!fmtNum(it[col.field])">–</span>
-                                                            </span>
-                                                        </template>
-                                                        <template x-if="!col.numeric">
-                                                            <span>
-                                                                <span x-show="it[col.field] !== null && it[col.field] !== ''" x-text="it[col.field]"></span>
-                                                                <span class="lm-dd-dash" x-show="it[col.field] === null || it[col.field] === ''">–</span>
-                                                            </span>
-                                                        </template>
-                                                    </td>
-                                                </template>
-                                            </tr>
-                                        </template>
-                                    </tbody>
-                                    <tfoot>
-                                        <tr class="lm-dd-subrow">
-                                            <td class="lm-dd-n"></td>
-                                            <template x-for="(col, ci) in sec.columns" :key="ci">
-                                                <td :class="col.numeric ? 'lm-dd-n' : 'lm-dd-l'">
-                                                    <span x-show="col.field === sec.value_field">Subtotal: <span x-text="fmtNum(sec.subtotal)"></span></span>
-                                                </td>
-                                            </template>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </template>
-                    </div>
-                    <div class="lm-dd-grand" x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count">
-                        <span>Grand Total</span>
-                        <span class="lm-dd-grand-amt">Rp <span x-text="fmtNum(drill.deep.data?.grand_total)"></span></span>
-                    </div>
+                    <!-- Tabel dibangun sebagai HTML statis (bukan x-for) agar tetap lancar
+                         walau baris sangat banyak; geser kiri/kanan dengan tahan-klik (drag). -->
+                    <div class="lm-dd-tablewrap lm-dd-drag"
+                         x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count"
+                         x-ref="deepScroll"
+                         @mousedown="deepDragStart($event)"
+                         @mousemove.window="deepDragMove($event)"
+                         @mouseup.window="deepDragEnd()"
+                         x-html="drill.deep.html"></div>
                 </div>
             </div>
         </div>
@@ -292,7 +237,7 @@ function kebunApp() {
             open: false, view: 'pivot', loading: false, error: null,
             title: '', columnLabel: '', value: 0, pivot: null, message: null,
             ctx: { kode: '', column: '' },
-            deep: { loading: false, error: null, data: null, pb7: '', pb712: '', klasifikasi: '', value: 0 },
+            deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
         },
         errorMessage: null,
 
@@ -614,7 +559,7 @@ function kebunApp() {
                 pivot: null,
                 message: null,
                 ctx: { kode: dd.kode_baris, column: dd.column_key },
-                deep: { loading: false, error: null, data: null, pb7: '', pb712: '', klasifikasi: '', value: 0 },
+                deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
             };
 
             try {
@@ -645,7 +590,7 @@ function kebunApp() {
             }
             this.drill.view = 'deep';
             this.drill.deep = {
-                loading: true, error: null, data: null,
+                loading: true, error: null, data: null, html: '',
                 pb7: pb7 || '(Tanpa Keterangan)',
                 pb712: pb712 || '(Tanpa Keterangan)',
                 klasifikasi: klasifikasi || '',
@@ -666,6 +611,7 @@ function kebunApp() {
                 if (klasifikasi != null) params.set('klasifikasi', klasifikasi);
                 const data = await this.fetchReport(`/report-data/drilldown-deep?${params.toString()}`);
                 this.drill.deep.data = data.detail;
+                this.drill.deep.html = this.buildDeepHtml(data.detail);
             } catch (error) {
                 this.drill.deep.error = error.message;
             } finally {
@@ -692,6 +638,86 @@ function kebunApp() {
         fmtInt(value) {
             const n = Number(value ?? 0);
             return Number.isFinite(n) ? n.toLocaleString('id-ID') : '0';
+        },
+
+        // Bangun HTML tabel rincian dalam sekali jalan (string statis) supaya popup
+        // tetap lancar walau baris sangat banyak — tanpa overhead reaktif Alpine per sel.
+        buildDeepHtml(detail) {
+            if (!detail || !detail.row_count) return '';
+            const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const dash = '<span class="lm-dd-dash">–</span>';
+            let out = '';
+
+            for (const sec of (detail.sections ?? [])) {
+                const cols = sec.columns ?? [];
+                let head = '<tr><th class="lm-dd-n">#</th>';
+                for (const col of cols) {
+                    head += '<th class="' + (col.numeric ? 'lm-dd-n' : 'lm-dd-l') + '">' + esc(col.label) + '</th>';
+                }
+                head += '</tr>';
+
+                let body = '';
+                let i = 0;
+                for (const row of (sec.rows ?? [])) {
+                    i++;
+                    let tr = '<tr><td class="lm-dd-n lm-dd-rownum">' + i + '</td>';
+                    for (const col of cols) {
+                        const v = row[col.field];
+                        if (col.numeric) {
+                            const f = this.fmtNum(v);
+                            tr += '<td class="lm-dd-n">' + (f ? esc(f) : dash) + '</td>';
+                        } else {
+                            const has = v !== null && v !== undefined && v !== '';
+                            tr += '<td class="lm-dd-l">' + (has ? esc(v) : dash) + '</td>';
+                        }
+                    }
+                    body += tr + '</tr>';
+                }
+
+                let foot = '<tr class="lm-dd-subrow"><td class="lm-dd-n"></td>';
+                for (const col of cols) {
+                    foot += '<td class="' + (col.numeric ? 'lm-dd-n' : 'lm-dd-l') + '">'
+                        + (col.field === sec.value_field ? 'Subtotal: ' + this.fmtNum(sec.subtotal) : '') + '</td>';
+                }
+                foot += '</tr>';
+
+                out += '<div class="lm-dd-section">'
+                    + '<div class="lm-dd-section-head"><span class="lm-dd-section-name">' + esc(sec.label) + '</span>'
+                    + '<span class="lm-dd-section-meta">' + this.fmtInt(sec.row_count) + ' baris · Rp ' + this.fmtNum(sec.subtotal) + '</span></div>'
+                    + '<table class="lm-dd-table lm-dd-raw"><thead>' + head + '</thead><tbody>' + body + '</tbody>'
+                    + '<tfoot>' + foot + '</tfoot></table></div>';
+            }
+
+            return out;
+        },
+
+        // Geser tabel rincian dalam kiri/kanan & atas/bawah dengan tahan-klik (drag-to-pan).
+        deepDragStart(event) {
+            const el = this.$refs.deepScroll;
+            if (!el || event.button !== 0) return;
+            this._deepDrag = {
+                active: true,
+                startX: event.pageX, startY: event.pageY,
+                left: el.scrollLeft, top: el.scrollTop,
+            };
+            el.classList.add('lm-dd-dragging');
+            event.preventDefault();
+        },
+
+        deepDragMove(event) {
+            const d = this._deepDrag;
+            if (!d || !d.active) return;
+            const el = this.$refs.deepScroll;
+            if (!el) return;
+            el.scrollLeft = d.left - (event.pageX - d.startX);
+            el.scrollTop = d.top - (event.pageY - d.startY);
+        },
+
+        deepDragEnd() {
+            if (!this._deepDrag || !this._deepDrag.active) return;
+            this._deepDrag.active = false;
+            const el = this.$refs.deepScroll;
+            if (el) el.classList.remove('lm-dd-dragging');
         }
     }
 }

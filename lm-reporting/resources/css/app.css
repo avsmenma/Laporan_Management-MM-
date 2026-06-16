@@ -657,3 +657,7 @@ select.field-control { padding-right: 8px; }
 .lm-dd-raw tbody td { padding: 7px 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
 .lm-dd-rownum { color: #9aa5a0; font-weight: 600; }
 .lm-dd-raw tfoot td { background: #eef2ea; font-weight: 700; color: #4b5b3f; padding: 9px 12px; }
+
+/* geser dengan tahan-klik (drag-to-pan) pada area rincian dalam */
+.lm-dd-drag { cursor: grab; }
+.lm-dd-drag.lm-dd-dragging { cursor: grabbing; user-select: none; }
