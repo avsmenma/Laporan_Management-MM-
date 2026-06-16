@@ -183,6 +183,136 @@ Artisan::command('alokasi:import-areal {--file=} {--year=}', function (): int {
     return 0;
 })->purpose('Impor Luas Area Kebun (blok III. Areal) dari sheet Alokasi ke alokasi_areal.');
 
+Artisan::command('alokasi:import-produksi {--file=} {--year=}', function (): int {
+    // Impor matriks produksi (TBS/CPO/Kernel per pabrik) dari sheet "Alokasi" ke
+    // alokasi_produksi. Sel di workbook acuan adalah formula IMPORTRANGE yang diekspor
+    // Google Sheets sebagai =IFERROR(__xludf.DUMMYFUNCTION("..."),<NILAI>) — nilai riil
+    // tersimpan sebagai argumen fallback IFERROR, jadi diambil dari situ.
+    $file = (string) $this->option('file');
+    $year = (int) $this->option('year');
+
+    if ($file === '' || ! is_file($file)) {
+        $this->error("Berkas tidak ditemukan: {$file}");
+
+        return 1;
+    }
+    if ($year < 2000) {
+        $this->error('Opsi --year wajib (>=2000), mis. --year=2026.');
+
+        return 1;
+    }
+
+    // Ambil nilai fallback (argumen terakhir IFERROR) dari formula DUMMYFUNCTION;
+    // untuk sel literal (tanpa '=') kembalikan apa adanya.
+    $fallback = function ($cell): string {
+        $s = trim((string) $cell);
+        if ($s === '' || $s[0] !== '=') {
+            return $s;
+        }
+        if (preg_match('/,\s*"(.*)"\)\s*$/s', $s, $m)) {
+            return $m[1]; // fallback berupa teks
+        }
+        if (preg_match('/,\s*(-?\d+(?:\.\d+)?)\)\s*$/s', $s, $m)) {
+            return $m[1]; // fallback berupa angka
+        }
+
+        return '';
+    };
+    $num = fn ($v) => (float) preg_replace('/[^0-9.\-]/', '', str_replace(',', '', (string) $v));
+
+    $knownKebun = array_flip(RefUnit::query()->where('type', 'KEBUN')->pluck('code')->map(fn ($c) => strtoupper($c))->all());
+    $skipProduk = ['', 'produk', 'keterangan', 'bulan'];
+
+    $reader = new XlsxReader();
+    $reader->open($file);
+
+    $matrix = [];
+    foreach ($reader->getSheetIterator() as $sheet) {
+        if ($sheet->getName() !== 'Alokasi') {
+            continue;
+        }
+        foreach ($sheet->getRowIterator() as $row) {
+            $matrix[] = $row->toArray();
+        }
+        break;
+    }
+    $reader->close();
+
+    if (count($matrix) < 3) {
+        $this->error('Sheet Alokasi tidak ditemukan / kosong.');
+
+        return 1;
+    }
+
+    // Kolom pabrik (kode 5Fxx) ada di baris ke-2 matriks.
+    $pabrikCols = [];
+    foreach (($matrix[1] ?? []) as $idx => $val) {
+        $code = strtoupper(trim((string) $val));
+        if (preg_match('/^5F\d{2}$/', $code)) {
+            $pabrikCols[$idx] = $code;
+        }
+    }
+    if ($pabrikCols === []) {
+        $this->error('Kolom pabrik (5Fxx) tidak terdeteksi di baris ke-2 sheet Alokasi.');
+
+        return 1;
+    }
+
+    $records = [];
+    $months = [];
+    foreach (array_slice($matrix, 2) as $cells) {
+        $kebun = strtoupper(trim((string) ($cells[1] ?? '')));
+        $produk = trim($fallback($cells[13] ?? ''));
+        $month = (int) $num($fallback($cells[12] ?? ''));
+
+        if (! isset($knownKebun[$kebun]) || $month < 1 || $month > 12) {
+            continue;
+        }
+        if (in_array(strtolower($produk), $skipProduk, true)) {
+            continue;
+        }
+
+        foreach ($pabrikCols as $idx => $pabrikCode) {
+            $jumlah = $num($fallback($cells[$idx] ?? ''));
+            if (abs($jumlah) < 0.00001) {
+                continue;
+            }
+            $records[] = [
+                'batch_id' => null,
+                'year' => $year,
+                'month' => $month,
+                'kebun_code' => $kebun,
+                'pabrik_code' => $pabrikCode,
+                'produk' => $produk,
+                'jumlah' => $jumlah,
+            ];
+            $months[$month] = true;
+        }
+    }
+
+    // Idempoten: hapus data tahun+bulan yang akan diisi, lalu sisipkan. batch_id
+    // ditautkan ke batch (year, month) bila ada (alokasi dipakai lintas batch via year+month).
+    $batchByMonth = [];
+    foreach (array_keys($months) as $m) {
+        $batchByMonth[$m] = optional(Batch::query()->where('year', $year)->where('month', $m)->first())->id;
+    }
+    foreach ($records as &$rec) {
+        $rec['batch_id'] = $batchByMonth[$rec['month']] ?? null;
+    }
+    unset($rec);
+
+    DB::transaction(function () use ($records, $year, $months): void {
+        DB::table('alokasi_produksi')->where('year', $year)->whereIn('month', array_keys($months))->delete();
+        foreach (array_chunk($records, 500) as $chunk) {
+            DB::table('alokasi_produksi')->insert($chunk);
+        }
+    });
+
+    $this->info('Selesai: '.count($records).' baris produksi diimpor (bulan: '.implode(',', array_keys($months)).", tahun {$year}).");
+
+    return 0;
+})->purpose('Impor matriks produksi (TBS/CPO/Kernel per pabrik) dari sheet Alokasi ke alokasi_produksi.');
+
 Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}', function (Lm13Service $lm13Service, Lm14Service $lm14Service, Lm16Service $lm16Service): int {
     $type = strtoupper((string) $this->option('type'));
     $batchInput = (string) $this->option('batch');
