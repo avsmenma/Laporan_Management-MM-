@@ -12,9 +12,15 @@ class Lm14Service
 {
     /**
      * Baris "Gaji/Upah & Biaya Kary. Staf dari WBS" memakai kode LM 99-01.
-     * Workbook sumber menghitung bulan ini dan s.d. bulan ini dari db_ohc lock
-     * SP01 (Sawit) / SR01 (Karet) — selaras formula =CONCATENATE(IF(KS,"SP","SR"),"01"),
-     * sedangkan kolom bulan lalu memakai db_wbs_raw aktifitas 99-01.
+     * SEMUA kolom realisasi (bulan ini, bulan lalu, s.d. bulan ini) bersumber dari
+     * db_ohc lock SP01 (Sawit) / SR01 (Karet) — selaras formula
+     * =CONCATENATE(IF(KS,"SP","SR"),"01") pada kolom Kode CC.
+     *
+     * Kolom "bulan lalu" TIDAK boleh dari db_wbs_raw aktifitas 99-01: aktifitas 99-01
+     * mencampur banyak klasifikasi (1.Gaji + 6.Lain-Lain + 5.Depresiasi), sehingga
+     * SUM tanpa filter klasifikasi menghasilkan grand-total (mis. 2.366.107.451),
+     * bukan gaji staf (mis. 217.189.151). db_ohc SP01 sudah ekuivalen klasifikasi Gaji,
+     * sehingga "bulan lalu" konsisten dengan "bulan ini" periode sebelumnya.
      */
     private const STAF_GAJI_KODE = '99-01';
 
@@ -200,8 +206,8 @@ class Lm14Service
     private function sumSourceYearPeriod(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template, int $period): float
     {
         if ($this->isStafGaji($template)) {
-            return $this->sumStafGajiWbs($unit, $komoditi, function ($query) use ($batch, $period): void {
-                $query->join('batch', 'db_wbs_raw.batch_id', '=', 'batch.id')
+            return $this->sumStafGajiOhc($unit, $komoditi, function ($query) use ($batch, $period): void {
+                $query->join('batch', 'db_ohc.batch_id', '=', 'batch.id')
                     ->where('batch.year', $batch->year)
                     ->where('period', $period);
             });
@@ -241,8 +247,8 @@ class Lm14Service
     }
 
     /**
-     * Realisasi bulan ini/s.d. bulan ini baris "Gaji Staf dari WBS"
-     * mengikuti db_ohc lock SP01 (pengganti db_btl cost center SP01).
+     * Realisasi baris "Gaji Staf dari WBS" untuk SEMUA kolom (bulan ini, bulan lalu,
+     * s.d. bulan ini) mengikuti db_ohc lock SP01/SR01 (pengganti db_btl cost center SP01).
      */
     private function sumStafGajiOhc(RefUnit $unit, string $komoditi, callable $scope): float
     {
@@ -254,22 +260,6 @@ class Lm14Service
         $scope($ohc);
 
         return (float) $ohc->sum('value_obj_crcy');
-    }
-
-    /**
-     * Kolom bulan lalu untuk baris "Gaji Staf dari WBS" mengikuti db_wbs_raw
-     * aktifitas 99-01 pada periode sebelumnya.
-     */
-    private function sumStafGajiWbs(RefUnit $unit, string $komoditi, callable $scope): float
-    {
-        $wbs = DB::table('db_wbs_raw')
-            ->where('komoditi', $komoditi)
-            ->where('plant_code', $unit->code)
-            ->where('aktifitas', self::STAF_GAJI_KODE);
-
-        $scope($wbs);
-
-        return (float) $wbs->sum('value');
     }
 
     private function sourceQuery(?string $source, ?string $kode): \Illuminate\Database\Query\Builder

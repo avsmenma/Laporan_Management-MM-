@@ -98,9 +98,11 @@ class Lm14ServiceTest extends TestCase
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'lock' => 'SUP', 'cost_element' => '51100200', 'value_obj_crcy' => 25],
         ]);
         DB::table('db_wbs_raw')->insert([
-            // Sumber WBS kini dari db_wbs_raw (kolom value). Gaji staf "dari WBS":
-            // realisasi bulan lalu ada di db_wbs_raw aktivitas 99-01.
-            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktifitas' => '99-01', 'value' => 50],
+            // Gaji staf "dari WBS" bulan lalu TIDAK lagi dari db_wbs_raw 99-01:
+            // aktivitas 99-01 mencampur banyak klasifikasi (Gaji + Lain-Lain + Depresiasi),
+            // jadi sumber bulan lalu memakai db_ohc lock SP01 (klasifikasi Gaji) seperti
+            // kolom lainnya. Baris noise 99-01 di bawah membuktikan WBS tak lagi dipakai.
+            ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktifitas' => '99-01', 'value' => 9999],
             ['batch_id' => $batchMay->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'aktifitas' => '99-01.', 'value' => 200],
             ['batch_id' => $batchApril->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4, 'aktifitas' => '99-01.', 'value' => 75],
         ]);
