@@ -52,9 +52,10 @@
         .app-header-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
         .brand-mark {
             width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center;
-            background: linear-gradient(150deg, #1d765b, #0f4c3a); color: #fff; font-weight: 700;
-            font-size: 14px; letter-spacing: .02em; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); flex: none;
+            background: #fff; padding: 3px; box-sizing: border-box; overflow: hidden;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); flex: none;
         }
+        .brand-mark img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
         .brand-text { line-height: 1.15; min-width: 0; }
         .brand-name { font-weight: 600; font-size: 14.5px; color: #fff; white-space: nowrap; }
         .brand-sub { font-size: 11px; color: #9dc3b4; letter-spacing: .02em; white-space: nowrap; }
@@ -334,7 +335,7 @@
             <button type="button" class="sidebar-toggle" onclick="lmToggleSidebar()" aria-label="Buka/Tutup menu" title="Buka/Tutup menu">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <div class="brand-mark">PN</div>
+            <div class="brand-mark"><img src="{{ asset('images/logo-ptpn4.png') }}" alt="Logo PTPN IV"></div>
             <div class="brand-text">
                 <div class="brand-name">PT. Perkebunan Nusantara</div>
                 <div class="brand-sub">Sistem Pelaporan LM &middot; Regional V</div>
