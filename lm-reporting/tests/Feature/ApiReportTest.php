@@ -150,6 +150,36 @@ class ApiReportTest extends TestCase
             ->assertJsonPath('success', true);
     }
 
+    public function test_staf_gaji_bulan_lalu_drilldown_uses_db_ohc_sp01_not_wbs(): void
+    {
+        $this->seed();
+        $april = Batch::query()->create(['code' => 'Batch #2026-04', 'year' => 2026, 'month' => 4, 'status' => 'final', 'processed_at' => '2026-04-20 08:00:00']);
+        $may = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'final', 'processed_at' => '2026-05-20 08:00:00']);
+        $unit = RefUnit::query()->where('code', '5E11')->firstOrFail();
+        $operator = User::query()->whereHas('role', fn ($query) => $query->where('name', Role::OPERATOR))->firstOrFail();
+
+        // Bulan lalu (April): gaji staf ada di db_ohc lock SP01 (klasifikasi Gaji).
+        // db_wbs_raw 99-01 hanya noise non-gaji — rincian TIDAK boleh mengambilnya.
+        DB::table('db_ohc')->insert([
+            'batch_id' => $april->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4,
+            'lock' => 'SP01', 'klasifikasi' => '1. Gaji', 'value_obj_crcy' => 217,
+        ]);
+        DB::table('db_wbs_raw')->insert([
+            'batch_id' => $april->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 4,
+            'aktifitas' => '99-01', 'klasifikasi' => '6.Lain-Lain', 'value' => 9999,
+        ]);
+
+        app(Lm14Service::class)->generate($may, $unit, 'KS');
+
+        // Rincian sumber kolom "Real Bulan Lalu" baris gaji staf = db_ohc SP01 (217),
+        // bukan grand-total WBS 99-01 (217 + 9999).
+        $this->actingAs($operator)
+            ->getJson("/api/report/drilldown?type=LM14&batch={$may->id}&unit={$unit->code}&komoditi=KS&kode=99-01&column=real_bulan_lalu")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('pivot.grand_total', 217);
+    }
+
     private function insertLm14Source(Batch $batch, RefUnit $unit): void
     {
         DB::table('db_wbs_raw')->insert([

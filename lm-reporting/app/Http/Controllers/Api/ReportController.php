@@ -962,11 +962,14 @@ class ReportController extends Controller
         $isStafGaji = $source === 'BTL' && $kode === '99-01';
 
         // Tentukan tabel, kolom nilai, dan kriteria kode (selaras Lm14Service).
-        if ($source === 'WBS' || ($isStafGaji && $scope === 'lalu')) {
+        // Gaji staf SELALU dari db_ohc lock SP01/SR01 untuk semua kolom (termasuk
+        // "bulan lalu") — aktifitas 99-01 di db_wbs_raw mencampur banyak klasifikasi
+        // (Gaji+Lain-Lain+Depresiasi) sehingga bukan gaji staf.
+        if ($source === 'WBS') {
             $table = 'db_wbs_raw';
             $valueColumn = 'value';
             $codeColumn = 'aktifitas';
-            $codeValue = $isStafGaji ? '99-01' : $kode;
+            $codeValue = $kode;
         } elseif ($source === 'BTL') {
             $table = 'db_ohc';
             $valueColumn = 'value_obj_crcy';
