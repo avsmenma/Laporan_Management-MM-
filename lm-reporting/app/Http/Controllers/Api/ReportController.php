@@ -351,14 +351,17 @@ class ReportController extends Controller
 
             $meta = $this->rawTableMeta($table);
             $valueField = $meta['value_field'];
+            $qtyField = $meta['qty_field'];
 
             $items = [];
             $subtotal = 0.0;
+            $qtySubtotal = 0.0;
             foreach ($byTable[$table] as $row) {
                 $arr = (array) $row;
                 unset($arr['_table'], $arr['id'], $arr['batch_id'], $arr['plant_code']);
                 $items[] = $arr;
                 $subtotal += (float) ($row->{$valueField} ?? 0);
+                $qtySubtotal += (float) ($row->{$qtyField} ?? 0);
             }
 
             $grandTotal += $subtotal;
@@ -368,9 +371,11 @@ class ReportController extends Controller
                 'table' => $table,
                 'label' => $meta['label'],
                 'value_field' => $valueField,
+                'qty_field' => $qtyField,
                 'columns' => $meta['columns'],
                 'rows' => $items,
                 'subtotal' => $subtotal,
+                'qty_subtotal' => $qtySubtotal,
                 'row_count' => count($items),
             ];
         }
@@ -386,7 +391,7 @@ class ReportController extends Controller
      * Definisi kolom file asli untuk satu tabel sumber mentah: label kolom (urut
      * sesuai file) + flag numerik + field nilai (uang) untuk subtotal.
      *
-     * @return array{label: string, value_field: string, columns: array<int, array{field: string, label: string, numeric: bool}>}
+     * @return array{label: string, value_field: string, qty_field: string, columns: array<int, array{field: string, label: string, numeric: bool}>}
      */
     private function rawTableMeta(string $table): array
     {
@@ -411,6 +416,7 @@ class ReportController extends Controller
         return [
             'label' => $label,
             'value_field' => self::RAW_VALUE_FIELD[$table] ?? 'value',
+            'qty_field' => self::RAW_QTY_FIELD[$table] ?? 'qty',
             'columns' => $columns,
         ];
     }
@@ -830,6 +836,9 @@ class ReportController extends Controller
 
     /** Field nilai (uang) & field numerik per tabel sumber mentah. */
     private const RAW_VALUE_FIELD = ['db_wbs_raw' => 'value', 'db_ohc' => 'value_obj_crcy'];
+
+    /** Field kuantitas (fisik) per tabel sumber mentah — dipakai subtotal kolom Qty. */
+    private const RAW_QTY_FIELD = ['db_wbs_raw' => 'qty', 'db_ohc' => 'total_quantity'];
 
     private const RAW_NUMERIC_FIELDS = [
         'db_wbs_raw' => ['period', 'value', 'qty', 'hectare_planted'],

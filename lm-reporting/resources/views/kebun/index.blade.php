@@ -676,8 +676,13 @@ function kebunApp() {
 
                 let foot = '<tr class="lm-dd-subrow"><td class="lm-dd-n"></td>';
                 for (const col of cols) {
-                    foot += '<td class="' + (col.numeric ? 'lm-dd-n' : 'lm-dd-l') + '">'
-                        + (col.field === sec.value_field ? 'Subtotal: ' + this.fmtNum(sec.subtotal) : '') + '</td>';
+                    let cell = '';
+                    if (col.field === sec.value_field) {
+                        cell = 'Subtotal: ' + this.fmtNum(sec.subtotal);
+                    } else if (col.field === sec.qty_field) {
+                        cell = 'Subtotal: ' + this.fmtNum(sec.qty_subtotal);
+                    }
+                    foot += '<td class="' + (col.numeric ? 'lm-dd-n' : 'lm-dd-l') + '">' + cell + '</td>';
                 }
                 foot += '</tr>';
 

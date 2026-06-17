@@ -180,6 +180,32 @@ class ApiReportTest extends TestCase
             ->assertJsonPath('pivot.grand_total', 217);
     }
 
+    public function test_drilldown_deep_includes_qty_subtotal_per_section(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'draft']);
+        $unit = RefUnit::query()->where('code', '5E11')->firstOrFail();
+        $operator = User::query()->whereHas('role', fn ($query) => $query->where('name', Role::OPERATOR))->firstOrFail();
+
+        DB::table('db_wbs_raw')->insert([
+            ['batch_id' => $batch->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'aktifitas' => '41-01', 'klasifikasi' => '3. Bahan', 'pekerjaan_pb7_i' => '14 - Pemupukan', 'pekerjaan_pb712_ii' => 'Pupuk', 'value' => 1000, 'qty' => 10],
+            ['batch_id' => $batch->id, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'period' => 5, 'aktifitas' => '41-01', 'klasifikasi' => '3. Bahan', 'pekerjaan_pb7_i' => '14 - Pemupukan', 'pekerjaan_pb712_ii' => 'Pupuk', 'value' => 500, 'qty' => 5],
+        ]);
+        app(Lm14Service::class)->generate($batch, $unit, 'KS');
+
+        $query = http_build_query([
+            'type' => 'LM14', 'batch' => $batch->id, 'unit' => $unit->code, 'komoditi' => 'KS',
+            'kode' => '41-01', 'column' => 'bi_jumlah',
+            'pb7' => '14 - Pemupukan', 'pb712' => 'Pupuk', 'klasifikasi' => '3. Bahan',
+        ]);
+
+        $response = $this->actingAs($operator)->getJson("/api/report/drilldown-deep?{$query}");
+        $response->assertOk()->assertJsonPath('success', true);
+        $this->assertEquals('qty', $response->json('detail.sections.0.qty_field'));
+        $this->assertEquals(15, $response->json('detail.sections.0.qty_subtotal'));
+        $this->assertEquals(1500, $response->json('detail.sections.0.subtotal'));
+    }
+
     private function insertLm14Source(Batch $batch, RefUnit $unit): void
     {
         DB::table('db_wbs_raw')->insert([
