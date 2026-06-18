@@ -276,9 +276,15 @@ function kebunApp() {
         },
 
         emitTopbarUnit() {
-            const unit = this.units.find((item) => String(item.code) === String(this.filters.unit));
+            let label = '';
+            if (this.filters.unit === 'ALL') {
+                label = 'Semua Unit';
+            } else {
+                const unit = this.units.find((item) => String(item.code) === String(this.filters.unit));
+                label = unit ? `${unit.code} - ${unit.name}` : '';
+            }
             window.dispatchEvent(new CustomEvent('lm-topbar-unit', {
-                detail: { label: unit ? `${unit.code} - ${unit.name}` : '' },
+                detail: { label },
             }));
         },
 
@@ -382,11 +388,6 @@ function kebunApp() {
         },
 
         onUnitChange() {
-            if (this.filters.unit === 'ALL') {
-                this.resetReport();
-                this.errorMessage = 'Laporan konsolidasi "Semua Unit" belum tersedia. Silakan pilih satu unit kebun.';
-                return;
-            }
             if (this.canLoadReport()) {
                 this.loadReport();
             }
@@ -403,7 +404,8 @@ function kebunApp() {
         },
 
         canLoadReport() {
-            return this.filters.komoditi && this.filters.batch && this.filters.unit && this.filters.unit !== 'ALL';
+            // unit 'ALL' (Semua Unit / konsolidasi) diizinkan — backend menjumlahkan semua kebun.
+            return this.filters.komoditi && this.filters.batch && this.filters.unit;
         },
 
         resetReport() {

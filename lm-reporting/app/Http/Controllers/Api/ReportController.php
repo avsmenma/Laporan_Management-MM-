@@ -29,28 +29,33 @@ class ReportController extends Controller
         ]);
 
         $batch = $this->findBatch($request->batch);
-        $unit = $this->findUnit($request->unit);
         $komoditi = strtoupper($request->komoditi);
+        $isAll = $this->isAllUnits($request);
+        $unit = $isAll ? $this->allUnitsPlaceholder('KEBUN', $komoditi) : $this->findUnit($request->unit);
 
         // Otorisasi: Viewer hanya boleh lihat batch final/locked
         $this->checkBatchAccess($batch);
 
-        // Ambil data report
-        $rows = DB::table('report_lm14')
-            ->join('lm_template_row', 'report_lm14.template_id', '=', 'lm_template_row.id')
-            ->where('report_lm14.batch_id', $batch->id)
-            ->where('report_lm14.unit_id', $unit->id)
-            ->where('lm_template_row.komoditi', $komoditi)
-            ->select(
-                'lm_template_row.urutan',
-                'lm_template_row.kode',
-                'lm_template_row.uraian',
-                'lm_template_row.row_type',
-                'lm_template_row.indent',
-                'report_lm14.*'
-            )
-            ->orderBy('lm_template_row.urutan')
-            ->get();
+        // Ambil data report. "Semua Unit" = jumlahkan nilai semua unit komoditi ini
+        // (subtotal/total tetap konsisten karena penjumlahan aditif), capaian dihitung
+        // ulang dari nilai gabungan.
+        $rows = $isAll
+            ? $this->aggregateLm14Rows($batch, $komoditi)
+            : DB::table('report_lm14')
+                ->join('lm_template_row', 'report_lm14.template_id', '=', 'lm_template_row.id')
+                ->where('report_lm14.batch_id', $batch->id)
+                ->where('report_lm14.unit_id', $unit->id)
+                ->where('lm_template_row.komoditi', $komoditi)
+                ->select(
+                    'lm_template_row.urutan',
+                    'lm_template_row.kode',
+                    'lm_template_row.uraian',
+                    'lm_template_row.row_type',
+                    'lm_template_row.indent',
+                    'report_lm14.*'
+                )
+                ->orderBy('lm_template_row.urutan')
+                ->get();
 
         if ($rows->isEmpty()) {
             return response()->json([
@@ -81,27 +86,30 @@ class ReportController extends Controller
         ]);
 
         $batch = $this->findBatch($request->batch);
-        $unit = $this->findUnit($request->unit);
         $komoditi = strtoupper($request->komoditi);
+        $isAll = $this->isAllUnits($request);
+        $unit = $isAll ? $this->allUnitsPlaceholder('KEBUN', $komoditi) : $this->findUnit($request->unit);
 
         $this->checkBatchAccess($batch);
 
-        $rows = DB::table('report_lm13')
-            ->join('lm_template_row', 'report_lm13.template_id', '=', 'lm_template_row.id')
-            ->where('report_lm13.batch_id', $batch->id)
-            ->where('report_lm13.unit_id', $unit->id)
-            ->where('lm_template_row.komoditi', $komoditi)
-            ->select(
-                'lm_template_row.urutan',
-                'lm_template_row.kode',
-                'lm_template_row.uraian',
-                'lm_template_row.row_type',
-                'lm_template_row.indent',
-                'report_lm13.*'
-            )
-            ->orderBy('report_lm13.blok', 'asc') // Fix: blok bukan block
-            ->orderBy('lm_template_row.urutan')
-            ->get();
+        $rows = $isAll
+            ? $this->aggregateLm13Rows($batch, $komoditi)
+            : DB::table('report_lm13')
+                ->join('lm_template_row', 'report_lm13.template_id', '=', 'lm_template_row.id')
+                ->where('report_lm13.batch_id', $batch->id)
+                ->where('report_lm13.unit_id', $unit->id)
+                ->where('lm_template_row.komoditi', $komoditi)
+                ->select(
+                    'lm_template_row.urutan',
+                    'lm_template_row.kode',
+                    'lm_template_row.uraian',
+                    'lm_template_row.row_type',
+                    'lm_template_row.indent',
+                    'report_lm13.*'
+                )
+                ->orderBy('report_lm13.blok', 'asc') // Fix: blok bukan block
+                ->orderBy('lm_template_row.urutan')
+                ->get();
 
         if ($rows->isEmpty()) {
             return response()->json([
@@ -111,7 +119,9 @@ class ReportController extends Controller
         }
 
         $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
-        $meta['area'] = $this->lm13AreaValues($batch, $unit, $komoditi);
+        $meta['area'] = $isAll
+            ? $this->lm13AreaValuesAll($batch, $komoditi)
+            : $this->lm13AreaValues($batch, $unit, $komoditi);
 
         return response()->json([
             'success' => true,
@@ -139,6 +149,31 @@ class ReportController extends Controller
         $area = DB::table('alokasi_areal')
             ->where('year', $batch->year)
             ->where('kebun_code', $unit->code)
+            ->first();
+
+        return [
+            'real_thn_lalu' => (float) ($area->real_thn_lalu ?? 0),
+            'real_thn_ini' => (float) ($area->real_thn_ini ?? 0),
+            'rko' => (float) ($area->rko ?? 0),
+            'rkap' => (float) ($area->rkap ?? 0),
+        ];
+    }
+
+    /**
+     * Luas Area Kebun (Ha) konsolidasi "Semua Unit": jumlahkan alokasi_areal seluruh
+     * kebun pada tahun batch. Karet belum tersedia sumbernya → nol (sama dgn per unit).
+     *
+     * @return array<string, float>
+     */
+    private function lm13AreaValuesAll(Batch $batch, string $komoditi): array
+    {
+        if (strtoupper($komoditi) === 'KR') {
+            return ['real_thn_lalu' => 0.0, 'real_thn_ini' => 0.0, 'rko' => 0.0, 'rkap' => 0.0];
+        }
+
+        $area = DB::table('alokasi_areal')
+            ->where('year', $batch->year)
+            ->selectRaw('SUM(real_thn_lalu) as real_thn_lalu, SUM(real_thn_ini) as real_thn_ini, SUM(rko) as rko, SUM(rkap) as rkap')
             ->first();
 
         return [
@@ -214,8 +249,11 @@ class ReportController extends Controller
 
         $type = strtoupper((string) $request->type);
         $batch = $this->findBatch((string) $request->batch);
-        $unit = $this->findUnit((string) $request->unit);
         $komoditi = $request->filled('komoditi') ? strtoupper((string) $request->komoditi) : null;
+        $isAll = $this->isAllUnits($request);
+        // ALL = tanpa filter plant_code (semua unit komoditi); placeholder hanya untuk meta.
+        $unit = $isAll ? null : $this->findUnit((string) $request->unit);
+        $unitMeta = $unit ?? $this->allUnitsPlaceholder('KEBUN', $komoditi);
 
         $this->checkBatchAccess($batch);
 
@@ -233,7 +271,7 @@ class ReportController extends Controller
 
         return response()->json([
             'success' => true,
-            'meta' => $this->buildMeta($batch, $unit, $type, $komoditi),
+            'meta' => $this->buildMeta($batch, $unitMeta, $type, $komoditi),
             'context' => [
                 'type' => $type,
                 'kode_baris' => (string) $request->kode,
@@ -276,8 +314,9 @@ class ReportController extends Controller
 
         $type = strtoupper((string) $request->type);
         $batch = $this->findBatch((string) $request->batch);
-        $unit = $this->findUnit((string) $request->unit);
         $komoditi = $request->filled('komoditi') ? strtoupper((string) $request->komoditi) : null;
+        // ALL = tanpa filter plant_code (semua unit komoditi).
+        $unit = $this->isAllUnits($request) ? null : $this->findUnit((string) $request->unit);
 
         $this->checkBatchAccess($batch);
 
@@ -538,6 +577,124 @@ class ReportController extends Controller
             ->where('id', is_numeric($unitId) ? (int) $unitId : 0)
             ->orWhere('code', $unitId)
             ->firstOrFail();
+    }
+
+    /**
+     * Apakah filter unit bernilai "ALL" (laporan konsolidasi Semua Unit).
+     */
+    private function isAllUnits(Request $request): bool
+    {
+        return strtoupper((string) $request->input('unit')) === 'ALL';
+    }
+
+    /**
+     * Unit semu untuk meta laporan konsolidasi "Semua Unit" (tidak disimpan ke DB).
+     */
+    private function allUnitsPlaceholder(string $type, ?string $komoditi): RefUnit
+    {
+        $unit = new RefUnit();
+        $unit->id = 0;
+        $unit->code = 'ALL';
+        $unit->name = 'Semua Unit';
+        $unit->type = $type;
+        $unit->komoditi = $komoditi;
+
+        return $unit;
+    }
+
+    /**
+     * Rasio aman (penyebut 0 → 0), selaras Lm14Service::percent untuk capaian gabungan.
+     */
+    private function percent(float $numerator, float $denominator): float
+    {
+        if (abs($denominator) < 0.00001) {
+            return 0.0;
+        }
+
+        return round(($numerator / $denominator) * 100, 2);
+    }
+
+    /**
+     * Agregasi LM14 "Semua Unit": SUM tiap kolom nilai antar seluruh unit komoditi ini
+     * (per baris template), lalu hitung ulang kolom Capaian (%) dari nilai gabungan.
+     * Bentuk baris dibuat menyerupai hasil join report+template agar bisa langsung
+     * dilewatkan ke formatLm14Row().
+     */
+    private function aggregateLm14Rows(Batch $batch, string $komoditi): \Illuminate\Support\Collection
+    {
+        $sumCols = [
+            'real_bulan_ini', 'real_bulan_lalu', 'real_tahun_lalu', 'rko', 'rkap',
+            'real_sd_bulan_ini', 'real_sd_tahunlalu', 'rko_sd', 'rkap_sd',
+        ];
+
+        $selects = [
+            'lm_template_row.urutan', 'lm_template_row.kode', 'lm_template_row.uraian',
+            'lm_template_row.row_type', 'lm_template_row.indent',
+        ];
+        foreach ($sumCols as $col) {
+            $selects[] = DB::raw('SUM(report_lm14.'.$col.') as '.$col);
+        }
+
+        $rows = DB::table('report_lm14')
+            ->join('lm_template_row', 'report_lm14.template_id', '=', 'lm_template_row.id')
+            ->where('report_lm14.batch_id', $batch->id)
+            ->where('report_lm14.komoditi', $komoditi)
+            ->where('lm_template_row.komoditi', $komoditi)
+            ->groupBy(
+                'lm_template_row.id', 'lm_template_row.urutan', 'lm_template_row.kode',
+                'lm_template_row.uraian', 'lm_template_row.row_type', 'lm_template_row.indent'
+            )
+            ->orderBy('lm_template_row.urutan')
+            ->select($selects)
+            ->get();
+
+        return $rows->map(function ($row) {
+            $row->cap_bi_lalu = $this->percent((float) $row->real_bulan_ini, (float) $row->real_bulan_lalu);
+            $row->cap_bi_thnlalu = $this->percent((float) $row->real_bulan_ini, (float) $row->real_tahun_lalu);
+            $row->cap_bi_rko = $this->percent((float) $row->real_bulan_ini, (float) $row->rko);
+            $row->cap_bi_rkap = $this->percent((float) $row->real_bulan_ini, (float) $row->rkap);
+            $row->cap_sd_thnlalu = $this->percent((float) $row->real_sd_bulan_ini, (float) $row->real_sd_tahunlalu);
+            $row->cap_sd_rko = $this->percent((float) $row->real_sd_bulan_ini, (float) $row->rko_sd);
+            $row->cap_sd_rkap = $this->percent((float) $row->real_sd_bulan_ini, (float) $row->rkap_sd);
+
+            return $row;
+        });
+    }
+
+    /**
+     * Agregasi LM13 "Semua Unit": SUM tiap kolom nilai antar seluruh unit komoditi ini
+     * per baris template DAN per blok (OLAH_JUAL/OLAH/JUAL). LM13 tidak punya kolom
+     * capaian sehingga cukup penjumlahan langsung.
+     */
+    private function aggregateLm13Rows(Batch $batch, string $komoditi): \Illuminate\Support\Collection
+    {
+        $sumCols = [
+            'bi_real_thn_lalu', 'bi_real_thn_ini', 'bi_rko_tw', 'bi_rkap',
+            'sd_real_thn_lalu', 'sd_real_thn_ini', 'sd_rko_tw', 'sd_rkap',
+        ];
+
+        $selects = [
+            'lm_template_row.urutan', 'lm_template_row.kode', 'lm_template_row.uraian',
+            'lm_template_row.row_type', 'lm_template_row.indent', 'report_lm13.blok',
+        ];
+        foreach ($sumCols as $col) {
+            $selects[] = DB::raw('SUM(report_lm13.'.$col.') as '.$col);
+        }
+
+        return DB::table('report_lm13')
+            ->join('lm_template_row', 'report_lm13.template_id', '=', 'lm_template_row.id')
+            ->where('report_lm13.batch_id', $batch->id)
+            ->where('report_lm13.komoditi', $komoditi)
+            ->where('lm_template_row.komoditi', $komoditi)
+            ->groupBy(
+                'lm_template_row.id', 'lm_template_row.urutan', 'lm_template_row.kode',
+                'lm_template_row.uraian', 'lm_template_row.row_type', 'lm_template_row.indent',
+                'report_lm13.blok'
+            )
+            ->orderBy('report_lm13.blok', 'asc')
+            ->orderBy('lm_template_row.urutan')
+            ->select($selects)
+            ->get();
     }
 
     /**
@@ -887,7 +1044,7 @@ class ReportController extends Controller
      *
      * @return array<string, mixed>|null
      */
-    private function drilldownPivot(string $type, Batch $batch, RefUnit $unit, ?string $komoditi, ?LmTemplateRow $template, string $columnKey): ?array
+    private function drilldownPivot(string $type, Batch $batch, ?RefUnit $unit, ?string $komoditi, ?LmTemplateRow $template, string $columnKey): ?array
     {
         if ($type !== 'LM14' || ! $template) {
             return null;
@@ -960,7 +1117,7 @@ class ReportController extends Controller
      *
      * @return array{query: \Illuminate\Database\Query\Builder, table: string, value: string}|null
      */
-    private function rawSourceQuery(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope): ?array
+    private function rawSourceQuery(LmTemplateRow $detail, Batch $batch, ?RefUnit $unit, ?string $komoditi, string $scope): ?array
     {
         $source = $detail->source;
         $kode = (string) $detail->kode;
@@ -998,8 +1155,12 @@ class ReportController extends Controller
 
         $query = DB::table($table)
             ->where($table.'.'.$codeColumn, $codeValue)
-            ->where($table.'.komoditi', $komoditi)
-            ->where($table.'.plant_code', $unit->code);
+            ->where($table.'.komoditi', $komoditi);
+
+        // "Semua Unit" (unit null) = tanpa filter plant_code → gabung seluruh kebun komoditi ini.
+        if ($unit !== null) {
+            $query->where($table.'.plant_code', $unit->code);
+        }
 
         // Lingkup periode sesuai kolom yang diklik (selaras Lm14Service).
         if ($scope === 'bi') {
@@ -1023,7 +1184,7 @@ class ReportController extends Controller
      *
      * @return \Illuminate\Support\Collection<int, object>
      */
-    private function rawBreakdownRows(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope): \Illuminate\Support\Collection
+    private function rawBreakdownRows(LmTemplateRow $detail, Batch $batch, ?RefUnit $unit, ?string $komoditi, string $scope): \Illuminate\Support\Collection
     {
         $ctx = $this->rawSourceQuery($detail, $batch, $unit, $komoditi, $scope);
         if ($ctx === null) {
@@ -1049,7 +1210,7 @@ class ReportController extends Controller
      *
      * @return \Illuminate\Support\Collection<int, object>
      */
-    private function rawDeepRows(LmTemplateRow $detail, Batch $batch, RefUnit $unit, ?string $komoditi, string $scope, ?string $pb7, ?string $pb712, ?string $klasifikasi): \Illuminate\Support\Collection
+    private function rawDeepRows(LmTemplateRow $detail, Batch $batch, ?RefUnit $unit, ?string $komoditi, string $scope, ?string $pb7, ?string $pb712, ?string $klasifikasi): \Illuminate\Support\Collection
     {
         $ctx = $this->rawSourceQuery($detail, $batch, $unit, $komoditi, $scope);
         if ($ctx === null) {
