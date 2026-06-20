@@ -389,3 +389,200 @@ Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}
 
     return 0;
 })->purpose('Generate materialized report LM.');
+
+Artisan::command('lm:tahunlalu-wbs {--dir=} {--file=*} {--year=2025}', function (): int {
+    // Mengisi tabel realisasi_tahun_lalu (report_type=LM14) dari ekstrak WBS mentah tahun lalu.
+    // Aturan cocok IDENTIK dengan mesin tahun berjalan untuk baris source=WBS:
+    //   nilai = SUM(Value) per (komoditi, plant, period, Aktifitas), dengan Aktifitas = kode baris.
+    // Baris source=BTL (gaji staf, depresiasi 511*, overhead BT01..) TIDAK tercakup di sini —
+    // sumbernya OHC (db_ohc), diisi terpisah saat ekstrak OHC tahun lalu tersedia.
+    $year = (int) $this->option('year');
+    if ($year < 2000 || $year > 2100) {
+        $this->error('Opsi --year tidak wajar: '.$year);
+
+        return 1;
+    }
+
+    // Kumpulkan daftar berkas dari --file (boleh berulang) dan/atau --dir (pindai *.xlsx).
+    $files = array_values(array_filter((array) $this->option('file'), fn ($f) => is_string($f) && $f !== ''));
+    $dir = (string) $this->option('dir');
+    if ($dir !== '') {
+        if (! is_dir($dir)) {
+            $this->error("Direktori tidak ditemukan: {$dir}");
+
+            return 1;
+        }
+        foreach (glob(rtrim($dir, "/\\").DIRECTORY_SEPARATOR.'*.xlsx') ?: [] as $f) {
+            $files[] = $f;
+        }
+    }
+    $files = array_values(array_unique($files));
+    if ($files === []) {
+        $this->error('Tidak ada berkas. Pakai --dir=<folder> atau --file=<path.xlsx> (boleh berulang).');
+
+        return 1;
+    }
+    foreach ($files as $f) {
+        if (! is_file($f)) {
+            $this->error("Berkas tidak ditemukan: {$f}");
+
+            return 1;
+        }
+    }
+
+    // Himpunan kode baris LM14 ber-source WBS (format Aktifitas, mis. 41-01). Hanya Aktifitas
+    // yang termasuk himpunan ini yang disimpan sebagai realisasi; sisanya dicatat untuk audit.
+    $validKode = DB::table('lm_template_row')
+        ->where('report_type', 'LM14')
+        ->where('source', 'WBS')
+        ->whereNotNull('kode')
+        ->where('kode', '<>', '')
+        ->pluck('kode')
+        ->flip();
+
+    if ($validKode->isEmpty()) {
+        $this->error('Tidak ada kode LM14 source=WBS di lm_template_row. Seed template dulu.');
+
+        return 1;
+    }
+
+    // Indeks kolom 0-based mengikuti urutan kolom file DB WBS (sama dengan WBS_COLUMNS importer).
+    $COL_PLANT = 1;
+    $COL_KOMODITI = 7;
+    $COL_PERIOD = 8;
+    $COL_AKTIFITAS = 15;
+    $COL_VALUE = 24;
+    $COL_SOURCE = 46;
+
+    // Ekstrak WBS mentah memuat KEDUA sisi settlement: Pengirim (pembawa biaya) & Penerima
+    // (lawan-jurnal) yang saling meniadakan hingga ~0 bila dijumlah polos. Feed db_wbs_raw
+    // tahun berjalan hanya berisi baris Source='Pengirim' (terbukti: jumlah baris cocok-kode
+    // sisi Pengirim = total real_bulan_ini WBS pada report_lm14). Tiru persis: ambil hanya
+    // 'Pengirim' (mencakup cost element primer 5xxxxxx & sekunder 9xxxxxx), tanpa filter lain.
+    $SOURCE_KEEP = 'Pengirim';
+
+    $agg = [];        // "komoditi|plant|period|kode" => nilai
+    $unmatched = [];  // aktifitas => nilai (di luar himpunan kode, hanya untuk audit)
+    $periods = [];
+    $rowsRead = 0;
+    $rowsUsed = 0;
+
+    foreach ($files as $file) {
+        $reader = new XlsxReader;
+        $reader->open($file);
+        $sheet = $row = null;
+        try {
+            foreach ($reader->getSheetIterator() as $sheet) {
+                $first = true;
+                foreach ($sheet->getRowIterator() as $row) {
+                    if ($first) {
+                        $first = false;
+
+                        continue; // baris header
+                    }
+                    $c = $row->toArray();
+                    $rowsRead++;
+
+                    $komoditi = trim((string) ($c[$COL_KOMODITI] ?? ''));
+                    if ($komoditi !== 'KS' && $komoditi !== 'KR') {
+                        continue; // mesin hanya menghitung KS/KR; baris komoditi kosong diabaikan
+                    }
+                    $plant = trim((string) ($c[$COL_PLANT] ?? ''));
+                    $period = (int) ($c[$COL_PERIOD] ?? 0);
+                    $aktifitas = trim((string) ($c[$COL_AKTIFITAS] ?? ''));
+                    $source = trim((string) ($c[$COL_SOURCE] ?? ''));
+                    $rawVal = $c[$COL_VALUE] ?? null;
+                    $nilai = is_numeric($rawVal) ? (float) $rawVal : 0.0;
+                    if ($plant === '' || $period < 1 || $period > 12 || $aktifitas === '') {
+                        continue;
+                    }
+                    if ($source !== $SOURCE_KEEP) {
+                        continue; // hanya sisi Pengirim — sama dengan feed db_wbs_raw produksi
+                    }
+
+                    $periods[$period] = true;
+                    if (! $validKode->has($aktifitas)) {
+                        $unmatched[$aktifitas] = ($unmatched[$aktifitas] ?? 0.0) + $nilai;
+
+                        continue;
+                    }
+
+                    $key = $komoditi.'|'.$plant.'|'.$period.'|'.$aktifitas;
+                    $agg[$key] = ($agg[$key] ?? 0.0) + $nilai;
+                    $rowsUsed++;
+                }
+
+                break; // hanya sheet pertama
+            }
+        } finally {
+            $reader->close();
+            unset($reader, $sheet, $row);
+            gc_collect_cycles();
+        }
+        $this->info('Selesai baca: '.basename($file));
+    }
+
+    // Susun record realisasi (buang nilai ~0 agar tabel ramping).
+    $records = [];
+    $totalPerPeriod = [];
+    foreach ($agg as $key => $nilai) {
+        if (abs($nilai) < 0.00001) {
+            continue;
+        }
+        [$komoditi, $plant, $period, $kode] = explode('|', $key);
+        $records[] = [
+            'year' => $year,
+            'komoditi' => $komoditi,
+            'plant_code' => $plant,
+            'report_type' => 'LM14',
+            'kode' => $kode,
+            'period' => (int) $period,
+            'nilai' => round($nilai, 2),
+        ];
+        $totalPerPeriod[$period] = ($totalPerPeriod[$period] ?? 0.0) + $nilai;
+    }
+
+    // Ganti hanya cakupan (year, LM14, period yang terbaca) — idempotent, aman diulang.
+    DB::transaction(function () use ($year, $periods, $records): void {
+        DB::table('realisasi_tahun_lalu')
+            ->where('year', $year)
+            ->where('report_type', 'LM14')
+            ->whereIn('period', array_keys($periods))
+            ->delete();
+        foreach (array_chunk($records, 500) as $chunk) {
+            DB::table('realisasi_tahun_lalu')->insert($chunk);
+        }
+    });
+
+    $this->newLine();
+    $this->info("== Ringkasan impor tahun lalu (WBS) — tahun {$year} ==");
+    $this->line('Berkas diproses : '.count($files));
+    $this->line('Baris dibaca    : '.number_format($rowsRead));
+    $this->line('Baris terpakai  : '.number_format($rowsUsed).' (Aktifitas cocok kode LM14 WBS, komoditi KS/KR)');
+    $this->line('Record disimpan : '.number_format(count($records)).' (period: '.implode(',', array_keys($periods)).')');
+
+    ksort($totalPerPeriod);
+    $this->newLine();
+    $this->line('Total nilai per period:');
+    foreach ($totalPerPeriod as $p => $t) {
+        $this->line(sprintf('  period %-2d : %s', $p, number_format($t, 2)));
+    }
+
+    if ($unmatched !== []) {
+        arsort($unmatched);
+        $this->newLine();
+        $this->line('15 Aktifitas TIDAK termasuk kode LM14 WBS (audit; mayoritas baris BTL/alokasi/assessment):');
+        $i = 0;
+        foreach ($unmatched as $akt => $t) {
+            $this->line(sprintf('  %-12s : %s', $akt, number_format($t, 2)));
+            if (++$i >= 15) {
+                break;
+            }
+        }
+    }
+
+    $this->newLine();
+    $this->warn('Catatan: baris LM14 source=BTL (gaji staf, depresiasi 511*, overhead BT01..) belum terisi — menunggu ekstrak OHC tahun lalu.');
+
+    return 0;
+})->purpose('Isi realisasi_tahun_lalu (LM14) dari ekstrak WBS mentah tahun lalu; cocok Aktifitas=kode, SUM(Value).');
