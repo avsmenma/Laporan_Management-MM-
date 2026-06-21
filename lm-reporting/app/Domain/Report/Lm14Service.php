@@ -183,7 +183,13 @@ class Lm14Service
             return 0.0;
         }
 
-        return round(($numerator / $denominator) * 100, 2);
+        $value = round(($numerator / $denominator) * 100, 2);
+
+        // Kolom capaian bertipe decimal(10,2) (maks ±99.999.999,99). Penyebut yang
+        // mendekati nol (mis. realisasi tahun lalu ~1 rupiah) menghasilkan rasio di luar
+        // rentang kolom dan menggagalkan insert. Rasio sebesar itu tak bermakna, jadi
+        // batasi ke rentang kolom agar materialisasi tetap aman.
+        return max(-99999999.99, min(99999999.99, $value));
     }
 
     private function sumSourceCurrentBatch(Batch $batch, RefUnit $unit, string $komoditi, LmTemplateRow $template): float

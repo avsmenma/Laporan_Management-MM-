@@ -611,7 +611,11 @@ class ReportController extends Controller
             return 0.0;
         }
 
-        return round(($numerator / $denominator) * 100, 2);
+        $value = round(($numerator / $denominator) * 100, 2);
+
+        // Selaras dengan Lm14Service::percent(): batasi ke rentang kolom capaian
+        // decimal(10,2) agar penyebut mendekati nol tak menghasilkan rasio ekstrem.
+        return max(-99999999.99, min(99999999.99, $value));
     }
 
     /**
