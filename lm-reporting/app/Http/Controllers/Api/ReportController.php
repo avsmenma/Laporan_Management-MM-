@@ -285,7 +285,7 @@ class ReportController extends Controller
                     'source' => $template->source,
                 ] : null,
                 'message' => $pivot === null
-                    ? 'Kolom ini tidak memiliki rincian sumber mentah (mis. anggaran, capaian, atau tahun lalu).'
+                    ? 'Kolom ini tidak memiliki rincian sumber mentah (mis. anggaran/RKO/RKAP, capaian %, atau baris BTL/gaji staf tahun lalu yang menunggu data OHC).'
                     : null,
             ],
             'pivot' => $pivot,
@@ -437,6 +437,9 @@ class ReportController extends Controller
         if ($table === 'db_ohc') {
             $label = 'DB OHC';
             $labels = self::OHC_RAW_LABELS;
+        } elseif ($table === 'db_wbs_tahun_lalu') {
+            $label = 'DB WBS (Thn Lalu)';
+            $labels = self::WBS_RAW_LABELS;
         } else {
             $label = 'DB WBS';
             $labels = self::WBS_RAW_LABELS;
@@ -996,14 +999,15 @@ class ReportController extends Controller
     ];
 
     /** Field nilai (uang) & field numerik per tabel sumber mentah. */
-    private const RAW_VALUE_FIELD = ['db_wbs_raw' => 'value', 'db_ohc' => 'value_obj_crcy'];
+    private const RAW_VALUE_FIELD = ['db_wbs_raw' => 'value', 'db_ohc' => 'value_obj_crcy', 'db_wbs_tahun_lalu' => 'value'];
 
     /** Field kuantitas (fisik) per tabel sumber mentah — dipakai subtotal kolom Qty. */
-    private const RAW_QTY_FIELD = ['db_wbs_raw' => 'qty', 'db_ohc' => 'total_quantity'];
+    private const RAW_QTY_FIELD = ['db_wbs_raw' => 'qty', 'db_ohc' => 'total_quantity', 'db_wbs_tahun_lalu' => 'qty'];
 
     private const RAW_NUMERIC_FIELDS = [
         'db_wbs_raw' => ['period', 'value', 'qty', 'hectare_planted'],
         'db_ohc' => ['period', 'value_obj_crcy', 'total_quantity'],
+        'db_wbs_tahun_lalu' => ['period', 'value', 'qty', 'hectare_planted'],
     ];
 
     /**
@@ -1036,6 +1040,8 @@ class ReportController extends Controller
             'bi_jumlah' => 'bi',
             'sd_jumlah' => 'sd',
             'real_bulan_lalu' => 'lalu',
+            'real_thn_lalu' => 'tl_bi',     // bulan ini tahun lalu (db_wbs_tahun_lalu)
+            'sd_real_thn_lalu' => 'tl_sd',  // s.d bulan ini tahun lalu
             default => null,
         };
     }
@@ -1069,6 +1075,12 @@ class ReportController extends Controller
             foreach ($this->rawBreakdownRows($detail, $batch, $unit, $komoditi, $scope) as $row) {
                 $rows[] = $row;
             }
+        }
+
+        // Tanpa baris penyusun (mis. baris BTL tahun lalu yang sumbernya OHC dan belum
+        // tersedia) → null agar UI menampilkan pesan, bukan pivot kosong.
+        if ($rows === []) {
+            return null;
         }
 
         return $this->buildPivot($rows);
@@ -1127,6 +1139,30 @@ class ReportController extends Controller
         $kode = (string) $detail->kode;
         if ($source === null || $kode === '') {
             return null;
+        }
+
+        // Kolom "Real Thn Lalu" / "s.d Thn Lalu": baris mentah dari db_wbs_tahun_lalu
+        // (sisi Pengirim, tahun = tahun batch − 1). Hanya baris WBS yang punya data;
+        // baris BTL (gaji staf/depresiasi/overhead) menunggu ekstrak OHC tahun lalu.
+        if ($scope === 'tl_bi' || $scope === 'tl_sd') {
+            if ($source !== 'WBS') {
+                return null;
+            }
+            $table = 'db_wbs_tahun_lalu';
+            $query = DB::table($table)
+                ->where($table.'.aktifitas', $kode)
+                ->where($table.'.komoditi', $komoditi)
+                ->where($table.'.year', $batch->year - 1);
+            if ($unit !== null) {
+                $query->where($table.'.plant_code', $unit->code);
+            }
+            if ($scope === 'tl_bi') {
+                $query->where($table.'.period', $batch->month);
+            } else {
+                $query->where($table.'.period', '<=', $batch->month);
+            }
+
+            return ['query' => $query, 'table' => $table, 'value' => 'value'];
         }
 
         $isStafGaji = $source === 'BTL' && $kode === '99-01';

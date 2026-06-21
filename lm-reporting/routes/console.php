@@ -461,6 +461,26 @@ Artisan::command('lm:tahunlalu-wbs {--dir=} {--file=*} {--year=2025}', function 
     // 'Pengirim' (mencakup cost element primer 5xxxxxx & sekunder 9xxxxxx), tanpa filter lain.
     $SOURCE_KEEP = 'Pengirim';
 
+    // Nama kolom db_wbs_tahun_lalu sesuai urutan kolom file (sama dengan WBS_COLUMNS importer).
+    // Baris mentah cocok-kode sisi Pengirim disimpan agar drill-down "Real Thn Lalu" bisa
+    // mem-pivot & menampilkan rincian mentah persis seperti kolom Real Bln Ini/Bln Lalu.
+    $WBS_COLS = [
+        'company_code', 'plant', 'plant_desc', 'divisi_afdeling', 'blok', 'status_blok', 'tahun_tanam',
+        'komoditi', 'period', 'project', 'wbs', 'wbs_desc', 'fase', 'group_aktifitas', 'group_desc',
+        'aktifitas', 'job_name', 'hierarchy_area', 'cost_center', 'cc_desc', 'partner_cctr', 'partner_cctr_desc',
+        'cost_element', 'cost_element_desc', 'value', 'currency', 'material', 'mat_desc', 'qty', 'uom',
+        'object_num', 'object_type', 'profit_center', 'value_type', 'reference_procedure', 'order_no',
+        'order_type', 'order_category', 'order_desc', 'hectare_planted', 'co_business_transaction',
+        'mapping_cogm', 'klasifikasi', 'kode', 'pekerjaan_pb712_ii', 'pekerjaan_pb7_i', 'source', 'keterangan',
+    ];
+    $NUMERIC_COLS = ['value' => true, 'qty' => true, 'period' => true, 'hectare_planted' => true];
+
+    // Ganti baris mentah tahun lalu untuk tahun ini (idempotent). Insert dilakukan streaming
+    // per-chunk di dalam loop agar memori tetap konstan (file besar, ratusan ribu baris).
+    DB::table('db_wbs_tahun_lalu')->where('year', $year)->delete();
+    $rawBuf = [];
+    $rawInserted = 0;
+
     $agg = [];        // "komoditi|plant|period|kode" => nilai
     $unmatched = [];  // aktifitas => nilai (di luar himpunan kode, hanya untuk audit)
     $periods = [];
@@ -510,6 +530,26 @@ Artisan::command('lm:tahunlalu-wbs {--dir=} {--file=*} {--year=2025}', function 
                     $key = $komoditi.'|'.$plant.'|'.$period.'|'.$aktifitas;
                     $agg[$key] = ($agg[$key] ?? 0.0) + $nilai;
                     $rowsUsed++;
+
+                    // Simpan baris mentah (seluruh kolom) untuk drill-down.
+                    $rec = ['year' => $year, 'plant_code' => $plant];
+                    foreach ($WBS_COLS as $idx => $col) {
+                        $v = $c[$idx] ?? null;
+                        if ($v === null || (is_string($v) && trim($v) === '')) {
+                            $rec[$col] = null;
+                        } elseif (isset($NUMERIC_COLS[$col])) {
+                            $rec[$col] = is_numeric($v) ? (float) $v : null;
+                        } else {
+                            $t = trim((string) $v);
+                            $rec[$col] = $t === '' ? null : mb_substr($t, 0, 250);
+                        }
+                    }
+                    $rawBuf[] = $rec;
+                    if (count($rawBuf) >= 500) {
+                        DB::table('db_wbs_tahun_lalu')->insert($rawBuf);
+                        $rawInserted += count($rawBuf);
+                        $rawBuf = [];
+                    }
                 }
 
                 break; // hanya sheet pertama
@@ -520,6 +560,12 @@ Artisan::command('lm:tahunlalu-wbs {--dir=} {--file=*} {--year=2025}', function 
             gc_collect_cycles();
         }
         $this->info('Selesai baca: '.basename($file));
+    }
+
+    if ($rawBuf !== []) {
+        DB::table('db_wbs_tahun_lalu')->insert($rawBuf);
+        $rawInserted += count($rawBuf);
+        $rawBuf = [];
     }
 
     // Susun record realisasi (buang nilai ~0 agar tabel ramping).
@@ -560,6 +606,7 @@ Artisan::command('lm:tahunlalu-wbs {--dir=} {--file=*} {--year=2025}', function 
     $this->line('Baris dibaca    : '.number_format($rowsRead));
     $this->line('Baris terpakai  : '.number_format($rowsUsed).' (Aktifitas cocok kode LM14 WBS, komoditi KS/KR)');
     $this->line('Record disimpan : '.number_format(count($records)).' (period: '.implode(',', array_keys($periods)).')');
+    $this->line('Baris mentah    : '.number_format($rawInserted).' disimpan ke db_wbs_tahun_lalu (untuk drill-down)');
 
     ksort($totalPerPeriod);
     $this->newLine();
