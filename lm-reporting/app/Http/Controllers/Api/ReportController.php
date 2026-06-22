@@ -267,6 +267,38 @@ class ReportController extends Controller
             ->first();
 
         $columnKey = (string) $request->column;
+
+        $templateMeta = $template ? [
+            'urutan' => $template->urutan,
+            'kode' => $template->kode,
+            'uraian' => $template->uraian,
+            'row_type' => $template->row_type,
+            'source' => $template->source,
+        ] : null;
+
+        // Kolom RKO/RKAP (anggaran): tampilkan DETAIL SUMBER per-baris LANGSUNG (tanpa
+        // pivot perantara) dari budget_source. RKO=RKAP & bulan-ini=s.d (budget tahunan).
+        $budgetDetail = $this->budgetSourceDetail($type, $batch, $unit, $komoditi, $template, $columnKey);
+        if ($budgetDetail !== null) {
+            return response()->json([
+                'success' => true,
+                'meta' => $this->buildMeta($batch, $unitMeta, $type, $komoditi),
+                'context' => [
+                    'type' => $type,
+                    'kode_baris' => (string) $request->kode,
+                    'column_key' => $columnKey,
+                    'column_label' => $this->columnLabel($type, $columnKey),
+                    'template' => $templateMeta,
+                    'direct_detail' => true,
+                    'message' => $budgetDetail['row_count'] === 0
+                        ? 'Tidak ada baris sumber RKO/RKAP untuk sel ini (anggaran 0 atau belum diimpor).'
+                        : null,
+                ],
+                'pivot' => null,
+                'detail' => $budgetDetail,
+            ]);
+        }
+
         $pivot = $this->drilldownPivot($type, $batch, $unit, $komoditi, $template, $columnKey);
 
         return response()->json([
@@ -277,13 +309,8 @@ class ReportController extends Controller
                 'kode_baris' => (string) $request->kode,
                 'column_key' => $columnKey,
                 'column_label' => $this->columnLabel($type, $columnKey),
-                'template' => $template ? [
-                    'urutan' => $template->urutan,
-                    'kode' => $template->kode,
-                    'uraian' => $template->uraian,
-                    'row_type' => $template->row_type,
-                    'source' => $template->source,
-                ] : null,
+                'template' => $templateMeta,
+                'direct_detail' => false,
                 'message' => $pivot === null
                     ? 'Kolom ini tidak memiliki rincian sumber mentah (mis. anggaran/RKO/RKAP, capaian %, atau baris BTL/gaji staf tahun lalu yang menunggu data OHC).'
                     : null,
@@ -1010,6 +1037,20 @@ class ReportController extends Controller
         'db_wbs_tahun_lalu' => ['period', 'value', 'qty', 'hectare_planted'],
     ];
 
+    /** Kolom detail sumber RKO/RKAP (budget_source) — field => judul, urut tampil. */
+    private const BUDGET_SOURCE_LABELS = [
+        'source' => 'Sumber', 'kode' => 'Kode', 'period' => 'Period',
+        'object_name' => 'Pekerjaan', 'cost_element' => 'Cost Element',
+        'cost_element_desc' => 'Cost Element Desc', 'klasifikasi' => 'Klasifikasi',
+        'fisik' => 'Fisik', 'nilai' => 'Nilai',
+    ];
+
+    /** Kolom numerik pada detail sumber RKO/RKAP. */
+    private const BUDGET_SOURCE_NUMERIC = ['period', 'fisik', 'nilai'];
+
+    /** Kolom RKO/RKAP LM14 yang detailnya berasal dari budget_source. */
+    private const BUDGET_COLUMNS = ['bi_rko', 'bi_rkap', 'sd_rko', 'sd_rkap'];
+
     /**
      * Label kolom yang diklik (untuk judul popup rincian).
      */
@@ -1054,6 +1095,125 @@ class ReportController extends Controller
      *
      * @return array<string, mixed>|null
      */
+    /**
+     * Detail sumber RKO/RKAP per-baris (budget_source) untuk sel yang diklik —
+     * LANGSUNG (tanpa pivot). Mengembalikan struktur sama dengan buildRawDetail
+     * (sections + rows + subtotal + grand_total) sehingga frontend memakai renderer
+     * "rincian lebih dalam" yang sama. Null bila kolom bukan RKO/RKAP LM14.
+     *
+     * RKO=RKAP & bulan-ini=s.d: budget bersifat tahunan per kode, jadi keempat kolom
+     * (bi_rko/bi_rkap/sd_rko/sd_rkap) menghasilkan detail identik. Grand total = nilai sel.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function budgetSourceDetail(string $type, Batch $batch, ?RefUnit $unit, ?string $komoditi, ?LmTemplateRow $template, string $columnKey): ?array
+    {
+        if ($type !== 'LM14' || ! $template || ! in_array($columnKey, self::BUDGET_COLUMNS, true)) {
+            return null;
+        }
+
+        // Kumpulkan kode baris detail penyusun sel (baris detail = dirinya; subtotal/total
+        // = ekspansi formula ke baris detail) — sama dengan dasar pivot realisasi.
+        $kodes = [];
+        foreach ($this->contributingDetailTemplates($template, $type, $komoditi) as $detail) {
+            $kode = (string) $detail->kode;
+            if ($kode !== '') {
+                $kodes[$kode] = true;
+            }
+        }
+        if ($kodes === []) {
+            return ['sections' => [], 'grand_total' => 0.0, 'row_count' => 0];
+        }
+
+        $query = DB::table('budget_source')
+            ->where('year', $batch->year)
+            ->where('komoditi', $komoditi)
+            ->where('report_type', 'LM14')
+            ->whereIn('kode', array_keys($kodes));
+
+        // "Semua Unit" (unit null) = tanpa filter plant_code → gabung seluruh kebun komoditi ini.
+        if ($unit !== null) {
+            $query->where('plant_code', $unit->code);
+        }
+
+        $rows = $query->orderBy('source')->orderBy('kode')->orderBy('id')->get();
+
+        return $this->buildBudgetDetail($rows->all());
+    }
+
+    /**
+     * Susun detail sumber RKO/RKAP per sumber (BKU/OHC) dengan subtotal & grand total,
+     * meniru bentuk buildRawDetail agar konsumsi frontend identik.
+     *
+     * @param  array<int, object>  $rows
+     * @return array<string, mixed>
+     */
+    private function buildBudgetDetail(array $rows): array
+    {
+        $bySource = [];
+        foreach ($rows as $row) {
+            $bySource[(string) $row->source][] = $row;
+        }
+
+        // Urut blok: BKU (WBS) dulu, lalu OHC (BTL), sisanya menyusul.
+        $order = ['BKU', 'OHC'];
+        $sources = array_values(array_unique(array_merge(
+            array_values(array_filter($order, fn ($s) => isset($bySource[$s]))),
+            array_keys($bySource),
+        )));
+
+        $columns = [];
+        foreach (self::BUDGET_SOURCE_LABELS as $field => $label) {
+            $columns[] = [
+                'field' => $field,
+                'label' => $label,
+                'numeric' => in_array($field, self::BUDGET_SOURCE_NUMERIC, true),
+            ];
+        }
+
+        $fields = array_keys(self::BUDGET_SOURCE_LABELS);
+        $sections = [];
+        $grandTotal = 0.0;
+        $rowCount = 0;
+
+        foreach ($sources as $src) {
+            $items = [];
+            $subtotal = 0.0;
+            $qtySubtotal = 0.0;
+            foreach ($bySource[$src] as $row) {
+                $item = [];
+                foreach ($fields as $field) {
+                    $item[$field] = $row->{$field} ?? null;
+                }
+                $items[] = $item;
+                $subtotal += (float) ($row->nilai ?? 0);
+                $qtySubtotal += (float) ($row->fisik ?? 0);
+            }
+
+            $grandTotal += $subtotal;
+            $rowCount += count($items);
+
+            $sections[] = [
+                'table' => 'budget_source_'.strtolower($src),
+                'label' => $src === 'BKU' ? 'RKO/RKAP — BKU (WBS)'
+                    : ($src === 'OHC' ? 'RKO/RKAP — OHC (BTL)' : 'RKO/RKAP — '.$src),
+                'value_field' => 'nilai',
+                'qty_field' => 'fisik',
+                'columns' => $columns,
+                'rows' => $items,
+                'subtotal' => $subtotal,
+                'qty_subtotal' => $qtySubtotal,
+                'row_count' => count($items),
+            ];
+        }
+
+        return [
+            'sections' => $sections,
+            'grand_total' => $grandTotal,
+            'row_count' => $rowCount,
+        ];
+    }
+
     private function drilldownPivot(string $type, Batch $batch, ?RefUnit $unit, ?string $komoditi, ?LmTemplateRow $template, string $columnKey): ?array
     {
         if ($type !== 'LM14' || ! $template) {
