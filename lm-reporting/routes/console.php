@@ -739,10 +739,24 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
         return $out;
     };
 
-    // Indeks kolom 0-based SAMA untuk ketiga file: A=komoditi, B=plant, E=kode, J=nilai.
+    // Indeks kolom 0-based SAMA untuk BKU & OHC: A=komoditi, B=plant, D=period, E=kode,
+    // F=object_name (Job Name / CO Object Name), G=cost_element, H=cost_element_desc,
+    // I=klasifikasi, J=nilai, K=fisik (BKU saja).
     [$C_KOM, $C_PLANT, $C_KODE, $C_NILAI] = [0, 1, 4, 9];
+    [$C_PERIOD, $C_OBJ, $C_CE, $C_CEDESC, $C_KLAS, $C_FISIK] = [3, 5, 6, 7, 8, 10];
 
-    $acc = []; // "KOMODITI|PLANT|kode" => nilai
+    // Potong & rapikan nilai teks (null bila kosong) sesuai panjang kolom budget_source.
+    $str = function ($v, int $len): ?string {
+        if ($v === null) {
+            return null;
+        }
+        $t = trim((string) $v);
+
+        return $t === '' ? null : mb_substr($t, 0, $len);
+    };
+
+    $acc = [];     // "KOMODITI|PLANT|kode" => nilai (agregat)
+    $rawSrc = [];  // baris mentah per-line (budget_source) untuk drill-down
     $stats = [
         'bku_ok' => 0, 'bku_skip_kode' => 0, 'bku_skip_unit' => 0,
         'ohc_ok' => 0, 'ohc_skip_pabrik' => 0, 'ohc_skip_kode' => 0, 'ohc_skip_unit' => 0,
@@ -771,9 +785,21 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
 
                 continue;
             }
+            $nilai = $num($c[$C_NILAI] ?? 0);
             $k = $kom.'|'.$plant.'|'.$kode;
-            $acc[$k] = ($acc[$k] ?? 0) + $num($c[$C_NILAI] ?? 0);
+            $acc[$k] = ($acc[$k] ?? 0) + $nilai;
             $stats['bku_ok']++;
+            $rawSrc[] = [
+                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
+                'report_type' => 'LM14', 'kode' => $kode, 'source' => 'BKU',
+                'period' => is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null,
+                'object_name' => $str($c[$C_OBJ] ?? null, 250),
+                'cost_element' => $str($c[$C_CE] ?? null, 40),
+                'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
+                'klasifikasi' => $str($c[$C_KLAS] ?? null, 60),
+                'nilai' => round($nilai, 2),
+                'fisik' => is_numeric($c[$C_FISIK] ?? null) ? (float) $c[$C_FISIK] : null,
+            ];
         }
     }
 
@@ -805,9 +831,21 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
 
                 continue;
             }
+            $nilai = $num($c[$C_NILAI] ?? 0);
             $k = $kom.'|'.$plant.'|'.$kode;
-            $acc[$k] = ($acc[$k] ?? 0) + $num($c[$C_NILAI] ?? 0);
+            $acc[$k] = ($acc[$k] ?? 0) + $nilai;
             $stats['ohc_ok']++;
+            $rawSrc[] = [
+                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
+                'report_type' => 'LM14', 'kode' => $kode, 'source' => 'OHC',
+                'period' => is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null,
+                'object_name' => $str($c[$C_OBJ] ?? null, 250),
+                'cost_element' => $str($c[$C_CE] ?? null, 40),
+                'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
+                'klasifikasi' => $str($c[$C_KLAS] ?? null, 60),
+                'nilai' => round($nilai, 2),
+                'fisik' => null,
+            ];
         }
     }
 
@@ -835,18 +873,23 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
         ];
     }
 
-    DB::transaction(function () use ($rows, $year): void {
+    DB::transaction(function () use ($rows, $rawSrc, $year): void {
         DB::table('budget_rko')->where('year', $year)->where('report_type', 'LM14')->delete();
         DB::table('budget_rkap')->where('year', $year)->where('report_type', 'LM14')->delete();
+        DB::table('budget_source')->where('year', $year)->where('report_type', 'LM14')->delete();
         foreach (array_chunk($rows, 500) as $chunk) {
             DB::table('budget_rko')->insert($chunk);
             DB::table('budget_rkap')->insert($chunk);
+        }
+        foreach (array_chunk($rawSrc, 500) as $chunk) {
+            DB::table('budget_source')->insert($chunk);
         }
     });
 
     $totalNilai = array_sum(array_column($rows, 'nilai'));
     $this->info("Selesai. {$year}: ".count($rows).' baris budget → budget_rko & budget_rkap (nilai identik).');
     $this->line('  Total nilai budget LM14 : '.number_format($totalNilai, 2));
+    $this->line('  Baris mentah disimpan   : '.number_format(count($rawSrc)).' → budget_source (untuk drill-down RKO/RKAP).');
     $this->line("  BKU  : {$stats['bku_ok']} masuk · {$stats['bku_skip_kode']} kode di luar LM14 · {$stats['bku_skip_unit']} unit non-kebun");
     $this->line("  OHC  : {$stats['ohc_ok']} masuk · {$stats['ohc_skip_pabrik']} baris pabrik (5F) dilewati · {$stats['ohc_skip_kode']} kode di luar LM14");
     $this->warn('  GC   : '.$stats['gc_rows'].' baris ('.number_format($stats['gc_nilai'], 2).') DILEWATI — tidak ada baris template LM14 untuk kode GC (AP/AR).');
