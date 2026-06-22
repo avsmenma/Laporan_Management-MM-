@@ -104,7 +104,7 @@
          @keydown.escape.window="drill.open && closeDrill()" @click.self="closeDrill()">
         <div class="lm-dd-modal">
             <div class="lm-dd-head">
-                <button type="button" class="lm-dd-back" x-show="drill.view==='deep'" @click="backToPivot()" title="Kembali ke rincian">&larr;</button>
+                <button type="button" class="lm-dd-back" x-show="drill.view==='deep' && !drill.direct" @click="backToPivot()" title="Kembali ke rincian">&larr;</button>
                 <div class="lm-dd-titles">
                     <div class="lm-dd-title" x-text="drill.title"></div>
                     <div class="lm-dd-bc" x-show="drill.view==='pivot'">
@@ -112,11 +112,18 @@
                         <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.value)"></span></span>
                     </div>
                     <div class="lm-dd-bc" x-show="drill.view==='deep'">
-                        <span class="lm-dd-chip" x-text="drill.deep.pb7"></span>
-                        <span class="lm-dd-bc-sep">›</span>
-                        <span class="lm-dd-chip" x-text="drill.deep.pb712"></span>
-                        <template x-if="drill.deep.klasifikasi">
-                            <span style="display:flex;align-items:center;gap:10px"><span class="lm-dd-bc-sep">›</span><span class="lm-dd-chip" x-text="drill.deep.klasifikasi"></span></span>
+                        <template x-if="!drill.direct">
+                            <span style="display:flex;align-items:center;gap:10px">
+                                <span class="lm-dd-chip" x-text="drill.deep.pb7"></span>
+                                <span class="lm-dd-bc-sep">›</span>
+                                <span class="lm-dd-chip" x-text="drill.deep.pb712"></span>
+                                <template x-if="drill.deep.klasifikasi">
+                                    <span style="display:flex;align-items:center;gap:10px"><span class="lm-dd-bc-sep">›</span><span class="lm-dd-chip" x-text="drill.deep.klasifikasi"></span></span>
+                                </template>
+                            </span>
+                        </template>
+                        <template x-if="drill.direct">
+                            <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
                         </template>
                         <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.deep.value)"></span></span>
                     </div>
@@ -234,7 +241,7 @@ function kebunApp() {
         lm14Table: null,
         lm13Table: null,
         drill: {
-            open: false, view: 'pivot', loading: false, error: null,
+            open: false, view: 'pivot', direct: false, loading: false, error: null,
             title: '', columnLabel: '', value: 0, pivot: null, message: null,
             ctx: { kode: '', column: '' },
             deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
@@ -573,6 +580,7 @@ function kebunApp() {
             this.drill = {
                 open: true,
                 view: 'pivot',
+                direct: false,
                 loading: true,
                 error: null,
                 title: String(event.detail.row?.uraian ?? '').trim() || dd.kode_baris,
@@ -595,8 +603,21 @@ function kebunApp() {
                 });
                 const data = await this.fetchReport(`/report-data/drilldown?${params.toString()}`);
                 this.drill.columnLabel = data.context?.column_label ?? dd.column_key;
-                this.drill.pivot = data.pivot;
                 this.drill.message = data.context?.message ?? null;
+
+                // Kolom RKO/RKAP: server mengirim detail sumber langsung (tanpa pivot).
+                // Tampilkan mode "deep" apa adanya; tombol kembali-ke-pivot disembunyikan.
+                if (data.context?.direct_detail && data.detail) {
+                    this.drill.direct = true;
+                    this.drill.view = 'deep';
+                    this.drill.deep = {
+                        loading: false, error: null,
+                        data: data.detail, html: this.buildDeepHtml(data.detail),
+                        pb7: '', pb712: '', klasifikasi: '', value: this.drill.value,
+                    };
+                } else {
+                    this.drill.pivot = data.pivot;
+                }
             } catch (error) {
                 this.drill.error = error.message;
             } finally {
