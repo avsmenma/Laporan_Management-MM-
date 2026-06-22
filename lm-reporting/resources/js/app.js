@@ -60,7 +60,9 @@ function formatNumber(value, field, percent = isPercent(field)) {
         return '-';
     }
 
-    const fractionDigits = percent ? 1 : 0;
+    // Tampilkan 2 digit di belakang koma untuk semua angka (nilai & persentase),
+    // selaras kebutuhan presentasi dan kolom capaian decimal(10,2) di basis data.
+    const fractionDigits = 2;
     return number.toLocaleString('id-ID', {
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,

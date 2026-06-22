@@ -651,10 +651,10 @@ function kebunApp() {
 
         fmtNum(value) {
             const n = Number(value ?? 0);
-            if (!Number.isFinite(n) || Math.abs(n) < 0.5) {
+            if (!Number.isFinite(n) || Math.abs(n) < 0.005) {
                 return '';
             }
-            return n.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+            return n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         },
 
         fmtInt(value) {
