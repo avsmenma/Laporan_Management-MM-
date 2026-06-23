@@ -50,6 +50,7 @@
                   x-data="{
                       jenis: '{{ $pJenis }}',
                       kategori: '{{ $pKategori }}',
+                      fileName: '',
                       isBudgetType() { return this.jenis === 'rko' || this.jenis === 'rkap'; },
                       isBudget() { return this.isBudgetType(); },
                       isAreal() { return this.jenis === 'areal'; },
@@ -106,7 +107,10 @@
                 </div>
                 <div class="field" style="margin-bottom:0">
                     <label>File</label>
-                    <input name="file" type="file" accept=".xlsx,.xls,.csv" class="field-control" required>
+                    <input name="file" type="file" accept=".xlsx,.xls,.csv" class="field-control" required
+                           @change="fileName = $event.target.files[0]?.name ?? ''">
+                    <span class="field-hint" x-show="fileName" x-cloak x-text="'Terpilih: ' + fileName"
+                          style="margin-top:6px;color:var(--g-700);font-weight:600;word-break:break-all"></span>
                 </div>
                 <div class="flex items-end md:col-span-5">
                     <button class="btn btn-primary" type="submit">Pratinjau</button>
