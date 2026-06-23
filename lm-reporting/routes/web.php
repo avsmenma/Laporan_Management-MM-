@@ -38,6 +38,16 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
         'subjudul' => 'Laporan LM Investasi Pabrik sedang disiapkan dan akan segera tersedia.',
     ])->name('pabrik.investasi');
 
+    Route::view('/areal', 'coming-soon', [
+        'judul' => 'Areal',
+        'subjudul' => 'Laporan Areal sedang disiapkan dan akan segera tersedia.',
+    ])->name('areal');
+
+    Route::view('/produksi', 'coming-soon', [
+        'judul' => 'Produksi',
+        'subjudul' => 'Laporan Produksi sedang disiapkan dan akan segera tersedia.',
+    ])->name('produksi');
+
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
     Route::prefix('api/report')->group(function () {

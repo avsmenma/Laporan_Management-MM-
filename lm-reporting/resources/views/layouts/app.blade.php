@@ -392,6 +392,16 @@
                             <li><a href="{{ route('pabrik.investasi') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.investasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
                         </ul>
                     </li>
+                    <li class="sidebar-nav-item">
+                        <a href="{{ route('areal') }}" class="sidebar-nav-link {{ request()->routeIs('areal') ? 'active' : '' }}">
+                            <span class="nav-ico">📁</span> AREAL
+                        </a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="{{ route('produksi') }}" class="sidebar-nav-link {{ request()->routeIs('produksi') ? 'active' : '' }}">
+                            <span class="nav-ico">📁</span> PRODUKSI
+                        </a>
+                    </li>
                     @if (in_array(optional(optional(auth()->user())->role)->name, ['Operator', 'Admin'], true))
                         <li class="sidebar-nav-item" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
                             <a href="{{ route('import.index') }}" class="sidebar-nav-link {{ request()->routeIs('import.*') ? 'active' : '' }}">

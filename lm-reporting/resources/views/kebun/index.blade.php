@@ -675,7 +675,7 @@ function kebunApp() {
             if (!Number.isFinite(n) || Math.abs(n) < 0.005) {
                 return '';
             }
-            return n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return n.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         },
 
         fmtInt(value) {
