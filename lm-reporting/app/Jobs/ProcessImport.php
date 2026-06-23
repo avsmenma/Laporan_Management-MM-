@@ -37,7 +37,7 @@ class ProcessImport implements ShouldQueue
         }
 
         $isBudget = SpreadsheetImportService::isBudget($job->type);
-        $job->forceFill(['status' => 'processing', 'total' => $service->dataRowCount($path)])->save();
+        $job->forceFill(['status' => 'processing', 'total' => $service->rowCountForType($job->type, $path)])->save();
 
         // Throttle update DB: maksimal tiap 500 baris.
         $onProgress = function (int $n) use ($job): void {

@@ -3,6 +3,7 @@
 namespace App\Domain\Import;
 
 use App\Domain\Import\Support\RawWorkbookImport;
+use App\Models\ArealBlok;
 use App\Models\Batch;
 use App\Models\ImportUploadLog;
 use App\Models\RefUnit;
@@ -60,6 +61,15 @@ class SpreadsheetImportService
         'value_obj_crcy' => true, 'total_quantity' => true,
     ];
 
+    /** Indeks kolom 0-based sheet DB Areal. */
+    private const AREAL_COLUMNS = [
+        0 => 'status', 1 => 'status_blok_petak', 2 => 'plant_code', 3 => 'divisi',
+        4 => 'kode_blok', 5 => 'tanggal_mulai', 6 => 'tanggal_sampai', 7 => 'project_definition',
+        8 => 'deskripsi', 9 => 'luas_tanam', 10 => 'tahun_tanam', 11 => 'total_pokok',
+        12 => 'luas_ha', 13 => 'total_pokok_produktif', 14 => 'kondisi_areal', 15 => 'jenis_tanah',
+        16 => 'gis_id', 17 => 'unit_kerja', 18 => 'komoditi',
+    ];
+
     /**
      * @return array<string, string>
      */
@@ -72,6 +82,7 @@ class SpreadsheetImportService
             'rko_bku' => 'RKO/RKAP — BKU',
             'rko_ohc' => 'RKO/RKAP — OHC',
             'rko_gc' => 'RKO/RKAP — GC',
+            'areal' => 'Areal',
         ];
     }
 
@@ -143,6 +154,7 @@ class SpreadsheetImportService
             'wbs' => $this->importRaw($batch, 'db_wbs_raw', self::WBS_COLUMNS, $this->dataRows($path), 'wbs', $onProgress),
             'ohc' => $this->importRaw($batch, 'db_ohc', self::OHC_COLUMNS, $this->dataRows($path), 'gcohc', $onProgress),
             'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $this->dataRows($path), 'gcohc', $onProgress),
+            'areal' => $this->importAreal($batch, $this->dataRowsSheet($path, 'DB'), $onProgress),
         });
 
         ImportUploadLog::query()->create([
@@ -294,6 +306,31 @@ class SpreadsheetImportService
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
         abort_if(self::isBudget($type), 422, 'Gunakan importBudget() untuk jenis anggaran.');
 
+        // Areal: baca header + sampel dari sheet "DB", hitung total via rowCountForType.
+        if ($type === 'areal') {
+            $total = max(0, $this->rowCountForType('areal', $path));
+            $headers = array_values(self::AREAL_COLUMNS);
+            $rows = [];
+            $emitted = 0;
+            foreach ($this->dataRowsSheet($path, 'DB') as $row) {
+                if ($this->isEmptyRow($row)) {
+                    continue;
+                }
+                $rows[] = $row;
+                if (++$emitted >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return [
+                'type' => $type,
+                'label' => self::types()[$type],
+                'columns' => $headers,
+                'rows' => $rows,
+                'total' => $total,
+            ];
+        }
+
         $total = max(0, $this->totalDataRows($path));
 
         $headers = [];
@@ -321,6 +358,82 @@ class SpreadsheetImportService
     public function dataRowCount(string $path): int
     {
         return $this->totalDataRows($path);
+    }
+
+    /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", lainnya sheet pertama. */
+    public function rowCountForType(string $type, string $path): int
+    {
+        if ($type !== 'areal') {
+            return $this->totalDataRows($path);
+        }
+        $n = 0;
+        foreach ($this->dataRowsSheet($path, 'DB') as $row) {
+            if (! $this->isEmptyRow($row)) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * Baca baris data (tanpa header) dari sheet bernama $sheetName (case-insensitive);
+     * fallback ke sheet pertama bila tidak ketemu.
+     *
+     * @return \Generator<int, array<int, mixed>>
+     */
+    private function dataRowsSheet(string $path, string $sheetName): \Generator
+    {
+        $reader = new XlsxReader(new XlsxReaderOptions);
+        $reader->open($path);
+        $sheet = $row = null;
+
+        try {
+            // Cari indeks sheet target (case-insensitive); catat juga sheet pertama sebagai fallback.
+            $targetIndex = null;
+            $firstIndex = null;
+            $idx = 0;
+            foreach ($reader->getSheetIterator() as $sheet) {
+                if ($firstIndex === null) {
+                    $firstIndex = $idx;
+                }
+                if (strcasecmp((string) $sheet->getName(), $sheetName) === 0) {
+                    $targetIndex = $idx;
+                    break;
+                }
+                $idx++;
+            }
+            $reader->close();
+            unset($reader, $sheet, $row);
+            gc_collect_cycles();
+
+            // Buka ulang dan baca sheet yang tepat.
+            $reader = new XlsxReader(new XlsxReaderOptions);
+            $reader->open($path);
+            $useIndex = $targetIndex ?? $firstIndex ?? 0;
+            $current = 0;
+            $isHeader = true;
+            foreach ($reader->getSheetIterator() as $sheet) {
+                if ($current !== $useIndex) {
+                    $current++;
+
+                    continue;
+                }
+                foreach ($sheet->getRowIterator() as $row) {
+                    if ($isHeader) {
+                        $isHeader = false;
+
+                        continue;
+                    }
+                    yield $this->rowToArray($row);
+                }
+                break;
+            }
+        } finally {
+            $reader->close();
+            unset($reader, $sheet, $row);
+            gc_collect_cycles();
+        }
     }
 
     /**
@@ -480,6 +593,62 @@ class SpreadsheetImportService
         }
 
         return $out;
+    }
+
+    /**
+     * Impor sheet DB Areal → areal_blok (idempoten per batch). Luas←J(idx 9), Pokok←N(idx 13).
+     *
+     * @param  iterable<int, array<int, mixed>>  $rows
+     */
+    private function importAreal(Batch $batch, iterable $rows, ?callable $onProgress = null): ImportResult
+    {
+        DB::table('areal_blok')->where('batch_id', $batch->id)->delete();
+
+        $records = [];
+        $inserted = 0;
+        $flush = function () use (&$records, &$inserted, $onProgress): void {
+            if ($records === []) {
+                return;
+            }
+            DB::table('areal_blok')->insert($records);
+            $inserted += count($records);
+            $records = [];
+            if ($onProgress !== null) {
+                $onProgress($inserted);
+            }
+        };
+
+        foreach ($rows as $values) {
+            if ($this->isEmptyRow($values)) {
+                continue;
+            }
+            $rec = ['batch_id' => $batch->id];
+            foreach (self::AREAL_COLUMNS as $idx => $col) {
+                $rec[$col] = $this->arealCell($values[$idx] ?? null, $col);
+            }
+            $records[] = $rec;
+            if (count($records) >= 500) {
+                $flush();
+            }
+        }
+        $flush();
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    private function arealCell(mixed $v, string $col): mixed
+    {
+        $numeric = ['luas_tanam', 'luas_ha'];
+        $int = ['tahun_tanam', 'total_pokok', 'total_pokok_produktif'];
+        if (in_array($col, $numeric, true)) {
+            return is_numeric($v) ? (float) $v : 0;
+        }
+        if (in_array($col, $int, true)) {
+            return is_numeric($v) ? (int) $v : null;
+        }
+        $t = trim((string) ($v ?? ''));
+
+        return $t === '' ? null : mb_substr($t, 0, 250);
     }
 
     /**
