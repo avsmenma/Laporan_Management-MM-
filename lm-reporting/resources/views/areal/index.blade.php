@@ -9,6 +9,7 @@
             <div class="filter-group">
                 <label class="filter-label">Komoditas</label>
                 <select class="filter-select" x-model="filters.komoditi" @change="onKomoditiChange()">
+                    <option value="">— pilih komoditas —</option>
                     <option value="KS">Kelapa Sawit</option>
                     <option value="KR">Karet</option>
                 </select>
@@ -38,6 +39,7 @@
                 <label class="filter-label">Unit Kebun</label>
                 <select class="filter-select" x-model="filters.unit" @change="load()">
                     <option value="">— pilih unit —</option>
+                    <option value="ALL">Semua Unit</option>
                     <template x-for="u in units" :key="u.code">
                         <option :value="u.code" x-text="`${u.code} - ${u.name}`"></option>
                     </template>
@@ -64,7 +66,7 @@
 <script>
 function arealApp() {
     return {
-        filters: { komoditi: 'KS', year: '', month: '', unit: '' },
+        filters: { komoditi: '', year: '', month: '', unit: '' },
         batches: [],
         units: [],
         hasData: false,
@@ -76,6 +78,8 @@ function arealApp() {
         },
 
         async init() {
+            // Tidak pra-pilih apa pun; user memilih Komoditas → Tahun → Bulan → Unit sendiri
+            // (sejajar perilaku halaman Kebun). Unit dimuat saat komoditas dipilih.
             try {
                 const resp = await fetch('/api/batches');
                 const json = await resp.json();
@@ -83,11 +87,6 @@ function arealApp() {
             } catch (e) {
                 console.error('Gagal memuat batches:', e);
             }
-            const ys = this.years();
-            this.filters.year = ys[0] ?? '';
-            const ms = this.months();
-            this.filters.month = ms[0] ?? '';
-            await this.loadUnits();
         },
 
         years() {
@@ -119,13 +118,16 @@ function arealApp() {
         },
 
         async onKomoditiChange() {
-            await this.loadUnits();
             this.filters.unit = ''; // buang unit lama agar tidak menarik data komoditi sebelumnya
+            this.units = [];
+            if (this.filters.komoditi) {
+                await this.loadUnits();
+            }
             await this.load();
         },
 
         async load() {
-            if (!this.filters.unit || !this.filters.year || !this.filters.month) {
+            if (!this.filters.komoditi || !this.filters.unit || !this.filters.year || !this.filters.month) {
                 this.hasData = false;
                 return;
             }
