@@ -21,7 +21,10 @@ class DataPurgeService
     ];
 
     /** Tabel anggaran/areal yang dikunci per-tahun (tanpa batch_id). */
-    private const YEAR_TABLES = ['budget_rkap', 'budget_rko', 'alokasi_areal'];
+    private const YEAR_TABLES = ['budget_rkap', 'budget_rko', 'budget_source', 'alokasi_areal'];
+
+    /** Tabel statis lintas-tahun yang hanya dikosongkan saat "Hapus Semua". */
+    private const ALL_ONLY_TABLES = ['realisasi_tahun_lalu', 'db_wbs_tahun_lalu'];
 
     /**
      * @return array<string, int> jumlah baris terhapus per tabel
@@ -76,7 +79,7 @@ class DataPurgeService
     {
         return DB::transaction(function () {
             $counts = [];
-            $tables = array_merge(self::BATCH_TABLES, self::YEAR_TABLES, ['realisasi_tahun_lalu']);
+            $tables = array_merge(self::BATCH_TABLES, self::YEAR_TABLES, self::ALL_ONLY_TABLES);
 
             foreach ($tables as $table) {
                 if (Schema::hasTable($table)) {

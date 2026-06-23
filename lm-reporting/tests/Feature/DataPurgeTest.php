@@ -26,6 +26,10 @@ class DataPurgeTest extends TestCase
         DB::table('budget_rkap')->insert([
             'year' => $year, 'komoditi' => 'KS', 'plant_code' => '5E11', 'report_type' => 'LM14', 'kode' => '99-01', 'nilai' => 100,
         ]);
+        DB::table('budget_source')->insert([
+            'year' => $year, 'komoditi' => 'KS', 'plant_code' => '5E11', 'report_type' => 'LM14', 'kode' => '99-01', 'source' => 'BKU', 'nilai' => 100,
+        ]);
+        DB::table('db_wbs_tahun_lalu')->insert(['year' => $year, 'komoditi' => 'KS']);
 
         return $batch->id;
     }
@@ -41,6 +45,7 @@ class DataPurgeTest extends TestCase
         $this->assertSame(0, Batch::query()->where('year', 2026)->where('month', 5)->count());
         // Anggaran tahunan tidak ikut terhapus saat hapus per bulan.
         $this->assertSame(1, DB::table('budget_rkap')->count());
+        $this->assertSame(1, DB::table('budget_source')->count());
     }
 
     public function test_purge_by_year_deletes_batch_data_and_annual_budget(): void
@@ -52,9 +57,11 @@ class DataPurgeTest extends TestCase
 
         $this->assertSame(0, Batch::query()->where('year', 2026)->count());
         $this->assertSame(0, DB::table('budget_rkap')->where('year', 2026)->count());
+        $this->assertSame(0, DB::table('budget_source')->where('year', 2026)->count());
         // Tahun lain tetap utuh.
         $this->assertSame(1, Batch::query()->where('year', 2025)->count());
         $this->assertSame(1, DB::table('db_wbs_raw')->count());
+        $this->assertSame(1, DB::table('budget_source')->where('year', 2025)->count());
     }
 
     public function test_purge_all_empties_every_data_table(): void
@@ -68,5 +75,7 @@ class DataPurgeTest extends TestCase
         $this->assertSame(0, DB::table('db_wbs_raw')->count());
         $this->assertSame(0, DB::table('db_gc')->count());
         $this->assertSame(0, DB::table('budget_rkap')->count());
+        $this->assertSame(0, DB::table('budget_source')->count());
+        $this->assertSame(0, DB::table('db_wbs_tahun_lalu')->count());
     }
 }
