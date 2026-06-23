@@ -634,29 +634,13 @@ Artisan::command('lm:tahunlalu-wbs {--dir=} {--file=*} {--year=2025}', function 
     return 0;
 })->purpose('Isi realisasi_tahun_lalu (LM14) dari ekstrak WBS mentah tahun lalu; cocok Aktifitas=kode, SUM(Value).');
 
-Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
-    // Impor RKO/RKAP (DATA TESTING) dari folder docs/rko_rkap ke budget_rko & budget_rkap.
-    //
-    // Karakter data sumber (lihat docs/ANALISIS_KESIAPAN_RKO_RKAP.md):
-    //   - File tidak memisahkan RKO vs RKAP (satu kolom "Nilai") → nilai disalin ke
-    //     KEDUA tabel (budget_rko & budget_rkap) sesuai permintaan tampilan.
-    //   - Tidak ada kolom year/report_type → year dari --year, report_type=LM14.
-    //   - Budget disimpan PER-PERIODE (kolom Period file → budget_rko/budget_rkap.period);
-    //     nilai dijumlah per (komoditi, plant, period, kode). Baris tanpa periode → NULL
-    //     (dianggap anggaran tahunan/berlaku semua bulan oleh mesin laporan).
-    //   - Nilai disimpan RUPIAH PENUH (mengikuti skala kolom realisasi db_wbs/db_ohc),
-    //     TANPA ×1000.
-    // Pemetaan kode (kolom E file) ke kode baris template (lm_template_row.kode):
-    //   - BKU : "Aktifitas" → kode WBS (mis. 41-01, 99-01). Hanya unit KEBUN.
-    //   - OHC : "Kode CC"   → kode BTL (BT01..BT16 = db_ohc.lock). Pabrik (5F) dilewati.
-    //   - GC  : "Kode GC" (AP/AR) tidak punya baris template LM14 → dilewati & dicatat.
+Artisan::command('budget:import-test {--dir=} {--year=2026}', function (SpreadsheetImportService $service): int {
     $year = (int) $this->option('year');
     if ($year < 2000 || $year > 2100) {
         $this->error('Opsi --year tidak wajar: '.$year);
 
         return 1;
     }
-
     $dir = (string) $this->option('dir');
     if ($dir === '') {
         $dir = dirname(base_path()).DIRECTORY_SEPARATOR.'docs'.DIRECTORY_SEPARATOR.'rko_rkap';
@@ -667,50 +651,12 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
         return 1;
     }
 
-    // Peta kode unit → tipe (KEBUN/PABRIK) untuk memilah tujuan & menolak unit asing.
-    $unitType = RefUnit::query()->get(['code', 'type'])
-        ->mapWithKeys(fn ($u) => [strtoupper((string) $u->code) => $u->type])->all();
-
-    // Himpunan baris template LM14 valid sebagai "KOMODITI|kode" (cocok per komoditi).
-    $lm14 = DB::table('lm_template_row')
-        ->where('report_type', 'LM14')->whereNotNull('kode')->where('kode', '<>', '')
-        ->get(['komoditi', 'kode'])
-        ->mapWithKeys(fn ($r) => [strtoupper((string) $r->komoditi).'|'.$r->kode => true])->all();
-    if ($lm14 === []) {
-        $this->error('lm_template_row LM14 kosong. Seed template dulu.');
-
-        return 1;
-    }
-
-    $num = function ($v): float {
-        if ($v === null) {
-            return 0.0;
-        }
-        if (is_int($v) || is_float($v)) {
-            return (float) $v;
-        }
-        $v = trim((string) $v);
-        if ($v === '' || $v === '-') {
-            return 0.0;
-        }
-        // Dukung format Indonesia (1.234,56) & Inggris (1234.56).
-        if (str_contains($v, ',') && str_contains($v, '.')) {
-            $v = str_replace('.', '', $v);
-            $v = str_replace(',', '.', $v);
-        } elseif (str_contains($v, ',')) {
-            $v = str_replace(',', '.', $v);
-        }
-
-        return (float) preg_replace('/[^0-9.\-]/', '', $v);
-    };
-
     $find = function (string $needle) use ($dir): ?string {
         foreach (glob(rtrim($dir, "/\\").DIRECTORY_SEPARATOR.'*.xlsx') ?: [] as $f) {
-            $b = basename($f);
-            if (str_starts_with($b, '~$')) {
-                continue; // lewati berkas kunci Excel
+            if (str_starts_with(basename($f), '~$')) {
+                continue;
             }
-            if (stripos($b, $needle) !== false) {
+            if (stripos(basename($f), $needle) !== false) {
                 return $f;
             }
         }
@@ -718,188 +664,18 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
         return null;
     };
 
-    $load = function (string $file): array {
-        $out = [];
-        $reader = new XlsxReader();
-        $reader->open($file);
-        foreach ($reader->getSheetIterator() as $sheet) {
-            $first = true;
-            foreach ($sheet->getRowIterator() as $row) {
-                if ($first) { // lewati baris header
-                    $first = false;
+    foreach (['BKU' => 'rko_bku', 'OHC' => 'rko_ohc', 'GC' => 'rko_gc'] as $needle => $type) {
+        $file = $find($needle);
+        if ($file === null) {
+            $this->warn("File {$needle} tidak ditemukan (lewati).");
 
-                    continue;
-                }
-                $out[] = $row->toArray();
-            }
-
-            break; // hanya sheet pertama
+            continue;
         }
-        $reader->close();
-
-        return $out;
-    };
-
-    // Indeks kolom 0-based SAMA untuk BKU & OHC: A=komoditi, B=plant, D=period, E=kode,
-    // F=object_name (Job Name / CO Object Name), G=cost_element, H=cost_element_desc,
-    // I=klasifikasi, J=nilai, K=fisik (BKU saja).
-    [$C_KOM, $C_PLANT, $C_KODE, $C_NILAI] = [0, 1, 4, 9];
-    [$C_PERIOD, $C_OBJ, $C_CE, $C_CEDESC, $C_KLAS, $C_FISIK] = [3, 5, 6, 7, 8, 10];
-
-    // Potong & rapikan nilai teks (null bila kosong) sesuai panjang kolom budget_source.
-    $str = function ($v, int $len): ?string {
-        if ($v === null) {
-            return null;
-        }
-        $t = trim((string) $v);
-
-        return $t === '' ? null : mb_substr($t, 0, $len);
-    };
-
-    $acc = [];     // "KOMODITI|PLANT|kode" => nilai (agregat)
-    $rawSrc = [];  // baris mentah per-line (budget_source) untuk drill-down
-    $stats = [
-        'bku_ok' => 0, 'bku_skip_kode' => 0, 'bku_skip_unit' => 0,
-        'ohc_ok' => 0, 'ohc_skip_pabrik' => 0, 'ohc_skip_kode' => 0, 'ohc_skip_unit' => 0,
-        'gc_rows' => 0, 'gc_nilai' => 0.0,
-    ];
-
-    // --- BKU: Aktifitas → kode WBS (hanya KEBUN) ---
-    $bku = $find('BKU');
-    if ($bku === null) {
-        $this->warn('File BKU tidak ditemukan (lewati).');
-    } else {
-        foreach ($load($bku) as $c) {
-            $kom = strtoupper(trim((string) ($c[$C_KOM] ?? '')));
-            $plant = strtoupper(trim((string) ($c[$C_PLANT] ?? '')));
-            $kode = trim((string) ($c[$C_KODE] ?? ''));
-            if ($kom === '' || $plant === '' || $kode === '') {
-                continue;
-            }
-            if (($unitType[$plant] ?? null) !== 'KEBUN') {
-                $stats['bku_skip_unit']++;
-
-                continue;
-            }
-            if (! isset($lm14[$kom.'|'.$kode])) {
-                $stats['bku_skip_kode']++;
-
-                continue;
-            }
-            $nilai = $num($c[$C_NILAI] ?? 0);
-            $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
-            $k = $kom.'|'.$plant.'|'.($period ?? '').'|'.$kode;
-            $acc[$k] = ($acc[$k] ?? 0) + $nilai;
-            $stats['bku_ok']++;
-            $rawSrc[] = [
-                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
-                'report_type' => 'LM14', 'kode' => $kode, 'source' => 'BKU',
-                'period' => $period,
-                'object_name' => $str($c[$C_OBJ] ?? null, 250),
-                'cost_element' => $str($c[$C_CE] ?? null, 40),
-                'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
-                'klasifikasi' => $str($c[$C_KLAS] ?? null, 60),
-                'nilai' => round($nilai, 2),
-                'fisik' => is_numeric($c[$C_FISIK] ?? null) ? (float) $c[$C_FISIK] : null,
-            ];
-        }
+        $r = $service->importBudget($year, $type, $file);
+        $this->info("{$needle}: {$r->rowCount} baris budget · {$r->errorCount()} dilewati.");
     }
 
-    // --- OHC: Kode CC (BT01..) → kode BTL; pabrik (5F) dilewati ---
-    $ohc = $find('OHC');
-    if ($ohc === null) {
-        $this->warn('File OHC tidak ditemukan (lewati).');
-    } else {
-        foreach ($load($ohc) as $c) {
-            $kom = strtoupper(trim((string) ($c[$C_KOM] ?? '')));
-            $plant = strtoupper(trim((string) ($c[$C_PLANT] ?? '')));
-            $kode = trim((string) ($c[$C_KODE] ?? ''));
-            if ($kom === '' || $plant === '' || $kode === '') {
-                continue;
-            }
-            $type = $unitType[$plant] ?? null;
-            if ($type === 'PABRIK') {
-                $stats['ohc_skip_pabrik']++;
-
-                continue;
-            }
-            if ($type !== 'KEBUN') {
-                $stats['ohc_skip_unit']++;
-
-                continue;
-            }
-            if (! isset($lm14[$kom.'|'.$kode])) {
-                $stats['ohc_skip_kode']++;
-
-                continue;
-            }
-            $nilai = $num($c[$C_NILAI] ?? 0);
-            $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
-            $k = $kom.'|'.$plant.'|'.($period ?? '').'|'.$kode;
-            $acc[$k] = ($acc[$k] ?? 0) + $nilai;
-            $stats['ohc_ok']++;
-            $rawSrc[] = [
-                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
-                'report_type' => 'LM14', 'kode' => $kode, 'source' => 'OHC',
-                'period' => $period,
-                'object_name' => $str($c[$C_OBJ] ?? null, 250),
-                'cost_element' => $str($c[$C_CE] ?? null, 40),
-                'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
-                'klasifikasi' => $str($c[$C_KLAS] ?? null, 60),
-                'nilai' => round($nilai, 2),
-                'fisik' => null,
-            ];
-        }
-    }
-
-    // --- GC: tidak ada baris template LM14 → hanya dicatat ---
-    $gc = $find('GC');
-    if ($gc !== null) {
-        foreach ($load($gc) as $c) {
-            $kode = trim((string) ($c[$C_KODE] ?? ''));
-            if ($kode === '') {
-                continue;
-            }
-            $stats['gc_rows']++;
-            $stats['gc_nilai'] += $num($c[$C_NILAI] ?? 0);
-        }
-    }
-
-    // Tulis ke budget_rko & budget_rkap (nilai sama). Hapus dulu LM14 tahun ini
-    // agar command bisa dijalankan ulang (idempoten untuk data testing).
-    $rows = [];
-    foreach ($acc as $key => $nilai) {
-        [$kom, $plant, $period, $kode] = explode('|', $key, 4);
-        $rows[] = [
-            'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
-            'report_type' => 'LM14', 'kode' => $kode,
-            'period' => $period === '' ? null : (int) $period,
-            'nilai' => round($nilai, 2),
-        ];
-    }
-
-    DB::transaction(function () use ($rows, $rawSrc, $year): void {
-        DB::table('budget_rko')->where('year', $year)->where('report_type', 'LM14')->delete();
-        DB::table('budget_rkap')->where('year', $year)->where('report_type', 'LM14')->delete();
-        DB::table('budget_source')->where('year', $year)->where('report_type', 'LM14')->delete();
-        foreach (array_chunk($rows, 500) as $chunk) {
-            DB::table('budget_rko')->insert($chunk);
-            DB::table('budget_rkap')->insert($chunk);
-        }
-        foreach (array_chunk($rawSrc, 500) as $chunk) {
-            DB::table('budget_source')->insert($chunk);
-        }
-    });
-
-    $totalNilai = array_sum(array_column($rows, 'nilai'));
-    $this->info("Selesai. {$year}: ".count($rows).' baris budget → budget_rko & budget_rkap (nilai identik).');
-    $this->line('  Total nilai budget LM14 : '.number_format($totalNilai, 2));
-    $this->line('  Baris mentah disimpan   : '.number_format(count($rawSrc)).' → budget_source (untuk drill-down RKO/RKAP).');
-    $this->line("  BKU  : {$stats['bku_ok']} masuk · {$stats['bku_skip_kode']} kode di luar LM14 · {$stats['bku_skip_unit']} unit non-kebun");
-    $this->line("  OHC  : {$stats['ohc_ok']} masuk · {$stats['ohc_skip_pabrik']} baris pabrik (5F) dilewati · {$stats['ohc_skip_kode']} kode di luar LM14");
-    $this->warn('  GC   : '.$stats['gc_rows'].' baris ('.number_format($stats['gc_nilai'], 2).') DILEWATI — tidak ada baris template LM14 untuk kode GC (AP/AR).');
-    $this->newLine();
-    $this->warn('Jalankan ulang report:generate --type=LM14 agar kolom RKO/RKAP termaterialisasi ke report_lm14.');
+    $this->warn('Jalankan report:generate / tombol Proses Laporan agar RKO/RKAP termaterialisasi.');
 
     return 0;
-})->purpose('Impor RKO/RKAP testing (docs/rko_rkap) ke budget_rko & budget_rkap; BKU=Aktifitas, OHC=Kode CC, GC dilewati.');
+})->purpose('Impor RKO/RKAP (docs/rko_rkap) per-sumber via importBudget.');
