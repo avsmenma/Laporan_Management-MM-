@@ -13,8 +13,8 @@ class ArealBlok extends Model
     protected function casts(): array
     {
         return [
-            'luas_tanam' => 'decimal:2',
-            'luas_ha' => 'decimal:2',
+            'luas_tanam' => 'decimal:3',
+            'luas_ha' => 'decimal:3',
             'tahun_tanam' => 'integer',
             'total_pokok' => 'integer',
             'total_pokok_produktif' => 'integer',
