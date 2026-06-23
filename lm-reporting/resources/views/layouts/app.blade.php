@@ -445,6 +445,38 @@
         </main>
     </div>
 
+    {{-- Toast notifikasi global --}}
+    <div id="lm-toasts" style="position:fixed;top:16px;right:16px;z-index:200;display:flex;flex-direction:column;gap:8px"></div>
+    {{-- Overlay proses (pratinjau/hapus) --}}
+    <div id="lm-overlay" style="display:none;position:fixed;inset:0;z-index:190;background:rgba(15,76,58,.35);align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:12px;padding:22px 26px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:flex;gap:14px;align-items:center">
+            <span class="lm-spin" style="width:22px;height:22px;border:3px solid var(--g-100,#cfe6db);border-top-color:var(--g-700,#0f4c3a);border-radius:50%;display:inline-block;animation:lmspin .8s linear infinite"></span>
+            <span id="lm-overlay-text" style="font-weight:600;color:var(--ink-800,#1f2a26)">Memproses…</span>
+        </div>
+    </div>
+    <style>@keyframes lmspin{to{transform:rotate(360deg)}}</style>
+    <script>
+        window.lmToast = function (message, type) {
+            var wrap = document.getElementById('lm-toasts');
+            if (!wrap) return;
+            var el = document.createElement('div');
+            var ok = type !== 'err';
+            el.style.cssText = 'min-width:240px;max-width:360px;padding:12px 14px;border-radius:9px;color:#fff;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);background:' + (ok ? '#0f8a5f' : '#c0392b');
+            el.textContent = message;
+            wrap.appendChild(el);
+            setTimeout(function () { el.style.transition = 'opacity .4s'; el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 400); }, ok ? 5000 : 8000);
+        };
+        window.lmOverlay = function (show, text) {
+            var o = document.getElementById('lm-overlay');
+            if (!o) return;
+            if (text) document.getElementById('lm-overlay-text').textContent = text;
+            o.style.display = show ? 'flex' : 'none';
+        };
+        // Tampilkan flash status sbg toast saat halaman dimuat.
+        @if (session('status'))
+            window.lmToast(@json(session('status')), 'ok');
+        @endif
+    </script>
     @stack('scripts')
     <script>
         // Buka/tutup sidebar; status disimpan agar konsisten antar-halaman.

@@ -4,10 +4,6 @@
 
 @section('content')
 <div>
-    @if (session('status'))
-        <div class="alert alert-ok" style="margin-bottom:18px">{{ session('status') }}</div>
-    @endif
-
     <section class="panel" style="border-color:#e6b8b3">
         <div class="panel-head"><span class="panel-title" style="color:#b42318">⚠️ Hapus Data (Admin)</span></div>
         <div class="panel-body" x-data="{ mode: 'month', konfirmasi: '' }">
@@ -15,7 +11,7 @@
                 Menghapus data laporan &amp; impor sesuai cakupan beserta batch periodenya. Tindakan ini <b>permanen</b> dan tidak bisa dibatalkan.
             </p>
             <form method="POST" action="{{ route('data.purge') }}"
-                  @submit="if (!confirm('Yakin menghapus data? Tindakan ini permanen dan tidak bisa dibatalkan.')) $event.preventDefault()">
+                  @submit="if (!confirm('Yakin menghapus data? Tindakan ini permanen dan tidak bisa dibatalkan.')) { $event.preventDefault(); } else { window.lmOverlay(true,'Menghapus data…'); }">
                 @csrf
                 <div class="grid gap-4 md:grid-cols-4">
                     <div class="field" style="margin-bottom:0">

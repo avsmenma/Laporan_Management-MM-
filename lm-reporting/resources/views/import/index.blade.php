@@ -3,10 +3,6 @@
 @section('title', 'Import Data')
 
 @section('content')
-    @if (session('status'))
-        <div class="alert alert-ok" style="margin-bottom:18px">{{ session('status') }}</div>
-    @endif
-
     @if ($errors->any())
         <div class="alert alert-warn" style="margin-bottom:18px;flex-direction:column;align-items:stretch">
             <div><b>Periksa input</b> — unggahan tidak diproses:</div>
@@ -42,6 +38,7 @@
             @endphp
             <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data"
                   class="grid gap-4 md:grid-cols-5"
+                  @submit="window.lmOverlay(true,'Memproses pratinjau…')"
                   x-data="{
                       jenis: '{{ $pJenis }}',
                       kategori: '{{ $pKategori }}',
@@ -143,24 +140,30 @@
                     </table>
                 </div>
 
-                <div class="flex items-center gap-3" style="margin-top:16px">
-                    <form method="POST" action="{{ route('import.confirm') }}">
-                        @csrf
-                        <input type="hidden" name="token" value="{{ $pending['token'] }}">
-                        <input type="hidden" name="ext" value="{{ $pending['ext'] }}">
-                        <input type="hidden" name="type" value="{{ $pending['type'] }}">
-                        <input type="hidden" name="year" value="{{ $pending['year'] }}">
-                        @unless ($pending['is_budget'] ?? false)
-                            <input type="hidden" name="month" value="{{ $pending['month'] }}">
-                        @endunless
-                        <button class="btn btn-primary" type="submit">Konfirmasi &amp; Simpan ke Database</button>
-                    </form>
+                <div class="flex items-center gap-3" style="margin-top:16px" x-data="lmImportProgress()">
+                    <button class="btn btn-primary" type="button"
+                        @click="confirm({
+                            token: '{{ $pending['token'] }}', ext: '{{ $pending['ext'] }}',
+                            type: '{{ $pending['type'] }}', year: {{ (int) $pending['year'] }},
+                            month: {{ ($pending['is_budget'] ?? false) ? 'null' : (int) ($pending['month'] ?? 0) }}
+                        })">Konfirmasi &amp; Simpan ke Database</button>
                     <form method="POST" action="{{ route('import.cancel') }}">
                         @csrf
                         <input type="hidden" name="token" value="{{ $pending['token'] }}">
                         <input type="hidden" name="ext" value="{{ $pending['ext'] }}">
                         <button class="btn btn-outline" type="submit">Batalkan</button>
                     </form>
+
+                    {{-- Modal progress --}}
+                    <div x-show="open" x-cloak style="position:fixed;inset:0;z-index:195;background:rgba(15,76,58,.4);display:flex;align-items:center;justify-content:center">
+                        <div style="background:#fff;border-radius:12px;padding:24px;min-width:340px;box-shadow:0 16px 48px rgba(0,0,0,.3)">
+                            <div style="font-weight:700;margin-bottom:12px" x-text="title"></div>
+                            <div style="height:12px;background:var(--line,#e5ece9);border-radius:99px;overflow:hidden">
+                                <div style="height:100%;background:var(--g-700,#0f4c3a);transition:width .4s" :style="`width:${pct}%`"></div>
+                            </div>
+                            <div style="margin-top:10px;font-size:12.5px;color:var(--ink-600,#54625c)" x-text="label"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -202,3 +205,40 @@
         </table>
     </section>
 @endsection
+
+@push('scripts')
+<script>
+    function lmImportProgress() {
+        return {
+            open: false, pct: 0, title: 'Mengimpor…', label: 'Menyiapkan…',
+            async confirm(payload) {
+                this.open = true; this.pct = 0; this.title = 'Mengimpor ' + payload.type; this.label = 'Mengantre…';
+                try {
+                    const res = await fetch('{{ route('import.confirm') }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || 'Gagal memulai import'); }
+                    const { status_url } = await res.json();
+                    this.poll(status_url);
+                } catch (e) { this.open = false; window.lmToast(e.message, 'err'); }
+            },
+            poll(url) {
+                const tick = async () => {
+                    try {
+                        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                        const s = await r.json();
+                        if (s.total > 0) this.pct = Math.min(100, Math.round(s.processed / s.total * 100));
+                        this.label = (s.processed || 0).toLocaleString('id-ID') + ' / ' + (s.total || 0).toLocaleString('id-ID') + ' baris (' + this.pct + '%)';
+                        if (s.status === 'done') { this.open = false; window.lmToast('Import berhasil: ' + s.row_count + ' baris', 'ok'); setTimeout(() => location.reload(), 1200); return; }
+                        if (s.status === 'failed') { this.open = false; window.lmToast('Import gagal: ' + (s.error || 'tidak diketahui'), 'err'); return; }
+                        setTimeout(tick, 2000);
+                    } catch (e) { setTimeout(tick, 3000); }
+                };
+                tick();
+            },
+        };
+    }
+</script>
+@endpush
