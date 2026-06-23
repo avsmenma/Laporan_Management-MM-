@@ -28,6 +28,13 @@ class ImportConfirmDispatchTest extends TestCase
         return User::factory()->create(['role_id' => $role->id]);
     }
 
+    private function admin(): User
+    {
+        $role = Role::query()->firstOrCreate(['name' => Role::ADMIN], ['description' => 'admin']);
+
+        return User::factory()->create(['role_id' => $role->id]);
+    }
+
     public function test_confirm_creates_import_job_and_dispatches(): void
     {
         Queue::fake();
@@ -61,16 +68,41 @@ class ImportConfirmDispatchTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_status_endpoint_returns_progress(): void
+    public function test_owner_can_view_status_progress(): void
     {
-        $job = ImportJob::query()->create([
+        $owner = $this->operator();
+        $job = $this->makeJob($owner->id);
+
+        $res = $this->actingAs($owner)->getJson("/import/status/{$job->id}");
+
+        $res->assertOk()->assertJson(['status' => 'processing', 'processed' => 4, 'total' => 10]);
+    }
+
+    public function test_other_operator_cannot_view_status(): void
+    {
+        $job = $this->makeJob($this->operator()->id);
+
+        $res = $this->actingAs($this->operator())->getJson("/import/status/{$job->id}");
+
+        $res->assertForbidden();
+    }
+
+    public function test_admin_can_view_any_status(): void
+    {
+        $job = $this->makeJob($this->operator()->id);
+
+        $res = $this->actingAs($this->admin())->getJson("/import/status/{$job->id}");
+
+        $res->assertOk()->assertJson(['status' => 'processing']);
+    }
+
+    private function makeJob(?int $userId): ImportJob
+    {
+        return ImportJob::query()->create([
+            'user_id' => $userId,
             'type' => 'gc', 'year' => 2026, 'month' => 5, 'filename' => 'g.xlsx',
             'staged_path' => 'import-staging/x.xlsx', 'ext' => 'xlsx',
             'status' => 'processing', 'total' => 10, 'processed' => 4,
         ]);
-
-        $res = $this->actingAs($this->operator())->getJson("/import/status/{$job->id}");
-
-        $res->assertOk()->assertJson(['status' => 'processing', 'processed' => 4, 'total' => 10]);
     }
 }

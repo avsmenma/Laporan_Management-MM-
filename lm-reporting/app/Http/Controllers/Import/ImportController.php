@@ -141,9 +141,15 @@ class ImportController extends Controller
 
     /**
      * Polling status untuk import job yang sedang berjalan.
+     * Hanya pemilik job atau Admin yang boleh melihat (cegah IDOR antar-operator).
      */
-    public function status(\App\Models\ImportJob $importJob): \Illuminate\Http\JsonResponse
+    public function status(Request $request, \App\Models\ImportJob $importJob): \Illuminate\Http\JsonResponse
     {
+        abort_unless(
+            $importJob->user_id === $request->user()->id || $request->user()->hasRole('Admin'),
+            403,
+        );
+
         return response()->json([
             'status'    => $importJob->status,
             'processed' => $importJob->processed,
