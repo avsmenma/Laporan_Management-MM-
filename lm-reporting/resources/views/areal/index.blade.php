@@ -47,9 +47,6 @@
     </div>
 
     <div class="report-card" x-show="hasData" x-cloak>
-        <div class="report-header">
-            <h3 class="report-title">Areal — Statement Blok/Petak</h3>
-        </div>
         <div id="areal-table" class="lm-report-table"></div>
     </div>
 
