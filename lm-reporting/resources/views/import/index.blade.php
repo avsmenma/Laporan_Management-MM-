@@ -48,12 +48,12 @@
                     <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data" class="grid gap-4 md:grid-cols-4">
                         @csrf
                         <div class="field" style="margin-bottom:0">
-                            <label>Batch</label>
-                            <select name="batch_id" class="field-control" required>
-                                @foreach ($batches as $batch)
-                                    <option value="{{ $batch->id }}" @selected(($pending['batch_id'] ?? null) === $batch->id)>{{ $batch->code }} - {{ $batch->status }}</option>
-                                @endforeach
-                            </select>
+                            <label>Tahun</label>
+                            <input type="number" name="year" class="field-control" value="{{ $pending['year'] ?? date('Y') }}" min="2000" max="2100" required>
+                        </div>
+                        <div class="field" style="margin-bottom:0">
+                            <label>Bulan (opsional, otomatis dari file)</label>
+                            <input type="number" name="month" class="field-control" value="{{ $pending['month'] ?? '' }}" min="1" max="12" placeholder="Auto">
                         </div>
                         <div class="field" style="margin-bottom:0">
                             <label>Jenis Import</label>
@@ -114,7 +114,10 @@
                                 <input type="hidden" name="token" value="{{ $pending['token'] }}">
                                 <input type="hidden" name="ext" value="{{ $pending['ext'] }}">
                                 <input type="hidden" name="type" value="{{ $pending['type'] }}">
-                                <input type="hidden" name="batch_id" value="{{ $pending['batch_id'] }}">
+                                <input type="hidden" name="year" value="{{ $pending['year'] }}">
+                                @if (!($pending['is_budget'] ?? false) && ($pending['month'] ?? null) !== null)
+                                    <input type="hidden" name="month" value="{{ $pending['month'] }}">
+                                @endif
                                 <button class="btn btn-primary" type="submit">Konfirmasi &amp; Simpan ke Database</button>
                             </form>
                             <form method="POST" action="{{ route('import.cancel') }}">
