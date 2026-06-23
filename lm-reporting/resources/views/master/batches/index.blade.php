@@ -78,6 +78,8 @@
                             <th>Bulan</th>
                             <th>Status</th>
                             <th>Diproses</th>
+                            <th>Status Laporan</th>
+                            <th>Proses</th>
                             <th>Ubah Status</th>
                         </tr>
                     </thead>
@@ -93,6 +95,20 @@
                                 </td>
                                 <td class="mono">{{ optional($batch->processed_at)->format('Y-m-d H:i') }}</td>
                                 <td>
+                                    @if ($batch->needs_regenerate)
+                                        <span class="pill pill-warn"><span class="dot"></span>Perlu diproses</span>
+                                    @else
+                                        <span class="pill pill-ok"><span class="dot"></span>Terakhir diproses: {{ $batch->processed_at?->format('Y-m-d H:i') ?? '-' }}</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <form method="POST" action="{{ route('proses-laporan.store') }}" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Memproses…'">
+                                        @csrf
+                                        <input type="hidden" name="batch_id" value="{{ $batch->id }}">
+                                        <button class="btn btn-primary" style="height:28px;padding:0 10px;font-size:11.5px" type="submit">Proses Laporan</button>
+                                    </form>
+                                </td>
+                                <td>
                                     <form method="POST" action="{{ route('batches.store') }}" style="display:inline-flex;gap:6px">
                                         @csrf
                                         <input type="hidden" name="year" value="{{ $batch->year }}">
@@ -104,7 +120,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td class="empty-cell" colspan="6">Belum ada batch.</td></tr>
+                            <tr><td class="empty-cell" colspan="8">Belum ada batch.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
