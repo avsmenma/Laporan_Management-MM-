@@ -262,6 +262,7 @@ function arealApp() {
                 this.table = new window.Tabulator('#areal-table', {
                     data: rows,
                     columns: cols,
+                    columnDefaults: { headerSort: false }, // hapus fitur sort (tanpa ikon panah)
                     layout: 'fitDataStretch',
                     height: '70vh',
                     rowFormatter: (row) => {
