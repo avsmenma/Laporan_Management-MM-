@@ -89,8 +89,13 @@ class Lm14Service
             ? $this->sumSourceYearPeriod($batch, $unit, $komoditi, $template, $batch->month - 1)
             : 0.0;
         $realTahunLalu = $this->sumTahunLalu($batch, $unit, $komoditi, $template->kode, $batch->month);
-        $rko = $this->sumBudget('budget_rko', $batch, $unit, $komoditi, $template->kode);
-        $rkap = $this->sumBudget('budget_rkap', $batch, $unit, $komoditi, $template->kode);
+        // RKO/RKAP per-periode: kolom "bulan ini" = anggaran bulan ini, kolom "s.d. bulan
+        // ini" = akumulasi anggaran bulan 1..ini. Baris tanpa periode (NULL) = anggaran
+        // tahunan → ikut di kedua kolom (kompatibel mundur).
+        $rko = $this->sumBudget('budget_rko', $batch, $unit, $komoditi, $template->kode, false);
+        $rkap = $this->sumBudget('budget_rkap', $batch, $unit, $komoditi, $template->kode, false);
+        $rkoSd = $this->sumBudget('budget_rko', $batch, $unit, $komoditi, $template->kode, true);
+        $rkapSd = $this->sumBudget('budget_rkap', $batch, $unit, $komoditi, $template->kode, true);
         $realSebelumBulanIni = $this->sumSourceBeforeMonth($batch, $unit, $komoditi, $template);
 
         return [
@@ -101,8 +106,8 @@ class Lm14Service
             'rkap' => $rkap,
             'real_sd_bulan_ini' => $realBulanIni + $realSebelumBulanIni,
             'real_sd_tahunlalu' => $this->sumTahunLaluSd($batch, $unit, $komoditi, $template->kode),
-            'rko_sd' => $rko,
-            'rkap_sd' => $rkap,
+            'rko_sd' => $rkoSd,
+            'rkap_sd' => $rkapSd,
         ];
     }
 
@@ -316,7 +321,14 @@ class Lm14Service
             ->sum('nilai');
     }
 
-    private function sumBudget(string $table, Batch $batch, RefUnit $unit, string $komoditi, string $kode): float
+    /**
+     * Jumlah anggaran (RKO/RKAP) untuk satu kode baris.
+     *
+     * $cumulative = false → kolom "bulan ini": baris dengan period = bulan batch.
+     * $cumulative = true  → kolom "s.d. bulan ini": baris dengan period <= bulan batch.
+     * Baris dengan period NULL = anggaran tahunan → selalu ikut di kedua mode.
+     */
+    private function sumBudget(string $table, Batch $batch, RefUnit $unit, string $komoditi, string $kode, bool $cumulative): float
     {
         return DB::table($table)
             ->where('year', $batch->year)
@@ -324,6 +336,12 @@ class Lm14Service
             ->where('plant_code', $unit->code)
             ->where('report_type', 'LM14')
             ->where('kode', $kode)
+            ->where(function ($query) use ($batch, $cumulative): void {
+                $query->whereNull('period');
+                $cumulative
+                    ? $query->orWhere('period', '<=', $batch->month)
+                    : $query->orWhere('period', '=', $batch->month);
+            })
             ->sum('nilai');
     }
 }

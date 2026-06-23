@@ -57,6 +57,36 @@ class Lm14ServiceTest extends TestCase
         $this->assertEquals(350.0, (float) $this->reportRow($batch, $unit, 6)->real_bulan_ini);
     }
 
+    public function test_lm14_budget_filtered_by_period_month_vs_cumulative(): void
+    {
+        $this->seed();
+        $batchMay = Batch::query()->create([
+            'code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'draft',
+        ]);
+        $unit = RefUnit::query()->where('code', '5E01')->firstOrFail();
+
+        // Anggaran PER-PERIODE untuk kode '99-01' (template urutan 2 = "Gaji Staf").
+        DB::table('budget_rko')->insert([
+            ['year' => 2026, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'report_type' => 'LM14', 'kode' => '99-01', 'period' => 4, 'nilai' => 1000],
+            ['year' => 2026, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'report_type' => 'LM14', 'kode' => '99-01', 'period' => 5, 'nilai' => 1500],
+            ['year' => 2026, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'report_type' => 'LM14', 'kode' => '99-01', 'period' => 6, 'nilai' => 9999],
+        ]);
+        // Baris tanpa periode (NULL) = anggaran tahunan → ikut di bulan ini DAN s.d.
+        DB::table('budget_rkap')->insert([
+            ['year' => 2026, 'komoditi' => 'KS', 'plant_code' => $unit->code, 'report_type' => 'LM14', 'kode' => '99-01', 'period' => null, 'nilai' => 7000],
+        ]);
+
+        app(Lm14Service::class)->generate($batchMay, $unit, 'KS');
+
+        $staff = $this->reportRow($batchMay, $unit, 2);
+        // Bulan ini (Mei) = hanya period 5; s.d. Mei = period 4 + 5 (period 6 dikecualikan).
+        $this->assertEquals(1500.0, (float) $staff->rko);
+        $this->assertEquals(2500.0, (float) $staff->rko_sd);
+        // RKAP NULL (tahunan) tampil sama di kedua kolom.
+        $this->assertEquals(7000.0, (float) $staff->rkap);
+        $this->assertEquals(7000.0, (float) $staff->rkap_sd);
+    }
+
     public function test_report_generate_command_generates_lm14_for_requested_unit(): void
     {
         $this->seed();

@@ -277,7 +277,7 @@ class ReportController extends Controller
         ] : null;
 
         // Kolom RKO/RKAP (anggaran): tampilkan DETAIL SUMBER per-baris LANGSUNG (tanpa
-        // pivot perantara) dari budget_source. RKO=RKAP & bulan-ini=s.d (budget tahunan).
+        // pivot perantara) dari budget_source. RKO=RKAP; bulan-ini vs s.d difilter periode.
         $budgetDetail = $this->budgetSourceDetail($type, $batch, $unit, $komoditi, $template, $columnKey);
         if ($budgetDetail !== null) {
             return response()->json([
@@ -1101,8 +1101,9 @@ class ReportController extends Controller
      * (sections + rows + subtotal + grand_total) sehingga frontend memakai renderer
      * "rincian lebih dalam" yang sama. Null bila kolom bukan RKO/RKAP LM14.
      *
-     * RKO=RKAP & bulan-ini=s.d: budget bersifat tahunan per kode, jadi keempat kolom
-     * (bi_rko/bi_rkap/sd_rko/sd_rkap) menghasilkan detail identik. Grand total = nilai sel.
+     * RKO=RKAP (nilai sama), tetapi kolom "bulan ini" (bi_*) vs "s.d. bulan ini" (sd_*)
+     * difilter per periode: bi_* = baris periode bulan ini; sd_* = baris periode 1..ini.
+     * Baris periode NULL (anggaran tahunan) ikut di kedua kolom. Grand total = nilai sel.
      *
      * @return array<string, mixed>|null
      */
@@ -1130,6 +1131,16 @@ class ReportController extends Controller
             ->where('komoditi', $komoditi)
             ->where('report_type', 'LM14')
             ->whereIn('kode', array_keys($kodes));
+
+        // Filter periode selaras kolom: sd_* (s.d. bulan ini) = akumulasi 1..bulan;
+        // bi_* (bulan ini) = bulan batch saja. Baris periode NULL = anggaran tahunan (ikut).
+        $cumulative = str_starts_with($columnKey, 'sd_');
+        $query->where(function ($inner) use ($batch, $cumulative): void {
+            $inner->whereNull('period');
+            $cumulative
+                ? $inner->orWhere('period', '<=', $batch->month)
+                : $inner->orWhere('period', '=', $batch->month);
+        });
 
         // "Semua Unit" (unit null) = tanpa filter plant_code → gabung seluruh kebun komoditi ini.
         if ($unit !== null) {

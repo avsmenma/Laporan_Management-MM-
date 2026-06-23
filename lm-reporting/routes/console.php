@@ -641,8 +641,9 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
     //   - File tidak memisahkan RKO vs RKAP (satu kolom "Nilai") → nilai disalin ke
     //     KEDUA tabel (budget_rko & budget_rkap) sesuai permintaan tampilan.
     //   - Tidak ada kolom year/report_type → year dari --year, report_type=LM14.
-    //   - Budget bersifat TAHUNAN (tabel budget tanpa kolom periode), jadi periode di
-    //     file diabaikan; nilai dijumlah per (komoditi, plant, kode).
+    //   - Budget disimpan PER-PERIODE (kolom Period file → budget_rko/budget_rkap.period);
+    //     nilai dijumlah per (komoditi, plant, period, kode). Baris tanpa periode → NULL
+    //     (dianggap anggaran tahunan/berlaku semua bulan oleh mesin laporan).
     //   - Nilai disimpan RUPIAH PENUH (mengikuti skala kolom realisasi db_wbs/db_ohc),
     //     TANPA ×1000.
     // Pemetaan kode (kolom E file) ke kode baris template (lm_template_row.kode):
@@ -786,13 +787,14 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
                 continue;
             }
             $nilai = $num($c[$C_NILAI] ?? 0);
-            $k = $kom.'|'.$plant.'|'.$kode;
+            $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
+            $k = $kom.'|'.$plant.'|'.($period ?? '').'|'.$kode;
             $acc[$k] = ($acc[$k] ?? 0) + $nilai;
             $stats['bku_ok']++;
             $rawSrc[] = [
                 'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
                 'report_type' => 'LM14', 'kode' => $kode, 'source' => 'BKU',
-                'period' => is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null,
+                'period' => $period,
                 'object_name' => $str($c[$C_OBJ] ?? null, 250),
                 'cost_element' => $str($c[$C_CE] ?? null, 40),
                 'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
@@ -832,13 +834,14 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
                 continue;
             }
             $nilai = $num($c[$C_NILAI] ?? 0);
-            $k = $kom.'|'.$plant.'|'.$kode;
+            $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
+            $k = $kom.'|'.$plant.'|'.($period ?? '').'|'.$kode;
             $acc[$k] = ($acc[$k] ?? 0) + $nilai;
             $stats['ohc_ok']++;
             $rawSrc[] = [
                 'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
                 'report_type' => 'LM14', 'kode' => $kode, 'source' => 'OHC',
-                'period' => is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null,
+                'period' => $period,
                 'object_name' => $str($c[$C_OBJ] ?? null, 250),
                 'cost_element' => $str($c[$C_CE] ?? null, 40),
                 'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
@@ -866,10 +869,12 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (): int {
     // agar command bisa dijalankan ulang (idempoten untuk data testing).
     $rows = [];
     foreach ($acc as $key => $nilai) {
-        [$kom, $plant, $kode] = explode('|', $key, 3);
+        [$kom, $plant, $period, $kode] = explode('|', $key, 4);
         $rows[] = [
             'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
-            'report_type' => 'LM14', 'kode' => $kode, 'nilai' => round($nilai, 2),
+            'report_type' => 'LM14', 'kode' => $kode,
+            'period' => $period === '' ? null : (int) $period,
+            'nilai' => round($nilai, 2),
         ];
     }
 

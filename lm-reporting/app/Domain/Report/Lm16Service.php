@@ -221,19 +221,20 @@ class Lm16Service
      */
     private function withBudget(Batch $batch, RefUnit $unit, LmTemplateRow $template, array $values): array
     {
-        $rko = $this->budgetValue('budget_rko', $batch, $unit, $template);
-        $rkap = $this->budgetValue('budget_rkap', $batch, $unit, $template);
-
         return [
             ...$values,
-            'bi_rko' => $rko,
-            'bi_rkap' => $rkap,
-            'sd_rko' => $rko,
-            'sd_rkap' => $rkap,
+            'bi_rko' => $this->budgetValue('budget_rko', $batch, $unit, $template, false),
+            'bi_rkap' => $this->budgetValue('budget_rkap', $batch, $unit, $template, false),
+            'sd_rko' => $this->budgetValue('budget_rko', $batch, $unit, $template, true),
+            'sd_rkap' => $this->budgetValue('budget_rkap', $batch, $unit, $template, true),
         ];
     }
 
-    private function budgetValue(string $table, Batch $batch, RefUnit $unit, LmTemplateRow $template): float
+    /**
+     * $cumulative = false → "bulan ini" (period = bulan batch); true → "s.d. bulan ini"
+     * (period <= bulan batch). Baris period NULL = anggaran tahunan → ikut di kedua mode.
+     */
+    private function budgetValue(string $table, Batch $batch, RefUnit $unit, LmTemplateRow $template, bool $cumulative): float
     {
         $codes = $this->budgetCodes($template);
 
@@ -247,7 +248,19 @@ class Lm16Service
             ->where('report_type', 'LM16')
             ->whereIn('kode', $codes)
             ->where(fn ($query) => $query->where('komoditi', $unit->komoditi)->orWhereNull('komoditi'))
+            ->where(fn ($query) => $this->applyBudgetPeriod($query, $batch, $cumulative))
             ->sum('nilai');
+    }
+
+    /**
+     * Predikat periode anggaran bersama (dipakai budgetValue & rendemenBudget).
+     */
+    private function applyBudgetPeriod(\Illuminate\Database\Query\Builder $query, Batch $batch, bool $cumulative): void
+    {
+        $query->whereNull('period');
+        $cumulative
+            ? $query->orWhere('period', '<=', $batch->month)
+            : $query->orWhere('period', '=', $batch->month);
     }
 
     /**
@@ -320,26 +333,23 @@ class Lm16Service
             ],
         };
 
-        $rko = $this->rendemenBudget('budget_rko', $batch, $unit, $rkapNumeratorCodes);
-        $rkap = $this->rendemenBudget('budget_rkap', $batch, $unit, $rkapNumeratorCodes);
-
         return [
             ...$this->splitOlahKso($unit, [
                 'real_bln_lalu' => $this->safeDiv($numerator['lalu'], $tbs['lalu']) * 100,
                 'bi' => $this->safeDiv($numerator['bi'], $tbs['bi']) * 100,
                 'sd' => $this->safeDiv($numerator['sd'], $tbs['sd']) * 100,
             ]),
-            'bi_rko' => $rko,
-            'bi_rkap' => $rkap,
-            'sd_rko' => $rko,
-            'sd_rkap' => $rkap,
+            'bi_rko' => $this->rendemenBudget('budget_rko', $batch, $unit, $rkapNumeratorCodes, false),
+            'bi_rkap' => $this->rendemenBudget('budget_rkap', $batch, $unit, $rkapNumeratorCodes, false),
+            'sd_rko' => $this->rendemenBudget('budget_rko', $batch, $unit, $rkapNumeratorCodes, true),
+            'sd_rkap' => $this->rendemenBudget('budget_rkap', $batch, $unit, $rkapNumeratorCodes, true),
         ];
     }
 
     /**
      * @param  array<int, string>  $numeratorCodes
      */
-    private function rendemenBudget(string $table, Batch $batch, RefUnit $unit, array $numeratorCodes): float
+    private function rendemenBudget(string $table, Batch $batch, RefUnit $unit, array $numeratorCodes, bool $cumulative): float
     {
         $tbs = (float) DB::table($table)
             ->where('year', $batch->year)
@@ -347,6 +357,7 @@ class Lm16Service
             ->where('plant_code', $unit->code)
             ->where('report_type', 'LM16')
             ->where('kode', 'TBS Diolah')
+            ->where(fn ($query) => $this->applyBudgetPeriod($query, $batch, $cumulative))
             ->sum('nilai');
 
         $numerator = (float) DB::table($table)
@@ -355,6 +366,7 @@ class Lm16Service
             ->where('plant_code', $unit->code)
             ->where('report_type', 'LM16')
             ->whereIn('kode', $numeratorCodes)
+            ->where(fn ($query) => $this->applyBudgetPeriod($query, $batch, $cumulative))
             ->sum('nilai');
 
         return $this->safeDiv($numerator, $tbs) * 100;
