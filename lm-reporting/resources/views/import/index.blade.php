@@ -45,21 +45,39 @@
             <section class="panel" style="margin-bottom:20px">
                 <div class="panel-head"><span class="panel-title">Upload File Excel</span></div>
                 <div class="panel-body">
-                    <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data" class="grid gap-4 md:grid-cols-4">
+                    <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data"
+                          class="grid gap-4 md:grid-cols-4"
+                          x-data="{ type: '{{ $pending['type'] ?? 'wbs' }}', isBudget() { return this.type.startsWith('rko_'); } }">
                         @csrf
                         <div class="field" style="margin-bottom:0">
-                            <label>Tahun</label>
-                            <input type="number" name="year" class="field-control" value="{{ $pending['year'] ?? date('Y') }}" min="2000" max="2100" required>
-                        </div>
-                        <div class="field" style="margin-bottom:0">
-                            <label>Bulan (opsional, otomatis dari file)</label>
-                            <input type="number" name="month" class="field-control" value="{{ $pending['month'] ?? '' }}" min="1" max="12" placeholder="Auto">
-                        </div>
-                        <div class="field" style="margin-bottom:0">
                             <label>Jenis Import</label>
-                            <select name="type" class="field-control" required>
-                                @foreach ($types as $key => $label)
-                                    <option value="{{ $key }}" @selected(($pending['type'] ?? null) === $key)>{{ $label }}</option>
+                            <select name="type" x-model="type" class="field-control" required>
+                                <optgroup label="Realisasi (per bulan)">
+                                    @foreach ($types as $key => $label)
+                                        @if (! \App\Domain\Import\SpreadsheetImportService::isBudget($key))
+                                            <option value="{{ $key }}">{{ $label }}</option>
+                                        @endif
+                                    @endforeach
+                                </optgroup>
+                                <optgroup label="Anggaran (per tahun)">
+                                    @foreach ($types as $key => $label)
+                                        @if (\App\Domain\Import\SpreadsheetImportService::isBudget($key))
+                                            <option value="{{ $key }}">{{ $label }}</option>
+                                        @endif
+                                    @endforeach
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0">
+                            <label>Tahun</label>
+                            <input name="year" type="number" min="2000" max="2100" value="{{ $pending['year'] ?? date('Y') }}" class="field-control" required>
+                        </div>
+                        <div class="field" style="margin-bottom:0" x-show="!isBudget()">
+                            <label>Bulan <span class="field-hint">(otomatis dari file)</span></label>
+                            <select name="month" class="field-control" x-bind:required="!isBudget()">
+                                <option value="">— deteksi dari file —</option>
+                                @foreach (range(1, 12) as $m)
+                                    <option value="{{ $m }}" @selected(($pending['month'] ?? null) === $m)>{{ str_pad((string) $m, 2, '0', STR_PAD_LEFT) }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -67,8 +85,8 @@
                             <label>File</label>
                             <input name="file" type="file" accept=".xlsx,.xls,.csv" class="field-control" required>
                         </div>
-                        <div class="flex items-end">
-                            <button class="btn btn-primary btn-block" type="submit">Pratinjau</button>
+                        <div class="flex items-end md:col-span-4">
+                            <button class="btn btn-primary" type="submit">Pratinjau</button>
                         </div>
                     </form>
                     <p class="field-hint" style="margin-top:12px">Data tidak langsung disimpan. Setelah unggah, periksa pratinjau lalu klik <b>Konfirmasi &amp; Simpan</b>.</p>
@@ -76,6 +94,12 @@
             </section>
 
             @isset($preview)
+                @if (! empty($detected_months ?? []))
+                    <div class="alert {{ count($detected_months) > 1 ? 'alert-warn' : 'alert-ok' }}" style="margin:0 0 12px">
+                        Bulan terdeteksi dari file: <b>{{ implode(', ', array_map(fn ($m) => str_pad((string) $m, 2, '0', STR_PAD_LEFT), $detected_months)) }}</b>.
+                        @if (count($detected_months) > 1) Asumsi domain "1 file = 1 bulan" tidak terpenuhi — periksa file. @endif
+                    </div>
+                @endif
                 <section class="panel" style="margin-bottom:20px;border-color:var(--g-500)">
                     <div class="panel-head" style="gap:10px">
                         <span class="panel-title">Pratinjau Import — {{ $preview['label'] }}</span>
@@ -115,9 +139,9 @@
                                 <input type="hidden" name="ext" value="{{ $pending['ext'] }}">
                                 <input type="hidden" name="type" value="{{ $pending['type'] }}">
                                 <input type="hidden" name="year" value="{{ $pending['year'] }}">
-                                @if (!($pending['is_budget'] ?? false) && ($pending['month'] ?? null) !== null)
+                                @unless ($pending['is_budget'] ?? false)
                                     <input type="hidden" name="month" value="{{ $pending['month'] }}">
-                                @endif
+                                @endunless
                                 <button class="btn btn-primary" type="submit">Konfirmasi &amp; Simpan ke Database</button>
                             </form>
                             <form method="POST" action="{{ route('import.cancel') }}">
