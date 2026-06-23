@@ -30,11 +30,19 @@
         <div class="panel-head"><span class="panel-title">Upload File Excel</span></div>
         <div class="panel-body">
             @php
-                // Pulihkan pilihan setelah pratinjau dari type backend (wbs/rko_bku/...).
+                // Pulihkan pilihan setelah pratinjau dari type backend (wbs/rko_bku/areal/...).
                 $pType = $pending['type'] ?? 'wbs';
                 $pIsBudget = \App\Domain\Import\SpreadsheetImportService::isBudget($pType);
-                $pJenis = $pIsBudget ? 'rko' : 'aktual';
-                $pKategori = $pIsBudget ? substr($pType, 4) : $pType; // bku/ohc/gc atau wbs/ohc/gc
+                if ($pType === 'areal') {
+                    $pJenis = 'areal';
+                    $pKategori = 'wbs'; // kategori tak dipakai utk areal; default aman
+                } elseif ($pIsBudget) {
+                    $pJenis = 'rko';
+                    $pKategori = substr($pType, 4); // bku/ohc/gc
+                } else {
+                    $pJenis = 'aktual';
+                    $pKategori = $pType; // wbs/ohc/gc
+                }
             @endphp
             <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data"
                   class="grid gap-4 md:grid-cols-5"

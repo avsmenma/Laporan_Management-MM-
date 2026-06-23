@@ -123,6 +123,7 @@ function arealApp() {
 
         async onKomoditiChange() {
             await this.loadUnits();
+            this.filters.unit = ''; // buang unit lama agar tidak menarik data komoditi sebelumnya
             await this.load();
         },
 
