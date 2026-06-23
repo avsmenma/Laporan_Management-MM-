@@ -160,6 +160,119 @@ class SpreadsheetImportService
     }
 
     /**
+     * Impor satu file anggaran (BKU/OHC/GC) ke budget_rko + budget_rkap + budget_source.
+     * Idempoten per (year, report_type=LM14, source). GC tidak dipetakan ke LM14 (audit saja).
+     */
+    public function importBudget(int $year, string $type, UploadedFile|string $file, ?int $userId = null): ImportResult
+    {
+        abort_unless(self::isBudget($type), 422, 'Jenis bukan anggaran.');
+        $source = self::budgetSource($type); // BKU/OHC/GC
+        $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
+        $filename = $file instanceof UploadedFile ? $file->getClientOriginalName() : basename($file);
+
+        $unitType = RefUnit::query()->get(['code', 'type'])
+            ->mapWithKeys(fn ($u) => [strtoupper((string) $u->code) => $u->type])->all();
+        $lm14 = DB::table('lm_template_row')
+            ->where('report_type', 'LM14')->whereNotNull('kode')->where('kode', '<>', '')
+            ->get(['komoditi', 'kode'])
+            ->mapWithKeys(fn ($r) => [strtoupper((string) $r->komoditi).'|'.$r->kode => true])->all();
+
+        // Indeks kolom 0-based: A=komoditi(0) B=plant(1) D=period(3) E=kode(4)
+        // F=obj(5) G=ce(6) H=cedesc(7) I=klas(8) J=nilai(9) K=fisik(10)
+        [$C_KOM, $C_PLANT, $C_PERIOD, $C_KODE, $C_OBJ, $C_CE, $C_CEDESC, $C_KLAS, $C_NILAI, $C_FISIK]
+            = [0, 1, 3, 4, 5, 6, 7, 8, 9, 10];
+
+        $str = fn ($v, int $len): ?string => ($t = trim((string) ($v ?? ''))) === '' ? null : mb_substr($t, 0, $len);
+        $acc = [];      // "KOM|PLANT|period|kode" => nilai
+        $rawSrc = [];
+        $errors = [];
+        $kept = 0;
+
+        foreach ($this->dataRows($path) as $c) {
+            if ($this->isEmptyRow($c)) {
+                continue;
+            }
+            $kom = strtoupper(trim((string) ($c[$C_KOM] ?? '')));
+            $plant = strtoupper(trim((string) ($c[$C_PLANT] ?? '')));
+            $kode = trim((string) ($c[$C_KODE] ?? ''));
+            if ($kom === '' || $plant === '' || $kode === '') {
+                continue;
+            }
+            $nilai = $this->numericValue($c[$C_NILAI] ?? 0);
+            $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
+
+            // GC: hanya audit ke budget_source (tak ada baris template LM14).
+            $mappable = $source !== 'GC';
+            if ($mappable) {
+                if (($unitType[$plant] ?? null) !== 'KEBUN') {
+                    $errors[] = "Unit non-kebun dilewati: {$plant}";
+
+                    continue;
+                }
+                if (! isset($lm14[$kom.'|'.$kode])) {
+                    $errors[] = "Kode di luar LM14: {$kom}/{$kode}";
+
+                    continue;
+                }
+                $k = $kom.'|'.$plant.'|'.($period ?? '').'|'.$kode;
+                $acc[$k] = ($acc[$k] ?? 0) + $nilai;
+                $kept++;
+            }
+
+            $rawSrc[] = [
+                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
+                'report_type' => 'LM14', 'kode' => $kode, 'source' => $source, 'period' => $period,
+                'object_name' => $str($c[$C_OBJ] ?? null, 250),
+                'cost_element' => $str($c[$C_CE] ?? null, 40),
+                'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
+                'klasifikasi' => $str($c[$C_KLAS] ?? null, 60),
+                'nilai' => round($nilai, 2),
+                'fisik' => is_numeric($c[$C_FISIK] ?? null) ? (float) $c[$C_FISIK] : null,
+            ];
+        }
+
+        $rows = [];
+        foreach ($acc as $key => $nilai) {
+            [$kom, $plant, $period, $kode] = explode('|', $key, 4);
+            $rows[] = [
+                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
+                'report_type' => 'LM14', 'kode' => $kode, 'source' => $source,
+                'period' => $period === '' ? null : (int) $period,
+                'nilai' => round($nilai, 2),
+            ];
+        }
+
+        DB::transaction(function () use ($rows, $rawSrc, $year, $source): void {
+            // Idempoten per-sumber: hapus hanya baris sumber ini.
+            DB::table('budget_rko')->where('year', $year)->where('report_type', 'LM14')->where('source', $source)->delete();
+            DB::table('budget_rkap')->where('year', $year)->where('report_type', 'LM14')->where('source', $source)->delete();
+            DB::table('budget_source')->where('year', $year)->where('report_type', 'LM14')->where('source', $source)->delete();
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('budget_rko')->insert($chunk);
+                DB::table('budget_rkap')->insert($chunk);
+            }
+            foreach (array_chunk($rawSrc, 500) as $chunk) {
+                DB::table('budget_source')->insert($chunk);
+            }
+        });
+
+        $result = new ImportResult(rowCount: count($rows), errors: array_slice($errors, 0, 50));
+
+        ImportUploadLog::query()->create([
+            'batch_id' => null,
+            'user_id' => $userId,
+            'jenis' => $type,
+            'filename' => $filename,
+            'row_count' => $result->rowCount,
+            'error_count' => $result->errorCount(),
+            'errors' => $result->errors,
+            'uploaded_at' => now(),
+        ]);
+
+        return $result;
+    }
+
+    /**
      * Pratinjau isi file sebelum dikonfirmasi: kolom, sebagian baris contoh, dan total baris data.
      *
      * @return array{type: string, label: string, columns: array<int, string>, rows: array<int, array<int, mixed>>, total: int}
@@ -588,7 +701,7 @@ class SpreadsheetImportService
         return new ImportResult($upserted, $errors);
     }
 
-    private function importBudget(Batch $batch, array $workbook, string $table): ImportResult
+    private function importLegacyBudget(Batch $batch, array $workbook, string $table): ImportResult
     {
         if ($table === 'budget_rkap' && array_key_exists('RKAP', $workbook) && $this->looksLikePksRkap($workbook['RKAP'])) {
             return $this->importPksRkapBudget($batch, $workbook['RKAP']);
@@ -1235,6 +1348,30 @@ class SpreadsheetImportService
         $text = str_replace(',', '.', $text);
 
         return (float) $text;
+    }
+
+    /**
+     * Parse nilai numerik dari file budget (mendukung format Indonesia dan Inggris).
+     */
+    private function numericValue(mixed $v): float
+    {
+        if ($v === null) {
+            return 0.0;
+        }
+        if (is_int($v) || is_float($v)) {
+            return (float) $v;
+        }
+        $v = trim((string) $v);
+        if ($v === '' || $v === '-') {
+            return 0.0;
+        }
+        if (str_contains($v, ',') && str_contains($v, '.')) {
+            $v = str_replace(['.', ','], ['', '.'], $v);
+        } elseif (str_contains($v, ',')) {
+            $v = str_replace(',', '.', $v);
+        }
+
+        return (float) preg_replace('/[^0-9.\-]/', '', $v);
     }
 
     private function isEmptyRow(array $row): bool
