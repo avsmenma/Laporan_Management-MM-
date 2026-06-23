@@ -2,19 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\AuthorizesReportRequests;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\LmTemplateRow;
 use App\Models\RefUnit;
-use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
+    use AuthorizesReportRequests;
+
     /**
      * GET /api/report/lm14?batch=1&unit=5E11&komoditi=KS
      */
@@ -553,40 +554,6 @@ class ReportController extends Controller
     /**
      * Check batch access untuk Viewer (hanya final/locked).
      */
-    private function checkBatchAccess(Batch $batch): void
-    {
-        $user = auth()->user();
-
-        // Jika role Viewer, hanya boleh akses batch final/locked
-        if ($user && $user->hasRole(Role::VIEWER)) {
-            if (! in_array($batch->status, ['final', 'locked'], true)) {
-                abort(403, 'Viewer hanya dapat melihat laporan dengan status final atau locked.');
-            }
-        }
-    }
-
-    private function authenticateReportRequest(Request $request): void
-    {
-        if ($request->user()) {
-            return;
-        }
-
-        $userId = (int) $request->header('X-LM-Report-User', 0);
-        $token = (string) $request->header('X-LM-Report-Token', '');
-        $user = $userId > 0 ? User::query()->find($userId) : null;
-
-        if (! $user || ! hash_equals($this->reportToken($user), $token)) {
-            abort(401, 'Sesi laporan tidak valid.');
-        }
-
-        Auth::onceUsingId($user->id);
-    }
-
-    private function reportToken(User $user): string
-    {
-        return hash_hmac('sha256', "{$user->id}|{$user->email}|{$user->role_id}", config('app.key'));
-    }
-
     /**
      * Find batch by ID or code.
      */

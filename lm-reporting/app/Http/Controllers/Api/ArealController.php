@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\AuthorizesReportRequests;
 use App\Http\Controllers\Controller;
 use App\Models\ArealBlok;
 use App\Models\Batch;
@@ -10,19 +11,33 @@ use Illuminate\Http\Request;
 
 class ArealController extends Controller
 {
+    use AuthorizesReportRequests;
+
     private const STATUS_ORDER = ['ATTP', 'TBM', 'TM', 'TU'];
 
     public function index(Request $request): JsonResponse
     {
-        $year = (int) $request->query('year');
-        $month = (int) $request->query('month');
-        $komoditi = strtoupper((string) $request->query('komoditi', 'KS'));
-        $unit = (string) $request->query('unit');
+        $this->authenticateReportRequest($request);
+
+        $data = $request->validate([
+            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'komoditi' => ['nullable', 'in:KS,KR'],
+            'unit' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $year = (int) $data['year'];
+        $month = (int) $data['month'];
+        $komoditi = strtoupper((string) ($data['komoditi'] ?? 'KS'));
+        $unit = (string) ($data['unit'] ?? '');
 
         $batch = Batch::query()->where('year', $year)->where('month', $month)->first();
         if (! $batch) {
             return response()->json(['afds' => [], 'rows' => []]);
         }
+
+        // Otorisasi: Viewer hanya boleh lihat batch final/locked (sama seperti report-data lain).
+        $this->checkBatchAccess($batch);
 
         $rows = ArealBlok::query()
             ->where('batch_id', $batch->id)

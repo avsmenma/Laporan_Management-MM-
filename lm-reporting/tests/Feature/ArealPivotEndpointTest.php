@@ -5,12 +5,50 @@ namespace Tests\Feature;
 use App\Models\ArealBlok;
 use App\Models\Batch;
 use App\Models\RefUnit;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ArealPivotEndpointTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function user(string $role): User
+    {
+        $r = Role::query()->firstOrCreate(['name' => $role], ['description' => $role]);
+
+        return User::factory()->create(['role_id' => $r->id]);
+    }
+
+    public function test_requires_authentication(): void
+    {
+        Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'final']);
+
+        $this->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01')->assertStatus(401);
+    }
+
+    public function test_viewer_blocked_on_non_final_batch(): void
+    {
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'draft']);
+        ArealBlok::query()->create([
+            'batch_id' => $batch->id, 'status_blok_petak' => 'TM', 'plant_code' => '5E01',
+            'divisi' => 'AFD01', 'tahun_tanam' => 2012, 'luas_tanam' => 1.0, 'total_pokok_produktif' => 1, 'komoditi' => 'KS',
+        ]);
+
+        $this->actingAs($this->user(Role::VIEWER))
+            ->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01')
+            ->assertStatus(403);
+    }
+
+    public function test_viewer_allowed_on_final_batch(): void
+    {
+        Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'final']);
+
+        $this->actingAs($this->user(Role::VIEWER))
+            ->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01')
+            ->assertOk();
+    }
 
     public function test_pivot_structure_and_subtotals(): void
     {
@@ -28,7 +66,7 @@ class ArealPivotEndpointTest extends TestCase
         $seed('TM', 'AFD01', 2013, 2.0, 20);
         $seed('ATTP', 'AFD01', 1983, 1.0, 10);
 
-        $res = $this->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01');
+        $res = $this->actingAs($this->user(Role::OPERATOR))->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01');
         $res->assertOk();
         $data = $res->json();
 
@@ -70,7 +108,7 @@ class ArealPivotEndpointTest extends TestCase
         $seed('TM', 'AFD02', 2013, 0.05, 2); // row total = 0.10
         $seed('TU', 'AFD01', 2010, 0.33, 3);
 
-        $res = $this->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01');
+        $res = $this->actingAs($this->user(Role::OPERATOR))->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01');
         $res->assertOk();
         $data = $res->json();
 
