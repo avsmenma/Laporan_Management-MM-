@@ -1159,50 +1159,6 @@ class SpreadsheetImportService
         return $records;
     }
 
-    private function importPksRkapBudget(Batch $batch, array $rows): ImportResult
-    {
-        $plantColumns = [];
-        foreach (($rows[0] ?? []) as $column => $value) {
-            $plantCode = $this->nullableText($value);
-            if ($plantCode !== null && preg_match('/^5F\d{2}$/', $plantCode)) {
-                $plantColumns[$column] = $plantCode;
-            }
-        }
-
-        $upserted = 0;
-        foreach (array_slice($rows, 2) as $row) {
-            $kode = $this->nullableText($row[0] ?? null);
-            if ($kode === null) {
-                continue;
-            }
-
-            foreach ($plantColumns as $column => $plantCode) {
-                if (! $this->isKnownUnit($plantCode, 'PABRIK')) {
-                    continue;
-                }
-
-                DB::table('budget_rkap')->updateOrInsert(
-                    [
-                        'year' => $batch->year,
-                        'komoditi' => 'KS',
-                        'plant_code' => $plantCode,
-                        'report_type' => 'LM16',
-                        'kode' => $kode,
-                    ],
-                    ['nilai' => $this->number($row[$column] ?? 0) * 1000],
-                );
-                $upserted++;
-            }
-        }
-
-        return new ImportResult($upserted, []);
-    }
-
-    private function looksLikePksRkap(array $rows): bool
-    {
-        return collect($rows[0] ?? [])->contains(fn (mixed $value) => is_string($value) && preg_match('/^5F\d{2}$/', trim($value)));
-    }
-
     private function looksLikeAlokasiMatrix(array $rows): bool
     {
         return collect($rows[1] ?? [])->contains(fn (mixed $value) => is_string($value) && preg_match('/^5F\d{2}$/', trim($value)));
