@@ -21,27 +21,43 @@
     <section class="panel" style="margin-bottom:20px">
         <div class="panel-head"><span class="panel-title">Upload File Excel</span></div>
         <div class="panel-body">
+            @php
+                // Pulihkan pilihan setelah pratinjau dari type backend (wbs/rko_bku/...).
+                $pType = $pending['type'] ?? 'wbs';
+                $pIsBudget = \App\Domain\Import\SpreadsheetImportService::isBudget($pType);
+                $pJenis = $pIsBudget ? 'rko' : 'aktual';
+                $pKategori = $pIsBudget ? substr($pType, 4) : $pType; // bku/ohc/gc atau wbs/ohc/gc
+            @endphp
             <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data"
-                  class="grid gap-4 md:grid-cols-4"
-                  x-data="{ type: '{{ $pending['type'] ?? 'wbs' }}', isBudget() { return this.type.startsWith('rko_'); } }">
+                  class="grid gap-4 md:grid-cols-5"
+                  x-data="{
+                      jenis: '{{ $pJenis }}',
+                      kategori: '{{ $pKategori }}',
+                      isBudget() { return this.jenis !== 'aktual'; },
+                      kategoriOptions() {
+                          return this.isBudget()
+                              ? [{ v: 'bku', t: 'BKU' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }]
+                              : [{ v: 'wbs', t: 'WBS' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }];
+                      },
+                      backendType() { return this.isBudget() ? 'rko_' + this.kategori : this.kategori; }
+                  }">
                 @csrf
+                {{-- type backend (wbs/ohc/gc/rko_bku/rko_ohc/rko_gc) dihitung dari Jenis × Kategori --}}
+                <input type="hidden" name="type" :value="backendType()">
                 <div class="field" style="margin-bottom:0">
                     <label>Jenis Import</label>
-                    <select name="type" x-model="type" class="field-control" required>
-                        <optgroup label="Realisasi (per bulan)">
-                            @foreach ($types as $key => $label)
-                                @if (! \App\Domain\Import\SpreadsheetImportService::isBudget($key))
-                                    <option value="{{ $key }}">{{ $label }}</option>
-                                @endif
-                            @endforeach
-                        </optgroup>
-                        <optgroup label="Anggaran (per tahun)">
-                            @foreach ($types as $key => $label)
-                                @if (\App\Domain\Import\SpreadsheetImportService::isBudget($key))
-                                    <option value="{{ $key }}">{{ $label }}</option>
-                                @endif
-                            @endforeach
-                        </optgroup>
+                    <select x-model="jenis" @change="kategori = isBudget() ? 'bku' : 'wbs'" class="field-control">
+                        <option value="aktual">Aktual</option>
+                        <option value="rko">RKO</option>
+                        <option value="rkap">RKAP</option>
+                    </select>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label>Kategori Import</label>
+                    <select x-model="kategori" class="field-control">
+                        <template x-for="opt in kategoriOptions()" :key="opt.v">
+                            <option :value="opt.v" x-text="opt.t"></option>
+                        </template>
                     </select>
                 </div>
                 <div class="field" style="margin-bottom:0">
@@ -68,7 +84,7 @@
                     <label>File</label>
                     <input name="file" type="file" accept=".xlsx,.xls,.csv" class="field-control" required>
                 </div>
-                <div class="flex items-end md:col-span-4">
+                <div class="flex items-end md:col-span-5">
                     <button class="btn btn-primary" type="submit">Pratinjau</button>
                 </div>
             </form>
