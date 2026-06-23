@@ -30,7 +30,6 @@ class ArealProduksiMenuTest extends TestCase
 
         $res->assertOk();
         $res->assertSee('Areal');
-        $res->assertSee('Segera hadir');
     }
 
     public function test_produksi_page_renders_for_viewer(): void

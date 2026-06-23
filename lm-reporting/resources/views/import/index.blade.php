@@ -42,26 +42,33 @@
                   x-data="{
                       jenis: '{{ $pJenis }}',
                       kategori: '{{ $pKategori }}',
-                      isBudget() { return this.jenis !== 'aktual'; },
+                      isBudgetType() { return this.jenis === 'rko' || this.jenis === 'rkap'; },
+                      isBudget() { return this.isBudgetType(); },
+                      isAreal() { return this.jenis === 'areal'; },
                       kategoriOptions() {
-                          return this.isBudget()
+                          return this.isBudgetType()
                               ? [{ v: 'bku', t: 'BKU' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }]
                               : [{ v: 'wbs', t: 'WBS' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }];
                       },
-                      backendType() { return this.isBudget() ? 'rko_' + this.kategori : this.kategori; }
+                      backendType() {
+                          if (this.jenis === 'aktual') return this.kategori;
+                          if (this.jenis === 'areal') return 'areal';
+                          return 'rko_' + this.kategori;
+                      }
                   }">
                 @csrf
-                {{-- type backend (wbs/ohc/gc/rko_bku/rko_ohc/rko_gc) dihitung dari Jenis × Kategori --}}
+                {{-- type backend (wbs/ohc/gc/rko_bku/rko_ohc/rko_gc/areal) dihitung dari Jenis × Kategori --}}
                 <input type="hidden" name="type" :value="backendType()">
                 <div class="field" style="margin-bottom:0">
                     <label>Jenis Import</label>
-                    <select x-model="jenis" @change="kategori = isBudget() ? 'bku' : 'wbs'" class="field-control">
+                    <select x-model="jenis" @change="kategori = isBudgetType() ? 'bku' : 'wbs'" class="field-control">
                         <option value="aktual">Aktual</option>
                         <option value="rko">RKO</option>
                         <option value="rkap">RKAP</option>
+                        <option value="areal">Areal</option>
                     </select>
                 </div>
-                <div class="field" style="margin-bottom:0">
+                <div class="field" style="margin-bottom:0" x-show="jenis !== 'areal'">
                     <label>Kategori Import</label>
                     <select x-model="kategori" class="field-control">
                         <template x-for="opt in kategoriOptions()" :key="opt.v">
@@ -77,12 +84,12 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="field" style="margin-bottom:0" x-show="!isBudget()">
+                <div class="field" style="margin-bottom:0" x-show="!isBudgetType()">
                     <label>Bulan</label>
                     @php
                         $namaBulan = [1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'];
                     @endphp
-                    <select name="month" class="field-control" x-bind:required="!isBudget()">
+                    <select name="month" class="field-control" x-bind:required="!isBudgetType()">
                         <option value="">— deteksi dari file —</option>
                         @foreach ($namaBulan as $m => $nama)
                             <option value="{{ $m }}" @selected(($pending['month'] ?? null) === $m)>{{ $nama }}</option>

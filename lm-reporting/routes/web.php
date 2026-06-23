@@ -38,10 +38,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
         'subjudul' => 'Laporan LM Investasi Pabrik sedang disiapkan dan akan segera tersedia.',
     ])->name('pabrik.investasi');
 
-    Route::view('/areal', 'coming-soon', [
-        'judul' => 'Areal',
-        'subjudul' => 'Laporan Areal sedang disiapkan dan akan segera tersedia.',
-    ])->name('areal');
+    Route::view('/areal', 'areal.index')->name('areal');
 
     Route::view('/produksi', 'coming-soon', [
         'judul' => 'Produksi',
