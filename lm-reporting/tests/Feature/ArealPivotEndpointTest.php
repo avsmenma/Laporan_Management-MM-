@@ -47,4 +47,49 @@ class ArealPivotEndpointTest extends TestCase
         $statusesInOrder = array_values(array_filter(array_map(fn ($r) => $r['status'] ?? null, $data['rows'])));
         $this->assertTrue(array_search('ATTP', $statusesInOrder) < array_search('TM', $statusesInOrder));
     }
+
+    public function test_totals_are_round_of_sum_not_sum_of_rounded(): void
+    {
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'draft']);
+        RefUnit::query()->create(['code' => '5E01', 'name' => 'KEBUN GUNUNG MELIAU', 'type' => 'KEBUN', 'komoditi' => 'KS']);
+        $seed = function (string $status, string $afd, int $thn, float $luas, int $pokok) use ($batch) {
+            ArealBlok::query()->create([
+                'batch_id' => $batch->id, 'status_blok_petak' => $status, 'plant_code' => '5E01',
+                'divisi' => $afd, 'tahun_tanam' => $thn, 'luas_tanam' => $luas,
+                'total_pokok_produktif' => $pokok, 'komoditi' => 'KS',
+            ]);
+        };
+        // Catatan: kolom luas_tanam adalah decimal(16,2), jadi tiap nilai tersimpan
+        // sudah persis 2-desimal. Untuk menguji invarian round-of-sum kita pakai
+        // nilai 2-desimal yang penjumlahannya melampaui ribuan; total HARUS sama
+        // dengan round(Σ mentah) di tiap level (detail row, subtotal, grand total),
+        // identik dengan pivot Excel.
+        $seed('TM', 'AFD01', 2012, 0.01, 1);
+        $seed('TM', 'AFD02', 2012, 0.01, 1); // row total = 0.02
+        $seed('TM', 'AFD01', 2013, 0.05, 2);
+        $seed('TM', 'AFD02', 2013, 0.05, 2); // row total = 0.10
+        $seed('TU', 'AFD01', 2010, 0.33, 3);
+
+        $res = $this->getJson('/report-data/areal?year=2026&month=5&komoditi=KS&unit=5E01');
+        $res->assertOk();
+        $data = $res->json();
+
+        // Detail row total = round(Σ_afd raw)
+        $d2012 = collect($data['rows'])->first(fn ($r) => ($r['type'] ?? '') === 'detail' && ($r['status'] ?? '') === 'TM' && ($r['tahun_tanam'] ?? null) === 2012);
+        $this->assertEqualsWithDelta(0.02, $d2012['total']['luas'], 0.0001);
+
+        // Subtotal TM = round(Σ_{t,a} raw) = 0.01+0.01+0.05+0.05 = 0.12
+        $tmSub = collect($data['rows'])->first(fn ($r) => ($r['type'] ?? '') === 'subtotal' && ($r['status'] ?? '') === 'TM');
+        $this->assertEqualsWithDelta(0.12, $tmSub['total']['luas'], 0.0001);
+        // Subtotal cell per-AFD = round(Σ_t raw) untuk AFD itu
+        $this->assertEqualsWithDelta(0.06, $tmSub['cells']['AFD01']['luas'], 0.0001); // 0.01+0.05
+        $this->assertEqualsWithDelta(0.06, $tmSub['cells']['AFD02']['luas'], 0.0001);
+
+        // Grand total = round(Σ semua raw) = 0.12 + 0.33 = 0.45
+        $grand = collect($data['rows'])->firstWhere('type', 'grandtotal');
+        $this->assertEqualsWithDelta(0.45, $grand['total']['luas'], 0.0001);
+        $this->assertEqualsWithDelta(0.39, $grand['cells']['AFD01']['luas'], 0.0001); // 0.01+0.05+0.33
+        $this->assertEqualsWithDelta(0.06, $grand['cells']['AFD02']['luas'], 0.0001);
+        $this->assertSame(9, $grand['total']['pokok']); // 1+1+2+2+3
+    }
 }

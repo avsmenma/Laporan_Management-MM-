@@ -54,35 +54,36 @@ class ArealController extends Controller
             return $ix === $iy ? strcmp($x, $y) : $ix <=> $iy;
         });
 
-        $emptyCells = fn () => array_fill_keys($afds, ['luas' => 0, 'pokok' => 0]);
+        // Akumulasi SEMUA nilai sebagai float MENTAH (belum dibulatkan).
+        // Pembulatan 2-desimal hanya diterapkan saat menyusun output (round-of-sum,
+        // bukan sum-of-rounded) agar total persis seperti pivot Excel.
+        $emptyCells = fn () => array_fill_keys($afds, ['luas' => 0.0, 'pokok' => 0]);
         $out = [];
-        $grand = ['cells' => $emptyCells(), 'luas' => 0, 'pokok' => 0];
+        $grand = ['cells' => $emptyCells(), 'luas' => 0.0, 'pokok' => 0];
 
         foreach ($statuses as $s) {
             $years = array_keys($agg[$s]);
             sort($years);
-            $sub = ['cells' => $emptyCells(), 'luas' => 0, 'pokok' => 0];
+            $sub = ['cells' => $emptyCells(), 'luas' => 0.0, 'pokok' => 0];
             foreach ($years as $t) {
                 $cells = $emptyCells();
-                $rowTot = ['luas' => 0, 'pokok' => 0];
+                $rowTotRaw = ['luas' => 0.0, 'pokok' => 0];
                 foreach ($afds as $a) {
-                    $luas = round($agg[$s][$t][$a]['luas'] ?? 0, 2);
+                    $rawLuas = (float) ($agg[$s][$t][$a]['luas'] ?? 0);
                     $pokok = (int) ($agg[$s][$t][$a]['pokok'] ?? 0);
-                    $cells[$a] = ['luas' => $luas, 'pokok' => $pokok];
-                    $rowTot['luas'] += $luas;
-                    $rowTot['pokok'] += $pokok;
-                    $sub['cells'][$a]['luas'] += $luas;
+                    $cells[$a] = ['luas' => round($rawLuas, 2), 'pokok' => $pokok];
+                    $rowTotRaw['luas'] += $rawLuas;
+                    $rowTotRaw['pokok'] += $pokok;
+                    $sub['cells'][$a]['luas'] += $rawLuas;
                     $sub['cells'][$a]['pokok'] += $pokok;
-                    $grand['cells'][$a]['luas'] += $luas;
+                    $grand['cells'][$a]['luas'] += $rawLuas;
                     $grand['cells'][$a]['pokok'] += $pokok;
                 }
-                $rowTot['luas'] = round($rowTot['luas'], 2);
-                $sub['luas'] += $rowTot['luas'];
-                $sub['pokok'] += $rowTot['pokok'];
-                $out[] = ['type' => 'detail', 'status' => $s, 'tahun_tanam' => $t === 0 ? null : $t, 'cells' => $cells, 'total' => $rowTot];
+                $sub['luas'] += $rowTotRaw['luas'];
+                $sub['pokok'] += $rowTotRaw['pokok'];
+                $out[] = ['type' => 'detail', 'status' => $s, 'tahun_tanam' => $t === 0 ? null : $t, 'cells' => $cells, 'total' => ['luas' => round($rowTotRaw['luas'], 2), 'pokok' => $rowTotRaw['pokok']]];
             }
-            $sub['luas'] = round($sub['luas'], 2);
-            $out[] = ['type' => 'subtotal', 'status' => $s, 'label' => $s.' Total', 'cells' => $this->roundCells($sub['cells']), 'total' => ['luas' => $sub['luas'], 'pokok' => $sub['pokok']]];
+            $out[] = ['type' => 'subtotal', 'status' => $s, 'label' => $s.' Total', 'cells' => $this->roundCells($sub['cells']), 'total' => ['luas' => round($sub['luas'], 2), 'pokok' => $sub['pokok']]];
             $grand['luas'] += $sub['luas'];
             $grand['pokok'] += $sub['pokok'];
         }
