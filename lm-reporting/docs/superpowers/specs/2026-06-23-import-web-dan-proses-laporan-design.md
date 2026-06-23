@@ -173,14 +173,12 @@ CLI. Cukup klik **Proses Laporan** setelah semua file periode itu masuk.
 
 ---
 
-## 8. Risiko & keputusan terbuka
+## 8. Risiko & keputusan
 
-1. **Migrasi `source` pada budget_rko/budget_rkap.**
-   Dibutuhkan agar idempotensi per-sumber bisa hapus-per-sumber. Alternatif tanpa migrasi:
-   simpan `source` hanya di `budget_source`, dan saat upload satu sumber, hitung ulang
-   agregat `budget_rko/rkap` dari **seluruh `budget_source` tahun itu** (delete-all year lalu
-   rebuild dari budget_source). Ini menghindari kolom baru tapi mengikat agregat ke
-   budget_source. **Rekomendasi: tambah kolom `source`** (lebih lurus & murah).
+1. **Migrasi `source` pada budget_rko/budget_rkap. — DISETUJUI (2026-06-23).**
+   Tambah kolom `source` (nullable) ke `budget_rko` & `budget_rkap` agar idempotensi
+   bisa hapus-per-sumber (`where year+report_type+source`). Alternatif rebuild-dari-
+   budget_source ditolak demi kelurusan logika.
 2. **Proses sinkron vs queue.** `generateBatch` untuk semua unit bisa makan waktu (puluhan
    unit). Fase ini: jalankan **sinkron** dengan indikator loading; bila terasa lambat di
    production, pindah ke queue job (di luar lingkup sekarang, dicatat).
