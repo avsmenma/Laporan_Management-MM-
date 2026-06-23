@@ -55,13 +55,16 @@ Jika ada konflik antara asumsi sendiri dan PRD → **PRD menang**.
 
 ---
 
-## 5. Alur Kerja Bertahap (WAJIB)
+## 5. Alur Kerja (rencana → subagent-driven)
 
-- Kerjakan **SATU `prompt_xx` per instruksi** dari user. Jangan menggabung beberapa tahap.
-- Setelah selesai: tampilkan **ringkasan perubahan + cara uji (acceptance)**, lalu **BERHENTI**
-  dan tunggu instruksi "lanjut". Jangan otomatis lanjut ke tahap berikut.
-- Urutan: `00 setup → 01 skema+seed → 02 import → 03 LM14 → 04 LM13 → 05 LM16 → 06 API →
-  07 UI layout → 08 UI tabel+export → 09 drill-down`.
+- Untuk pekerjaan dari **rencana yang sudah disetujui**, boleh menjalankan beberapa tugas
+  berurutan secara **subagent-driven** (satu subagent per tugas) dengan review di antara
+  tugas — **tidak perlu** menunggu instruksi "lanjut" baru di tiap tugas.
+- Tetap **berhenti dan minta keputusan user** bila: acceptance sebuah tugas gagal, muncul
+  ambiguitas/keputusan desain baru, atau pekerjaan menyentuh **gerbang kritis** di bawah.
+- Untuk tahap setup awal proyek (`prompt_xx`), urutannya tetap: `00 setup → 01 skema+seed →
+  02 import → 03 LM14 → 04 LM13 → 05 LM16 → 06 API → 07 UI layout → 08 UI tabel+export →
+  09 drill-down`.
 - **Gerbang kritis:** tahap 03–05 (mesin hitung). Jangan dianggap selesai sebelum hasil
   `report:generate` cocok dengan workbook acuan (lihat acceptance tiap prompt).
 
