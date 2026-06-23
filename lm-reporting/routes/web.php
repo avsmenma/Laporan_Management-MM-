@@ -67,6 +67,8 @@ Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
 
     Route::get('/database', [\App\Http\Controllers\Admin\DatabaseViewerController::class, 'index'])->name('database.index');
     Route::get('/database/data', [\App\Http\Controllers\Admin\DatabaseViewerController::class, 'data'])->name('database.data');
+
+    Route::post('/proses-laporan', [\App\Http\Controllers\Report\ProsesLaporanController::class, 'store'])->name('proses-laporan.store');
 });
 
 Route::middleware(['auth', 'role:Admin'])->group(function () {
