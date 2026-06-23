@@ -128,7 +128,7 @@ class SpreadsheetImportService
         return array_keys($found);
     }
 
-    public function import(string $type, Batch $batch, UploadedFile|string $file, ?int $userId = null): ImportResult
+    public function import(string $type, Batch $batch, UploadedFile|string $file, ?int $userId = null, ?callable $onProgress = null): ImportResult
     {
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
         abort_if(self::isBudget($type), 422, 'Gunakan importBudget() untuk jenis anggaran.');
@@ -140,9 +140,9 @@ class SpreadsheetImportService
         // Baris dibaca STREAMING (memori konstan) lalu disisipkan per-chunk. File mentah
         // SAP berukuran besar (puluhan MB), jadi tidak boleh dimuat penuh ke memori.
         $result = DB::transaction(fn () => match ($type) {
-            'wbs' => $this->importRaw($batch, 'db_wbs_raw', self::WBS_COLUMNS, $this->dataRows($path), 'wbs'),
-            'ohc' => $this->importRaw($batch, 'db_ohc', self::OHC_COLUMNS, $this->dataRows($path), 'gcohc'),
-            'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $this->dataRows($path), 'gcohc'),
+            'wbs' => $this->importRaw($batch, 'db_wbs_raw', self::WBS_COLUMNS, $this->dataRows($path), 'wbs', $onProgress),
+            'ohc' => $this->importRaw($batch, 'db_ohc', self::OHC_COLUMNS, $this->dataRows($path), 'gcohc', $onProgress),
+            'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $this->dataRows($path), 'gcohc', $onProgress),
         });
 
         ImportUploadLog::query()->create([
@@ -167,7 +167,7 @@ class SpreadsheetImportService
      * tipe unit (kebun/pabrik) dan TANPA dipetakan ke budget_rko/rkap — sebab kode GC
      * (AP/AR) tak punya baris template LM14. Ini audit-only by design.
      */
-    public function importBudget(int $year, string $type, UploadedFile|string $file, ?int $userId = null): ImportResult
+    public function importBudget(int $year, string $type, UploadedFile|string $file, ?int $userId = null, ?callable $onProgress = null): ImportResult
     {
         abort_unless(self::isBudget($type), 422, 'Jenis bukan anggaran.');
         $source = self::budgetSource($type); // BKU/OHC/GC
@@ -190,6 +190,7 @@ class SpreadsheetImportService
         $acc = [];      // "KOM|PLANT|period|kode" => nilai
         $rawSrc = [];
         $errors = [];
+        $seen = 0;
 
         foreach ($this->dataRows($path) as $c) {
             if ($this->isEmptyRow($c)) {
@@ -200,6 +201,10 @@ class SpreadsheetImportService
             $kode = trim((string) ($c[$C_KODE] ?? ''));
             if ($kom === '' || $plant === '' || $kode === '') {
                 continue;
+            }
+            $seen++;
+            if ($onProgress !== null && $seen % 500 === 0) {
+                $onProgress($seen);
             }
             $nilai = $this->numericValue($c[$C_NILAI] ?? 0);
             $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
@@ -259,6 +264,10 @@ class SpreadsheetImportService
             }
         });
 
+        if ($onProgress !== null) {
+            $onProgress($seen);
+        }
+
         $result = new ImportResult(rowCount: count($rows), errors: array_slice($errors, 0, 50));
 
         ImportUploadLog::query()->create([
@@ -306,6 +315,12 @@ class SpreadsheetImportService
             'rows' => $rows,
             'total' => $total,
         ];
+    }
+
+    /** Jumlah baris data (tanpa header) — cepat (tanpa muat sel). Untuk progres import. */
+    public function dataRowCount(string $path): int
+    {
+        return $this->totalDataRows($path);
     }
 
     /**
@@ -474,7 +489,7 @@ class SpreadsheetImportService
      * @param  array<int, string>  $columns
      * @param  iterable<int, array<int, mixed>>  $rows
      */
-    private function importRaw(Batch $batch, string $table, array $columns, iterable $rows, string $kind): ImportResult
+    private function importRaw(Batch $batch, string $table, array $columns, iterable $rows, string $kind, ?callable $onProgress = null): ImportResult
     {
         DB::table($table)->where('batch_id', $batch->id)->delete();
 
@@ -500,12 +515,19 @@ class SpreadsheetImportService
                 DB::table($table)->insert($records);
                 $inserted += count($records);
                 $records = [];
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
             }
         }
 
         if ($records !== []) {
             DB::table($table)->insert($records);
             $inserted += count($records);
+        }
+
+        if ($onProgress !== null) {
+            $onProgress($inserted);
         }
 
         return new ImportResult($inserted, []);
