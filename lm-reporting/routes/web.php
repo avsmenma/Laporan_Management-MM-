@@ -65,6 +65,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/lm16', [ReportController::class, 'lm16']);
     Route::get('/drilldown', [ReportController::class, 'drilldown']);
     Route::get('/drilldown-deep', [ReportController::class, 'drilldownDeep']);
+    Route::get('/areal', [\App\Http\Controllers\Api\ArealController::class, 'index']);
 });
 
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
