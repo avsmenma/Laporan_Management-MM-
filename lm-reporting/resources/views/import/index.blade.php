@@ -7,6 +7,18 @@
         <div class="alert alert-ok" style="margin-bottom:18px">{{ session('status') }}</div>
     @endif
 
+    @if ($errors->any())
+        <div class="alert alert-warn" style="margin-bottom:18px;flex-direction:column;align-items:stretch">
+            <div><b>Periksa input</b> — unggahan tidak diproses:</div>
+            <ul class="mt-2 list-disc pl-5">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+            <div class="field-hint" style="margin-top:6px">Catatan: jika file besar gagal, kemungkinan melebihi batas ukuran upload server.</div>
+        </div>
+    @endif
+
     @if (session('import_errors'))
         <div class="alert alert-warn" style="margin-bottom:18px;flex-direction:column;align-items:stretch">
             <div><b>Ringkasan error</b></div>
