@@ -161,7 +161,11 @@ class SpreadsheetImportService
 
     /**
      * Impor satu file anggaran (BKU/OHC/GC) ke budget_rko + budget_rkap + budget_source.
-     * Idempoten per (year, report_type=LM14, source). GC tidak dipetakan ke LM14 (audit saja).
+     * Idempoten per (year, report_type=LM14, source).
+     *
+     * Untuk source GC: baris ditulis HANYA ke budget_source (audit), TANPA pengecekan
+     * tipe unit (kebun/pabrik) dan TANPA dipetakan ke budget_rko/rkap — sebab kode GC
+     * (AP/AR) tak punya baris template LM14. Ini audit-only by design.
      */
     public function importBudget(int $year, string $type, UploadedFile|string $file, ?int $userId = null): ImportResult
     {
@@ -186,7 +190,6 @@ class SpreadsheetImportService
         $acc = [];      // "KOM|PLANT|period|kode" => nilai
         $rawSrc = [];
         $errors = [];
-        $kept = 0;
 
         foreach ($this->dataRows($path) as $c) {
             if ($this->isEmptyRow($c)) {
@@ -201,7 +204,8 @@ class SpreadsheetImportService
             $nilai = $this->numericValue($c[$C_NILAI] ?? 0);
             $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
 
-            // GC: hanya audit ke budget_source (tak ada baris template LM14).
+            // GC: audit-only — hanya ke budget_source, tanpa cek tipe unit & tanpa
+            // pemetaan ke budget_rko/rkap (tak ada baris template LM14 untuk kode AP/AR).
             $mappable = $source !== 'GC';
             if ($mappable) {
                 if (($unitType[$plant] ?? null) !== 'KEBUN') {
@@ -216,7 +220,6 @@ class SpreadsheetImportService
                 }
                 $k = $kom.'|'.$plant.'|'.($period ?? '').'|'.$kode;
                 $acc[$k] = ($acc[$k] ?? 0) + $nilai;
-                $kept++;
             }
 
             $rawSrc[] = [
@@ -694,48 +697,6 @@ class SpreadsheetImportService
                     'rko' => $this->number($row['rko'] ?? 0),
                     'rkap' => $this->number($row['rkap'] ?? 0),
                 ],
-            );
-            $upserted++;
-        }
-
-        return new ImportResult($upserted, $errors);
-    }
-
-    private function importLegacyBudget(Batch $batch, array $workbook, string $table): ImportResult
-    {
-        if ($table === 'budget_rkap' && array_key_exists('RKAP', $workbook) && $this->looksLikePksRkap($workbook['RKAP'])) {
-            return $this->importPksRkapBudget($batch, $workbook['RKAP']);
-        }
-
-        [$rows, $errors] = $this->tableRows($this->firstSheet($workbook), [
-            'year' => ['year', 'tahun'],
-            'komoditi' => ['komoditi', 'budidaya'],
-            'plant_code' => ['plant', 'plantcode', 'kodeunit'],
-            'report_type' => ['reporttype', 'laporan'],
-            'kode' => ['kode', 'kodebaris'],
-            'nilai' => ['nilai', 'amount'],
-        ], ['plant_code', 'report_type', 'kode', 'nilai']);
-
-        $upserted = 0;
-        foreach ($rows as $index => $row) {
-            $plantCode = $this->text($row['plant_code'] ?? null);
-            $reportType = $this->reportType($row['report_type'] ?? null);
-
-            if (! $this->isKnownUnit($plantCode) || $reportType === null) {
-                $errors[] = "{$table} baris {$index}: plant/report_type tidak valid.";
-
-                continue;
-            }
-
-            DB::table($table)->updateOrInsert(
-                [
-                    'year' => $this->int($row['year'] ?? $batch->year),
-                    'komoditi' => $this->nullableKomoditi($row['komoditi'] ?? null),
-                    'plant_code' => $plantCode,
-                    'report_type' => $reportType,
-                    'kode' => $this->text($row['kode'] ?? null),
-                ],
-                ['nilai' => $this->number($row['nilai'] ?? 0) * 1000],
             );
             $upserted++;
         }
