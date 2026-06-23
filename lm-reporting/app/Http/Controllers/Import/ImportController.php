@@ -94,12 +94,12 @@ class ImportController extends Controller
     }
 
     /**
-     * Langkah 2: konfirmasi — baca ulang file yang ditahan lalu simpan ke database.
+     * Langkah 2: konfirmasi — buat import_jobs + dispatch ProcessImport (async).
      *
-     * - Anggaran: panggil importBudget(year, type, path, uid), tandai semua batch tahun itu.
-     * - Realisasi: resolve/buat batch dari year+month, panggil import(), tandai batch.
+     * Mengembalikan JSON 202 dengan job_id dan status_url untuk polling.
+     * File staging TIDAK dihapus di sini; job yang menghapusnya setelah selesai.
      */
-    public function confirm(Request $request, SpreadsheetImportService $service): RedirectResponse
+    public function confirm(Request $request): \Illuminate\Http\JsonResponse
     {
         $type = (string) $request->input('type');
         $isBudget = SpreadsheetImportService::isBudget($type);
@@ -115,35 +115,41 @@ class ImportController extends Controller
         }
         $data = $request->validate($rules);
 
-        $stored = "import-staging/{$data['token']}.{$data['ext']}";
-        if (! Storage::disk('local')->exists($stored)) {
-            return redirect()->route('import.index')->with([
-                'status'        => 'Berkas pratinjau kedaluwarsa. Unggah ulang.',
-                'import_errors' => [],
-            ]);
-        }
-        $path = Storage::disk('local')->path($stored);
-        $uid = $request->user()->id;
-
-        try {
-            if ($isBudget) {
-                $result = $service->importBudget((int) $data['year'], $type, $path, $uid);
-                // Tandai semua batch tahun itu perlu diproses ulang.
-                Batch::query()->where('year', $data['year'])->update(['needs_regenerate' => true]);
-                $msg = "Import anggaran {$type} selesai: {$result->rowCount} baris budget.";
-            } else {
-                $batch = $this->resolveBatch((int) $data['year'], (int) $data['month']);
-                $result = $service->import($type, $batch, $path, $uid);
-                $batch->forceFill(['needs_regenerate' => true])->save();
-                $msg = "Import {$type} ke {$batch->code} selesai: {$result->rowCount} baris.";
-            }
-        } finally {
-            Storage::disk('local')->delete($stored);
+        $staged = "import-staging/{$data['token']}.{$data['ext']}";
+        if (! Storage::disk('local')->exists($staged)) {
+            return response()->json(['message' => 'Berkas pratinjau kedaluwarsa. Unggah ulang.'], 422);
         }
 
-        return redirect()->route('import.index')->with([
-            'status'        => $msg,
-            'import_errors' => $result->errors,
+        $job = \App\Models\ImportJob::query()->create([
+            'user_id'     => $request->user()->id,
+            'type'        => $type,
+            'year'        => (int) $data['year'],
+            'month'       => $isBudget ? null : (int) $data['month'],
+            'filename'    => "{$data['token']}.{$data['ext']}",
+            'staged_path' => $staged,
+            'ext'         => $data['ext'],
+            'status'      => 'queued',
+        ]);
+
+        \App\Jobs\ProcessImport::dispatch($job->id);
+
+        return response()->json([
+            'job_id'     => $job->id,
+            'status_url' => route('import.status', $job),
+        ], 202);
+    }
+
+    /**
+     * Polling status untuk import job yang sedang berjalan.
+     */
+    public function status(\App\Models\ImportJob $importJob): \Illuminate\Http\JsonResponse
+    {
+        return response()->json([
+            'status'    => $importJob->status,
+            'processed' => $importJob->processed,
+            'total'     => $importJob->total,
+            'row_count' => $importJob->row_count,
+            'error'     => $importJob->error,
         ]);
     }
 

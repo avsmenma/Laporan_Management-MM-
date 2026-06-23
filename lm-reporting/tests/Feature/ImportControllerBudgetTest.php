@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessImport;
+use App\Models\ImportJob;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -137,6 +140,11 @@ class ImportControllerBudgetTest extends TestCase
 
     public function test_budget_confirm_saves_to_budget_rko_and_budget_source(): void
     {
+        // Confirm sekarang bersifat async: membuat ImportJob (queued) + dispatch ProcessImport.
+        // Asersi DB budget_rko/budget_source dipindahkan ke ProcessImportJobTest (Task 3).
+        // Di sini kita verifikasi bahwa dispatch terjadi dan ImportJob terbuat dengan benar.
+        Queue::fake();
+
         $admin = $this->adminUser();
 
         DB::table('ref_unit')->insert([
@@ -159,20 +167,28 @@ class ImportControllerBudgetTest extends TestCase
         $preview->assertOk();
         $pending = $preview->viewData('pending');
 
-        // Langkah 2: konfirmasi
-        $confirm = $this->actingAs($admin)->post('/import/confirm', [
+        // Langkah 2: konfirmasi → JSON 202 (async dispatch)
+        $confirm = $this->actingAs($admin)->postJson('/import/confirm', [
             'token' => $pending['token'],
             'ext'   => $pending['ext'],
             'type'  => $pending['type'],
             'year'  => $pending['year'],
         ]);
 
-        $confirm->assertRedirect(route('import.index'));
+        $confirm->assertStatus(202)->assertJsonStructure(['job_id', 'status_url']);
 
-        // Asersi inti: budget_rko dan budget_source harus terisi.
-        $this->assertSame(1, DB::table('budget_rko')->where('source', 'BKU')->count(), 'budget_rko harus ada 1 baris BKU');
-        $this->assertSame(1, DB::table('budget_source')->where('source', 'BKU')->count(), 'budget_source harus ada 1 baris BKU');
-        $this->assertEqualsWithDelta(1000.0, (float) DB::table('budget_rko')->sum('nilai'), 0.5);
+        // ImportJob harus terbuat dengan type dan year yang benar.
+        $this->assertSame(1, ImportJob::query()->count(), 'Harus ada 1 ImportJob setelah confirm');
+        $importJob = ImportJob::query()->first();
+        $this->assertSame('rko_bku', $importJob->type, 'type harus rko_bku');
+        $this->assertSame(2026, (int) $importJob->year, 'year harus 2026');
+        $this->assertSame('queued', $importJob->status, 'status awal harus queued');
+        $this->assertNull($importJob->month, 'month harus null untuk tipe budget');
+
+        // ProcessImport harus di-dispatch ke queue.
+        Queue::assertPushed(ProcessImport::class, function (ProcessImport $job) use ($importJob) {
+            return $job->importJobId === $importJob->id;
+        });
     }
 
     // ===========================================================================
@@ -204,8 +220,10 @@ class ImportControllerBudgetTest extends TestCase
         $detectedMonths = $preview->viewData('detected_months');
         $this->assertSame([5], $detectedMonths, 'detected_months harus [5]');
 
-        // Langkah 2: konfirmasi
-        $confirm = $this->actingAs($admin)->post('/import/confirm', [
+        // Langkah 2: konfirmasi → JSON 202 (async dispatch)
+        // Pembuatan Batch sekarang terjadi di dalam ProcessImport job (diuji di ProcessImportJobTest).
+        Queue::fake();
+        $confirm = $this->actingAs($admin)->postJson('/import/confirm', [
             'token' => $pending['token'],
             'ext'   => $pending['ext'],
             'type'  => $pending['type'],
@@ -213,12 +231,19 @@ class ImportControllerBudgetTest extends TestCase
             'month' => $pending['month'],
         ]);
 
-        $confirm->assertRedirect(route('import.index'));
+        $confirm->assertStatus(202)->assertJsonStructure(['job_id', 'status_url']);
 
-        // Batch harus dibuat + needs_regenerate=1
-        $batch = DB::table('batch')->where('year', 2026)->where('month', 5)->first();
-        $this->assertNotNull($batch, 'Batch 2026-05 harus diciptakan saat realisasi confirm');
-        $this->assertSame(1, (int) $batch->needs_regenerate, 'needs_regenerate harus true setelah import');
-        $this->assertSame('draft', $batch->status, 'Batch baru harus berstatus draft');
+        // ImportJob harus terbuat dengan type, year, dan month yang benar.
+        $this->assertSame(1, ImportJob::query()->count(), 'Harus ada 1 ImportJob setelah confirm');
+        $importJob = ImportJob::query()->first();
+        $this->assertSame('gc', $importJob->type, 'type harus gc');
+        $this->assertSame(2026, (int) $importJob->year, 'year harus 2026');
+        $this->assertSame(5, (int) $importJob->month, 'month harus 5');
+        $this->assertSame('queued', $importJob->status, 'status awal harus queued');
+
+        // ProcessImport harus di-dispatch ke queue.
+        Queue::assertPushed(ProcessImport::class, function (ProcessImport $job) use ($importJob) {
+            return $job->importJobId === $importJob->id;
+        });
     }
 }
