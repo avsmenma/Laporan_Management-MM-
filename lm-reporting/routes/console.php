@@ -313,17 +313,11 @@ Artisan::command('alokasi:import-produksi {--file=} {--year=}', function (): int
     return 0;
 })->purpose('Impor matriks produksi (TBS/CPO/Kernel per pabrik) dari sheet Alokasi ke alokasi_produksi.');
 
-Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}', function (Lm13Service $lm13Service, Lm14Service $lm14Service, Lm16Service $lm16Service): int {
+Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}', function (Lm13Service $lm13Service, Lm14Service $lm14Service, Lm16Service $lm16Service, \App\Domain\Report\ReportGenerateService $generator): int {
     $type = strtoupper((string) $this->option('type'));
     $batchInput = (string) $this->option('batch');
     $unitCode = $this->option('unit');
     $komoditi = strtoupper((string) $this->option('komoditi'));
-
-    if (! in_array($type, ['LM13', 'LM14', 'LM16'], true)) {
-        $this->error('Command report:generate mendukung --type=LM13, LM14, atau LM16.');
-
-        return 1;
-    }
 
     if ($batchInput === '') {
         $this->error('Opsi --batch wajib diisi dengan id atau kode batch.');
@@ -338,6 +332,20 @@ Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}
 
     if (! $batch) {
         $this->error("Batch {$batchInput} tidak ditemukan.");
+
+        return 1;
+    }
+
+    // Mode "semua" — tidak ada --type: jalankan generateBatch via service
+    if ($type === '') {
+        $summary = $generator->generateBatch($batch);
+        $this->info("Selesai: LM14={$summary['lm14']} LM13={$summary['lm13']} LM16={$summary['lm16']} ({$summary['units']} unit).");
+
+        return 0;
+    }
+
+    if (! in_array($type, ['LM13', 'LM14', 'LM16'], true)) {
+        $this->error('Command report:generate mendukung --type=LM13, LM14, atau LM16.');
 
         return 1;
     }
