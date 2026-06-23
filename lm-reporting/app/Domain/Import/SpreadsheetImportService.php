@@ -69,12 +69,69 @@ class SpreadsheetImportService
             'wbs' => 'DB WBS',
             'ohc' => 'DB OHC',
             'gc' => 'DB GC',
+            'rko_bku' => 'RKO/RKAP — BKU',
+            'rko_ohc' => 'RKO/RKAP — OHC',
+            'rko_gc' => 'RKO/RKAP — GC',
         ];
+    }
+
+    /** Jenis realisasi (per bulan) vs anggaran (per tahun). */
+    public static function isBudget(string $type): bool
+    {
+        return str_starts_with($type, 'rko_');
+    }
+
+    /** Sumber budget (BKU/OHC/GC) untuk jenis rko_*, atau null. */
+    public static function budgetSource(string $type): ?string
+    {
+        return match ($type) {
+            'rko_bku' => 'BKU',
+            'rko_ohc' => 'OHC',
+            'rko_gc' => 'GC',
+            default => null,
+        };
+    }
+
+    /**
+     * Bulan distinct (1..12) dari kolom periode file realisasi. Dipakai untuk
+     * mengisi dropdown bulan otomatis (asumsi domain: 1 file = 1 bulan).
+     *
+     * @return array<int, int>
+     */
+    public function detectPeriods(string $path, string $type): array
+    {
+        $periodIndex = match ($type) {
+            'wbs' => array_search('period', self::WBS_COLUMNS, true),
+            'ohc' => array_search('period', self::OHC_COLUMNS, true),
+            'gc' => array_search('period', self::GC_COLUMNS, true),
+            default => false,
+        };
+        if ($periodIndex === false) {
+            return [];
+        }
+
+        $found = [];
+        foreach ($this->dataRows($path) as $values) {
+            if ($this->isEmptyRow($values)) {
+                continue;
+            }
+            $raw = $values[$periodIndex] ?? null;
+            if (is_numeric($raw)) {
+                $m = (int) $raw;
+                if ($m >= 1 && $m <= 12) {
+                    $found[$m] = true;
+                }
+            }
+        }
+        ksort($found);
+
+        return array_keys($found);
     }
 
     public function import(string $type, Batch $batch, UploadedFile|string $file, ?int $userId = null): ImportResult
     {
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
+        abort_if(self::isBudget($type), 422, 'Gunakan importBudget() untuk jenis anggaran.');
 
         $this->knownUnitCodes = RefUnit::query()->pluck('type', 'code')->all();
         $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
@@ -110,6 +167,7 @@ class SpreadsheetImportService
     public function preview(string $type, string $path, int $sampleSize = 15): array
     {
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
+        abort_if(self::isBudget($type), 422, 'Gunakan importBudget() untuk jenis anggaran.');
 
         $total = max(0, $this->totalDataRows($path));
 

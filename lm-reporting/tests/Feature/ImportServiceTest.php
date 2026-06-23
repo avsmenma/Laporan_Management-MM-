@@ -16,9 +16,23 @@ class ImportServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_import_types_only_wbs_ohc_gc(): void
+    public function test_types_now_include_realisasi_and_budget(): void
     {
-        $this->assertSame(['wbs', 'ohc', 'gc'], array_keys(SpreadsheetImportService::types()));
+        $this->assertSame(
+            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc'],
+            array_keys(SpreadsheetImportService::types())
+        );
+        $this->assertFalse(SpreadsheetImportService::isBudget('wbs'));
+        $this->assertTrue(SpreadsheetImportService::isBudget('rko_ohc'));
+        $this->assertSame('OHC', SpreadsheetImportService::budgetSource('rko_ohc'));
+        $this->assertNull(SpreadsheetImportService::budgetSource('wbs'));
+    }
+
+    public function test_detect_periods_reads_distinct_month_from_gc_file(): void
+    {
+        $path = $this->buildGcFile(); // baris H2=5, H3=5 → kolom Period (H) = bulan 5
+        $this->assertSame([5], app(SpreadsheetImportService::class)->detectPeriods($path, 'gc'));
+        unlink($path);
     }
 
     public function test_gc_raw_import_reads_cached_formula_values_and_derives_plant_code(): void
