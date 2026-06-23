@@ -50,7 +50,7 @@
         <div class="report-header">
             <h3 class="report-title">Areal — Statement Blok/Petak</h3>
         </div>
-        <div id="areal-table"></div>
+        <div id="areal-table" class="lm-report-table"></div>
     </div>
 
     <div x-show="errorMsg" x-cloak class="lm-error-panel" x-text="errorMsg"></div>
