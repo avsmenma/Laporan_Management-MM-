@@ -47,21 +47,9 @@ class ImportController extends Controller
         $path = Storage::disk('local')->path($stored);
 
         try {
-            if ($isBudget) {
-                // Anggaran: tidak ada pratinjau tabel berat; cukup ringkasan ringan.
-                $preview = [
-                    'type'    => $type,
-                    'label'   => SpreadsheetImportService::types()[$type],
-                    'columns' => [],
-                    'rows'    => [],
-                    'total'   => 0,
-                    'budget'  => true,
-                ];
-                $detectedMonths = [];
-            } else {
-                $preview = $service->preview($type, $path);
-                $detectedMonths = $service->detectPeriods($path, $type);
-            }
+            // Pratinjau dari sheet pertama (anggaran & realisasi); areal baca sheet "DB".
+            $preview = $service->preview($type, $path);
+            $detectedMonths = $isBudget ? [] : $service->detectPeriods($path, $type);
         } catch (\Throwable $e) {
             Storage::disk('local')->delete($stored);
 

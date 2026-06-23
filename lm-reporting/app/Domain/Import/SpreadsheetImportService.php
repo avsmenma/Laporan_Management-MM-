@@ -304,7 +304,6 @@ class SpreadsheetImportService
     public function preview(string $type, string $path, int $sampleSize = 15): array
     {
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
-        abort_if(self::isBudget($type), 422, 'Gunakan importBudget() untuk jenis anggaran.');
 
         // Areal: baca header + sampel dari sheet "DB", hitung total via rowCountForType.
         if ($type === 'areal') {
