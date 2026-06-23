@@ -338,6 +338,9 @@ Artisan::command('report:generate {--type=} {--batch=} {--unit=} {--komoditi=KS}
 
     // Mode "semua" — tidak ada --type: jalankan generateBatch via service
     if ($type === '') {
+        if ($unitCode) {
+            $this->warn('Mode semua (tanpa --type): opsi --unit/--komoditi diabaikan.');
+        }
         $summary = $generator->generateBatch($batch);
         $this->info("Selesai: LM14={$summary['lm14']} LM13={$summary['lm13']} LM16={$summary['lm16']} ({$summary['units']} unit).");
 

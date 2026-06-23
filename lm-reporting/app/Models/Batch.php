@@ -17,6 +17,7 @@ class Batch extends Model
     {
         return [
             'processed_at' => 'datetime',
+            'needs_regenerate' => 'boolean',
         ];
     }
 

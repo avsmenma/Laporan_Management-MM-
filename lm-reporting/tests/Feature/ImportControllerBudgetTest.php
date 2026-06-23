@@ -195,7 +195,7 @@ class ImportControllerBudgetTest extends TestCase
         ]);
         $preview->assertOk();
 
-        $pending = $response = $preview->viewData('pending');
+        $pending = $preview->viewData('pending');
         $this->assertNotNull($pending);
         $this->assertFalse($pending['is_budget'], 'is_budget harus false untuk tipe gc');
         $this->assertSame(2026, $pending['year']);
