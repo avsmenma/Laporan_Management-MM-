@@ -225,7 +225,15 @@
                 } catch (e) { this.open = false; window.lmToast(e.message, 'err'); }
             },
             poll(url) {
+                let attempts = 0;
+                const MAX_ATTEMPTS = 600; // 600 × 2s = 20 menit
                 const tick = async () => {
+                    attempts++;
+                    if (attempts > MAX_ATTEMPTS) {
+                        this.open = false;
+                        window.lmToast('Masih diproses di latar belakang — cek Riwayat Upload nanti.', 'ok');
+                        return;
+                    }
                     try {
                         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
                         const s = await r.json();

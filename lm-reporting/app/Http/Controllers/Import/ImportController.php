@@ -175,22 +175,6 @@ class ImportController extends Controller
     }
 
     /**
-     * Cari atau buat batch (status draft) berdasarkan year+month.
-     * Unique constraint (year, month) dijaga oleh firstOrCreate.
-     */
-    private function resolveBatch(int $year, int $month): Batch
-    {
-        return Batch::query()->firstOrCreate(
-            ['year' => $year, 'month' => $month],
-            [
-                'code'             => "Batch #{$year}-".str_pad((string) $month, 2, '0', STR_PAD_LEFT),
-                'status'           => 'draft',
-                'needs_regenerate' => true,
-            ],
-        );
-    }
-
-    /**
      * @return array<string, mixed>
      */
     private function indexData(): array

@@ -44,6 +44,47 @@ class ProcessImportJobTest extends TestCase
         $this->assertSame(1, Batch::query()->where('year', 2026)->where('month', 5)->count());
     }
 
+    /** (a) File staging tidak ditemukan → status 'failed' dengan pesan error. */
+    public function test_missing_staged_file_marks_job_failed(): void
+    {
+        Storage::fake('local');
+
+        $staged = 'import-staging/tidak-ada.xlsx';
+        // Sengaja TIDAK membuat file di disk palsu.
+
+        $importJob = ImportJob::query()->create([
+            'type' => 'gc', 'year' => 2026, 'month' => 5,
+            'filename' => 'tidak-ada.xlsx', 'staged_path' => $staged, 'ext' => 'xlsx',
+        ]);
+
+        (new ProcessImport($importJob->id))->handle(app(\App\Domain\Import\SpreadsheetImportService::class));
+
+        $importJob->refresh();
+        $this->assertSame('failed', $importJob->status);
+        $this->assertNotEmpty($importJob->error, 'pesan error harus diisi');
+    }
+
+    /** (b) File staging corrupt (bukan xlsx valid) → status 'failed' DAN file staging dihapus. */
+    public function test_corrupt_staged_file_marks_job_failed_and_deletes_staged(): void
+    {
+        Storage::fake('local');
+
+        $staged = 'import-staging/corrupt.xlsx';
+        // Tulis konten bukan xlsx agar parser melempar exception.
+        Storage::disk('local')->put($staged, 'not a real xlsx');
+
+        $importJob = ImportJob::query()->create([
+            'type' => 'gc', 'year' => 2026, 'month' => 5,
+            'filename' => 'corrupt.xlsx', 'staged_path' => $staged, 'ext' => 'xlsx',
+        ]);
+
+        (new ProcessImport($importJob->id))->handle(app(\App\Domain\Import\SpreadsheetImportService::class));
+
+        $importJob->refresh();
+        $this->assertSame('failed', $importJob->status, 'status harus failed');
+        $this->assertFalse(Storage::disk('local')->exists($staged), 'file staging harus dihapus oleh finally');
+    }
+
     private function buildGcFile(): string
     {
         $headers = ['Cost Center', 'CO Object Name', 'Business Transaction', 'Document Number', 'Ref', 'Cost Element', 'Cost element name', 'Period', 'Posting Date', 'Value in Obj. Crcy', 'Total quantity'];
