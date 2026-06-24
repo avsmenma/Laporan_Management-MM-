@@ -50,11 +50,14 @@ class ProduksiApiTest extends TestCase
         $this->seedProduksi();
         $user = $this->actingViewer();
 
-        $resp = $this->actingAs($user)->getJson('/report-data/produksi?date=2026-05-31');
+        $resp = $this->actingAs($user)->getJson('/report-data/produksi?year=2026&month=5');
         $resp->assertOk();
         $data = $resp->json();
 
-        $this->assertSame(['2026-05-31'], $data['dates']);
+        $this->assertSame([['year' => 2026, 'month' => 5]], $data['periods']);
+        $this->assertSame(2026, $data['year']);
+        $this->assertSame(5, $data['month']);
+        $this->assertSame('2026-05-31', $data['date']);
         $this->assertSame(['5F01', '5F04'], array_column($data['plants'], 'code'));
         $this->assertSame(['5E01', '5E02'], array_column($data['kebun'], 'code'));
 
@@ -85,17 +88,44 @@ class ProduksiApiTest extends TestCase
         $this->assertEquals(20.0, round($data['ringkasan']['sd']['5F01']['rend_ms'], 2));
     }
 
-    public function test_tanggal_tidak_ada_fallback_ke_terbaru(): void
+    public function test_periode_tidak_ada_fallback_ke_terbaru(): void
     {
         $this->seedProduksi();
         $user = $this->actingViewer();
 
-        // Minta tanggal tanpa data → fallback ke tanggal terbaru yang ada.
-        $resp = $this->actingAs($user)->getJson('/report-data/produksi?date=2026-01-01');
+        // Minta periode tanpa data → fallback ke periode terbaru yang ada.
+        $resp = $this->actingAs($user)->getJson('/report-data/produksi?year=2026&month=1');
+        $resp->assertOk();
+        $data = $resp->json();
+
+        $this->assertSame(2026, $data['year']);
+        $this->assertSame(5, $data['month']);
+        $this->assertSame('2026-05-31', $data['date']);
+        $this->assertSame([['year' => 2026, 'month' => 5]], $data['periods']);
+    }
+
+    public function test_bulan_pakai_tanggal_posting_terbaru_dalam_bulan(): void
+    {
+        // Satu kebun/plant, dua tanggal posting di bulan yang sama.
+        // Pilih bulan → harus pakai tanggal TERBARU (snapshot s.d bulan terlengkap).
+        $mk = fn (string $d, int $sdbulan) => [
+            'posting_date' => $d, 'tidak_mengolah' => false,
+            'plant_code' => '5F01', 'plant_desc' => 'PKS A', 'group_pemilik' => 'Kebun Sendiri',
+            'kebun_code' => '5E01', 'nama_kebun' => 'KEBUN A',
+            'tbs_diterima_sdhari' => 10, 'tbs_diterima_sdbulan' => $sdbulan,
+            'tbs_diolah_sdhari' => 8, 'tbs_diolah_sdbulan' => 80,
+            'sisa_akhir' => 1, 'ms_sdhari' => 1, 'ms_sdbulan' => 16, 'is_sdhari' => 1, 'is_sdbulan' => 4,
+        ];
+        DB::table('produksi_pks')->insert([$mk('2026-05-15', 500), $mk('2026-05-31', 1000)]);
+
+        $user = $this->actingViewer();
+        $resp = $this->actingAs($user)->getJson('/report-data/produksi?year=2026&month=5');
         $resp->assertOk();
         $data = $resp->json();
 
         $this->assertSame('2026-05-31', $data['date']);
-        $this->assertSame(['2026-05-31'], $data['dates']);
+        // S.D Bulan Ini TBS Diterima = nilai tanggal terbaru (1000), bukan 500/penjumlahan.
+        $row = collect($data['tables']['tbs_diterima']['rows'])->firstWhere('kebun', '5E01');
+        $this->assertEquals(1000, $row['sd']['5F01']);
     }
 }

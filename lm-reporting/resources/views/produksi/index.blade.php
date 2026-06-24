@@ -7,11 +7,21 @@
     <div class="filter-bar">
         <div class="filter-grid">
             <div class="filter-group">
-                <label class="filter-label">Tanggal Posting</label>
-                <select class="filter-select" x-model="date" @change="load()">
-                    <option value="">— pilih tanggal —</option>
-                    <template x-for="d in dates" :key="d">
-                        <option :value="d" x-text="d"></option>
+                <label class="filter-label">Tahun</label>
+                <select class="filter-select" x-model="year" @change="onYearChange()">
+                    <option value="">— pilih tahun —</option>
+                    <template x-for="y in years()" :key="y">
+                        <option :value="y" x-text="y"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label class="filter-label">Bulan</label>
+                <select class="filter-select" x-model="month" @change="load()">
+                    <option value="">— pilih bulan —</option>
+                    <template x-for="m in months()" :key="m">
+                        <option :value="m" x-text="bulanNama(m)"></option>
                     </template>
                 </select>
             </div>
@@ -79,8 +89,9 @@
 <script>
 function produksiApp() {
     return {
-        dates: [],
-        date: '',
+        periods: [],
+        year: '',
+        month: '',
         plants: [],
         kebun: [],
         payload: null,
@@ -107,6 +118,28 @@ function produksiApp() {
             return (v == null) ? '-' : Number(v).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         },
 
+        bulanNama(m) {
+            return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
+        },
+
+        // Tahun & bulan tersedia diturunkan dari daftar periode dari server.
+        years() {
+            return [...new Set(this.periods.map(p => p.year))].sort((a, b) => b - a);
+        },
+        months() {
+            return this.periods
+                .filter(p => String(p.year) === String(this.year))
+                .map(p => Number(p.month))
+                .sort((a, b) => b - a);
+        },
+        onYearChange() {
+            const ms = this.months();
+            if (!ms.includes(Number(this.month))) {
+                this.month = ms[0] ?? '';
+            }
+            this.load();
+        },
+
         async init() {
             await this.load();
         },
@@ -114,19 +147,23 @@ function produksiApp() {
         async load() {
             this.errorMsg = null;
             try {
-                const q = this.date ? ('?date=' + encodeURIComponent(this.date)) : '';
+                const params = [];
+                if (this.year) params.push('year=' + encodeURIComponent(this.year));
+                if (this.month) params.push('month=' + encodeURIComponent(this.month));
+                const q = params.length ? ('?' + params.join('&')) : '';
                 const resp = await fetch('/report-data/produksi' + q);
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
                     throw new Error(err.message || ('HTTP ' + resp.status));
                 }
                 const data = await resp.json();
-                this.dates = data.dates || [];
-                this.date = data.date || '';
+                this.periods = data.periods || [];
+                this.year = data.year ?? '';
+                this.month = data.month ?? '';
                 this.plants = data.plants || [];
                 this.kebun = data.kebun || [];
                 this.payload = data;
-                this.hasData = (this.dates.length > 0);
+                this.hasData = (this.periods.length > 0);
                 if (this.hasData) {
                     this.$nextTick(() => this.renderAll(data));
                 }

@@ -33,13 +33,38 @@ class ProduksiController extends Controller
             ->pluck('posting_date')->map(fn ($d) => substr((string) $d, 0, 10))->values()->all();
 
         if ($dates === []) {
-            return response()->json(['dates' => [], 'date' => null, 'plants' => [], 'kebun' => [], 'tables' => [], 'ringkasan' => ['bi' => [], 'sd' => []]]);
+            return response()->json(['periods' => [], 'year' => null, 'month' => null, 'date' => null, 'plants' => [], 'kebun' => [], 'tables' => [], 'ringkasan' => ['bi' => [], 'sd' => []]]);
         }
 
-        $date = (string) $request->query('date', $dates[0]);
-        if (! in_array($date, $dates, true)) {
-            $date = $dates[0];
+        // Periode = (tahun, bulan). Tiap periode diwakili oleh tanggal posting
+        // TERBARU di bulan itu (snapshot s.d bulan paling lengkap). Karena $dates
+        // urut menurun, kemunculan pertama tiap "Y-m" adalah tanggal terbaru.
+        $latestByPeriod = [];
+        foreach ($dates as $d) {
+            $key = substr($d, 0, 7); // "YYYY-MM"
+            if (! isset($latestByPeriod[$key])) {
+                $latestByPeriod[$key] = $d;
+            }
         }
+        $periods = [];
+        foreach (array_keys($latestByPeriod) as $key) {
+            [$yy, $mm] = explode('-', $key);
+            $periods[] = ['year' => (int) $yy, 'month' => (int) $mm];
+        }
+        usort($periods, fn ($a, $b) => ($b['year'] <=> $a['year']) ?: ($b['month'] <=> $a['month']));
+
+        $defYear = $periods[0]['year'];
+        $defMonth = $periods[0]['month'];
+        $year = (int) $request->query('year', $defYear);
+        $month = (int) $request->query('month', $defMonth);
+        $pkey = sprintf('%04d-%02d', $year, $month);
+        if (! isset($latestByPeriod[$pkey])) {
+            // Periode diminta tak punya data → jatuh ke periode terbaru.
+            $year = $defYear;
+            $month = $defMonth;
+            $pkey = sprintf('%04d-%02d', $year, $month);
+        }
+        $date = $latestByPeriod[$pkey];
 
         $rows = DB::table('produksi_pks')->whereDate('posting_date', $date)->get();
 
@@ -104,7 +129,9 @@ class ProduksiController extends Controller
         }
 
         return response()->json([
-            'dates' => $dates,
+            'periods' => $periods,
+            'year' => $year,
+            'month' => $month,
             'date' => $date,
             'plants' => array_map(fn ($p) => ['code' => $p, 'desc' => $plantDesc[$p] ?? ''], $plants),
             'kebun' => array_map(fn ($k) => ['code' => $k, 'nama' => $kebunNama[$k] ?? ''], $kebun),
