@@ -41,6 +41,10 @@ class ConfirmProduksiImportTest extends TestCase
 
         $resp->assertStatus(202)->assertJsonStructure(['job_id', 'status_url']);
         $this->assertDatabaseHas('import_jobs', ['type' => 'produksi', 'month' => null]);
-        Queue::assertPushed(ProcessImport::class);
+        Queue::assertPushed(ProcessImport::class, function ($job) {
+            $importJobId = ImportJob::query()->where('type', 'produksi')->value('id');
+
+            return $job->importJobId === $importJobId;
+        });
     }
 }
