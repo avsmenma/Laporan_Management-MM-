@@ -7,21 +7,21 @@
     <div class="filter-bar">
         <div class="filter-grid">
             <div class="filter-group">
-                <label class="filter-label">Tahun</label>
-                <select class="filter-select" x-model="year" @change="onYearChange()">
-                    <option value="">— pilih tahun —</option>
-                    <template x-for="y in years()" :key="y">
-                        <option :value="y" x-text="y"></option>
-                    </template>
-                </select>
-            </div>
-
-            <div class="filter-group">
                 <label class="filter-label">Bulan</label>
                 <select class="filter-select" x-model="month" @change="load()">
                     <option value="">— pilih bulan —</option>
                     <template x-for="m in months()" :key="m">
                         <option :value="m" x-text="bulanNama(m)"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label class="filter-label">Tahun</label>
+                <select class="filter-select" x-model="year" @change="onYearChange()">
+                    <option value="">— pilih tahun —</option>
+                    <template x-for="y in years()" :key="y">
+                        <option :value="y" x-text="y"></option>
                     </template>
                 </select>
             </div>
