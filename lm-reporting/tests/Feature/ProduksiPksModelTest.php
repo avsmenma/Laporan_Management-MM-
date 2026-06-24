@@ -31,7 +31,7 @@ class ProduksiPksModelTest extends TestCase
         $fresh = ProduksiPks::query()->find($row->id);
         $this->assertSame('2026-05-31', $fresh->posting_date->format('Y-m-d'));
         $this->assertSame('5F01', $fresh->plant_code);
-        $this->assertEquals(3795250.0, (float) $fresh->tbs_diterima_sdhari);
+        $this->assertSame('3795250.00', $fresh->tbs_diterima_sdhari);
         $this->assertFalse($fresh->tidak_mengolah);
     }
 }
