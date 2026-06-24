@@ -645,6 +645,224 @@ Artisan::command('lm:tahunlalu-wbs {--dir=} {--file=*} {--year=2025}', function 
     return 0;
 })->purpose('Isi realisasi_tahun_lalu (LM14) dari ekstrak WBS mentah tahun lalu; cocok Aktifitas=kode, SUM(Value).');
 
+Artisan::command('lm:tahunlalu-ohc {--dir=} {--file=*} {--year=2025}', function (): int {
+    // Mengisi baris source=BTL pada realisasi_tahun_lalu (report_type=LM14) dari ekstrak
+    // OHC mentah tahun lalu. Aturan cocok IDENTIK dengan mesin tahun berjalan (Lm14Service):
+    //   - kode diawali "511"  → cocok cost_element = kode (depresiasi/amortisasi)
+    //   - kode "99-01"        → Gaji Staf: cocok lock = SP01 (KS) / SR01 (KR)
+    //   - kode lain (BT../AU..)→ cocok lock = kode (overhead/administrasi)
+    //   nilai = SUM(value_obj_crcy) per (komoditi, plant, period, kode).
+    //   plant_code = 4 huruf pertama Cost Center (sama dengan importer db_ohc).
+    // Baris source=WBS pada realisasi_tahun_lalu TIDAK disentuh (kode BTL disjoint dari WBS),
+    // sehingga aman dijalankan setelah lm:tahunlalu-wbs.
+    $year = (int) $this->option('year');
+    if ($year < 2000 || $year > 2100) {
+        $this->error('Opsi --year tidak wajar: '.$year);
+
+        return 1;
+    }
+
+    // Kumpulkan berkas dari --file (boleh berulang) dan/atau --dir. Untuk --dir hanya berkas
+    // yang namanya memuat "OHC" (case-insensitive) yang diambil — folder bisa berisi WBS/GC.
+    $files = array_values(array_filter((array) $this->option('file'), fn ($f) => is_string($f) && $f !== ''));
+    $dir = (string) $this->option('dir');
+    if ($dir !== '') {
+        if (! is_dir($dir)) {
+            $this->error("Direktori tidak ditemukan: {$dir}");
+
+            return 1;
+        }
+        foreach (glob(rtrim($dir, "/\\").DIRECTORY_SEPARATOR.'*.xlsx') ?: [] as $f) {
+            if (stripos(basename($f), 'OHC') !== false) {
+                $files[] = $f;
+            }
+        }
+    }
+    $files = array_values(array_unique($files));
+    if ($files === []) {
+        $this->error('Tidak ada berkas OHC. Pakai --dir=<folder> (ambil *OHC*.xlsx) atau --file=<path.xlsx>.');
+
+        return 1;
+    }
+    foreach ($files as $f) {
+        if (! is_file($f)) {
+            $this->error("Berkas tidak ditemukan: {$f}");
+
+            return 1;
+        }
+    }
+
+    // Himpunan kode baris LM14 ber-source BTL (gaji staf, depresiasi 511*, overhead BT../AU..).
+    $btl = DB::table('lm_template_row')
+        ->where('report_type', 'LM14')
+        ->where('source', 'BTL')
+        ->whereNotNull('kode')
+        ->where('kode', '<>', '')
+        ->pluck('kode')
+        ->unique();
+
+    if ($btl->isEmpty()) {
+        $this->error('Tidak ada kode LM14 source=BTL di lm_template_row. Seed template dulu.');
+
+        return 1;
+    }
+
+    $STAF_KODE = '99-01';
+    $ceKodes = $btl->filter(fn ($k) => str_starts_with((string) $k, '511'))->flip();   // cocok cost_element
+    $lockKodes = $btl->reject(fn ($k) => str_starts_with((string) $k, '511') || $k === $STAF_KODE)->flip(); // cocok lock
+    $hasStaf = $btl->contains($STAF_KODE);
+    $allBtl = $btl->values()->all();
+    $stafLock = fn (string $kom): string => strtoupper($kom) === 'KR' ? 'SR01' : 'SP01';
+
+    // Indeks kolom 0-based mengikuti urutan kolom file DB OHC (sama dengan OHC_COLUMNS importer).
+    $COL_CC = 0;        // cost_center → plant_code (4 huruf pertama)
+    $COL_CE = 5;        // cost_element
+    $COL_PERIOD = 7;
+    $COL_VALUE = 9;     // value_obj_crcy
+    $COL_LOCK = 36;
+    $COL_KOM = 41;
+
+    $agg = [];        // "komoditi|plant|period|kode" => nilai
+    $unmatched = [];  // "lock/ce" => nilai (di luar himpunan, hanya audit)
+    $periods = [];
+    $rowsRead = 0;
+    $rowsUsed = 0;
+
+    foreach ($files as $file) {
+        $reader = new XlsxReader;
+        $reader->open($file);
+        $sheet = $row = null;
+        try {
+            foreach ($reader->getSheetIterator() as $sheet) {
+                $first = true;
+                foreach ($sheet->getRowIterator() as $row) {
+                    if ($first) {
+                        $first = false;
+
+                        continue; // baris header
+                    }
+                    $c = $row->toArray();
+                    $rowsRead++;
+
+                    $kom = strtoupper(trim((string) ($c[$COL_KOM] ?? '')));
+                    if ($kom !== 'KS' && $kom !== 'KR') {
+                        continue; // mesin hanya menghitung KS/KR
+                    }
+                    $cc = trim((string) ($c[$COL_CC] ?? ''));
+                    $plant = mb_substr($cc, 0, 4);
+                    $period = (int) ($c[$COL_PERIOD] ?? 0);
+                    if ($plant === '' || $period < 1 || $period > 12) {
+                        continue;
+                    }
+                    $lock = trim((string) ($c[$COL_LOCK] ?? ''));
+                    $ce = trim((string) ($c[$COL_CE] ?? ''));
+                    $rawVal = $c[$COL_VALUE] ?? null;
+                    $nilai = is_numeric($rawVal) ? (float) $rawVal : 0.0;
+
+                    $periods[$period] = true;
+                    $matched = false;
+
+                    // Gaji Staf: lock SP01/SR01 → kode 99-01 (cocok mesin, lepas dari cost_element).
+                    if ($hasStaf && $lock !== '' && $lock === $stafLock($kom)) {
+                        $key = $kom.'|'.$plant.'|'.$period.'|'.$STAF_KODE;
+                        $agg[$key] = ($agg[$key] ?? 0.0) + $nilai;
+                        $matched = true;
+                    }
+                    // Overhead/administrasi: lock = kode (BT../AU..).
+                    if ($lock !== '' && $lockKodes->has($lock)) {
+                        $key = $kom.'|'.$plant.'|'.$period.'|'.$lock;
+                        $agg[$key] = ($agg[$key] ?? 0.0) + $nilai;
+                        $matched = true;
+                    }
+                    // Depresiasi/amortisasi: cost_element diawali 511 = kode.
+                    if ($ce !== '' && $ceKodes->has($ce)) {
+                        $key = $kom.'|'.$plant.'|'.$period.'|'.$ce;
+                        $agg[$key] = ($agg[$key] ?? 0.0) + $nilai;
+                        $matched = true;
+                    }
+
+                    if ($matched) {
+                        $rowsUsed++;
+                    } else {
+                        $tag = $lock !== '' ? 'lock:'.$lock : ($ce !== '' ? 'ce:'.$ce : '(kosong)');
+                        $unmatched[$tag] = ($unmatched[$tag] ?? 0.0) + $nilai;
+                    }
+                }
+
+                break; // hanya sheet pertama
+            }
+        } finally {
+            $reader->close();
+            unset($reader, $sheet, $row);
+            gc_collect_cycles();
+        }
+        $this->info('Selesai baca: '.basename($file));
+    }
+
+    // Susun record realisasi (buang nilai ~0 agar tabel ramping).
+    $records = [];
+    $totalPerPeriod = [];
+    foreach ($agg as $key => $nilai) {
+        if (abs($nilai) < 0.00001) {
+            continue;
+        }
+        [$kom, $plant, $period, $kode] = explode('|', $key, 4);
+        $records[] = [
+            'year' => $year,
+            'komoditi' => $kom,
+            'plant_code' => $plant,
+            'report_type' => 'LM14',
+            'kode' => $kode,
+            'period' => (int) $period,
+            'nilai' => round($nilai, 2),
+        ];
+        $totalPerPeriod[$period] = ($totalPerPeriod[$period] ?? 0.0) + $nilai;
+    }
+
+    // Ganti hanya cakupan BTL (year, LM14, kode BTL, period terbaca) — idempotent. Baris WBS
+    // (kode berbeda) TIDAK tersentuh.
+    DB::transaction(function () use ($year, $periods, $allBtl, $records): void {
+        DB::table('realisasi_tahun_lalu')
+            ->where('year', $year)
+            ->where('report_type', 'LM14')
+            ->whereIn('period', array_keys($periods))
+            ->whereIn('kode', $allBtl)
+            ->delete();
+        foreach (array_chunk($records, 500) as $chunk) {
+            DB::table('realisasi_tahun_lalu')->insert($chunk);
+        }
+    });
+
+    $this->newLine();
+    $this->info("== Ringkasan impor tahun lalu (OHC/BTL) — tahun {$year} ==");
+    $this->line('Berkas diproses : '.count($files));
+    $this->line('Baris dibaca    : '.number_format($rowsRead));
+    $this->line('Baris terpakai  : '.number_format($rowsUsed).' (lock/cost_element cocok kode LM14 BTL, komoditi KS/KR)');
+    $this->line('Record disimpan : '.number_format(count($records)).' (period: '.implode(',', array_keys($periods)).')');
+
+    ksort($totalPerPeriod);
+    $this->newLine();
+    $this->line('Total nilai per period:');
+    foreach ($totalPerPeriod as $p => $t) {
+        $this->line(sprintf('  period %-2d : %s', $p, number_format($t, 2)));
+    }
+
+    if ($unmatched !== []) {
+        arsort($unmatched);
+        $this->newLine();
+        $this->line('15 lock/cost_element TIDAK termasuk kode LM14 BTL (audit):');
+        $i = 0;
+        foreach ($unmatched as $tag => $t) {
+            $this->line(sprintf('  %-16s : %s', $tag, number_format($t, 2)));
+            if (++$i >= 15) {
+                break;
+            }
+        }
+    }
+
+    return 0;
+})->purpose('Isi baris BTL realisasi_tahun_lalu (LM14) dari ekstrak OHC tahun lalu; cocok lock/cost_element=kode, SUM(value_obj_crcy).');
+
 Artisan::command('budget:import-test {--dir=} {--year=2026}', function (SpreadsheetImportService $service): int {
     $year = (int) $this->option('year');
     if ($year < 2000 || $year > 2100) {
