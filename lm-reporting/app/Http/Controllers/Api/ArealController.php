@@ -13,7 +13,7 @@ class ArealController extends Controller
 {
     use AuthorizesReportRequests;
 
-    private const STATUS_ORDER = ['ATTP', 'TBM', 'TM', 'TU'];
+    private const STATUS_ORDER = ['TM', 'ATTP', 'TBM', 'TU'];
 
     public function index(Request $request): JsonResponse
     {

@@ -173,7 +173,9 @@ function arealApp() {
                         if (d._type === 'subtotal' || d._type === 'grandtotal') {
                             return d.label ?? '';
                         }
-                        return d.status ?? '';
+                        // Kode status cukup ditampilkan sekali di baris teratas tiap grup;
+                        // baris berikutnya dibiarkan kosong (baris paling atas mewakili).
+                        return d._firstOfStatus ? (d.status ?? '') : '';
                     },
                 },
                 {
@@ -234,6 +236,7 @@ function arealApp() {
                 minWidth: 120,
             });
 
+            let prevDetailStatus = null;
             const rows = (data.rows || []).map(r => {
                 const o = {
                     status: r.status ?? '',
@@ -243,6 +246,11 @@ function arealApp() {
                     tluas: r.total?.luas ?? 0,
                     tpokok: r.total?.pokok ?? 0,
                 };
+                // Tandai baris detail pertama tiap grup status (detail satu status berurutan).
+                if (r.type === 'detail') {
+                    o._firstOfStatus = (r.status !== prevDetailStatus);
+                    prevDetailStatus = r.status;
+                }
                 (data.afds || []).forEach(a => {
                     o[`luas_${a}`] = r.cells?.[a]?.luas ?? 0;
                     o[`pokok_${a}`] = r.cells?.[a]?.pokok ?? 0;
@@ -267,9 +275,19 @@ function arealApp() {
                     height: '70vh',
                     rowFormatter: (row) => {
                         const t = row.getData()._type;
-                        if (t === 'subtotal' || t === 'grandtotal') {
-                            row.getElement().style.fontWeight = '700';
-                            row.getElement().style.background = '#eef5f1';
+                        const el = row.getElement();
+                        // Baris "{kode} Total" diberi band hijau + garis batas atas/bawah agar
+                        // menjadi pemisah visual yang jelas antar grup status.
+                        if (t === 'subtotal') {
+                            el.style.fontWeight = '700';
+                            el.style.background = '#d7e9df';
+                            el.style.borderTop = '2px solid #0f4c3a';
+                            el.style.borderBottom = '2px solid #0f4c3a';
+                        } else if (t === 'grandtotal') {
+                            el.style.fontWeight = '800';
+                            el.style.background = '#c3dccf';
+                            el.style.borderTop = '2px solid #0f4c3a';
+                            el.style.borderBottom = '2px solid #0f4c3a';
                         }
                     },
                 });

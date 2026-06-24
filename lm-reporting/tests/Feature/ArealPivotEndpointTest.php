@@ -73,7 +73,7 @@ class ArealPivotEndpointTest extends TestCase
         $this->assertSame(['AFD01', 'AFD02'], $data['afds']); // dinamis, urut
 
         $types = array_column($data['rows'], 'type');
-        // ATTP dulu (alfabetis sebelum TM), tiap status ada subtotal, lalu grandtotal.
+        // Urutan status kustom: TM, ATTP, TBM, TU — jadi TM dulu. Tiap status ada subtotal, lalu grandtotal.
         $this->assertContains('grandtotal', $types);
         $grand = collect($data['rows'])->firstWhere('type', 'grandtotal');
         $this->assertEqualsWithDelta(18.5, $grand['total']['luas'], 0.001); // 1+10.5+5+2
@@ -81,9 +81,9 @@ class ArealPivotEndpointTest extends TestCase
 
         $tmSub = collect($data['rows'])->first(fn ($r) => ($r['type'] ?? '') === 'subtotal' && ($r['status'] ?? '') === 'TM');
         $this->assertEqualsWithDelta(17.5, $tmSub['total']['luas'], 0.001);
-        // urutan status: ATTP sebelum TM
+        // urutan status: TM sebelum ATTP (urutan kustom TM, ATTP, TBM, TU)
         $statusesInOrder = array_values(array_filter(array_map(fn ($r) => $r['status'] ?? null, $data['rows'])));
-        $this->assertTrue(array_search('ATTP', $statusesInOrder) < array_search('TM', $statusesInOrder));
+        $this->assertTrue(array_search('TM', $statusesInOrder) < array_search('ATTP', $statusesInOrder));
     }
 
     public function test_totals_are_round_of_sum_not_sum_of_rounded(): void
