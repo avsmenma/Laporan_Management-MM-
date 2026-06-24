@@ -167,7 +167,9 @@ function produksiApp() {
             });
 
             // Ringkasan
-            this.tables['ringkasan'] = mkTable('#prod-ringkasan', this.ringkasanColumns(), this.ringkasanRows(data.ringkasan));
+            if (data.ringkasan && (data.ringkasan.bi || data.ringkasan.sd)) {
+                this.tables['ringkasan'] = mkTable('#prod-ringkasan', this.ringkasanColumns(), this.ringkasanRows(data.ringkasan));
+            }
         },
 
         ringkasanColumns() {
