@@ -26,12 +26,20 @@ class ImportProduksiTest extends TestCase
 
         $service = app(SpreadsheetImportService::class);
 
+        // Baris non-kebun 5F* (5F08) & PLS dilewati saat import → 62 − 5 = 57.
         $r1 = $service->importProduksi($path);
-        $this->assertSame(62, $r1->rowCount);
-        $this->assertSame(62, DB::table('produksi_pks')->count());
+        $this->assertSame(57, $r1->rowCount);
+        $this->assertSame(57, DB::table('produksi_pks')->count());
 
         // posting_date dari serial 46173 = 2026-05-31
-        $this->assertSame(62, DB::table('produksi_pks')->whereDate('posting_date', '2026-05-31')->count());
+        $this->assertSame(57, DB::table('produksi_pks')->whereDate('posting_date', '2026-05-31')->count());
+
+        // Baris 5F* dan PLS tidak ikut masuk.
+        $this->assertSame(0, DB::table('produksi_pks')->where('kebun_code', 'like', '5F%')->count());
+        $this->assertSame(0, DB::table('produksi_pks')->where('kebun_code', 'PLS')->count());
+        // PLSM & PHTG tetap ada (tidak ikut dihapus).
+        $this->assertGreaterThan(0, DB::table('produksi_pks')->where('kebun_code', 'PLSM')->count());
+        $this->assertGreaterThan(0, DB::table('produksi_pks')->where('kebun_code', 'PHTG')->count());
 
         // Sampel nilai: 5F01 / 5E01 / Kebun Sendiri
         $row = DB::table('produksi_pks')->where('plant_code', '5F01')->where('kebun_code', '5E01')->first();
@@ -41,6 +49,18 @@ class ImportProduksiTest extends TestCase
 
         // Idempoten: impor ulang tanggal yang sama tidak menggandakan.
         $service->importProduksi($path);
-        $this->assertSame(62, DB::table('produksi_pks')->count());
+        $this->assertSame(57, DB::table('produksi_pks')->count());
+    }
+
+    public function test_filter_baris_dikecualikan(): void
+    {
+        $this->assertTrue(SpreadsheetImportService::isExcludedProduksiKebun('5F08'));
+        $this->assertTrue(SpreadsheetImportService::isExcludedProduksiKebun('5f08'));
+        $this->assertTrue(SpreadsheetImportService::isExcludedProduksiKebun('PLS'));
+        // Tidak dikecualikan: kebun 5E*, PLSM, PHTG, kosong.
+        $this->assertFalse(SpreadsheetImportService::isExcludedProduksiKebun('5E01'));
+        $this->assertFalse(SpreadsheetImportService::isExcludedProduksiKebun('PLSM'));
+        $this->assertFalse(SpreadsheetImportService::isExcludedProduksiKebun('PHTG'));
+        $this->assertFalse(SpreadsheetImportService::isExcludedProduksiKebun(null));
     }
 }

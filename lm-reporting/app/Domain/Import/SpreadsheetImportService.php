@@ -703,13 +703,18 @@ class SpreadsheetImportService
             if ($plant === '' || $date === null) {
                 continue;
             }
+            $kebunCode = $this->produksiText($v[self::PRODUKSI_COLS['kebun_code']] ?? null, 20);
+            // Lewati baris non-kebun yang tidak dipakai laporan produksi: kode PKS 5F* dan PLS.
+            if ($this->isExcludedProduksiKebun($kebunCode)) {
+                continue;
+            }
             $dates[$date] = true;
             $records[] = [
                 'posting_date' => $date,
                 'plant_code' => $plant,
                 'plant_desc' => $this->produksiText($v[self::PRODUKSI_COLS['plant_desc']] ?? null),
                 'group_pemilik' => $this->produksiText($v[self::PRODUKSI_COLS['group_pemilik']] ?? null, 30),
-                'kebun_code' => $this->produksiText($v[self::PRODUKSI_COLS['kebun_code']] ?? null, 20),
+                'kebun_code' => $kebunCode,
                 'nama_kebun' => $this->produksiText($v[self::PRODUKSI_COLS['nama_kebun']] ?? null),
                 'sisa_awal' => $this->produksiNum($v[self::PRODUKSI_COLS['sisa_awal']] ?? null),
                 'tbs_diterima_sdhari' => $this->produksiNum($v[self::PRODUKSI_COLS['tbs_diterima_sdhari']] ?? null),
@@ -740,6 +745,18 @@ class SpreadsheetImportService
         });
 
         return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /**
+     * Baris non-kebun yang tidak ditampilkan di laporan produksi:
+     * kode PKS 5F* (mis. 5F08) dan PLS. Dipakai saat import (skip) maupun
+     * pembersihan data lama.
+     */
+    public static function isExcludedProduksiKebun(?string $code): bool
+    {
+        $c = strtoupper(trim((string) $code));
+
+        return $c !== '' && (str_starts_with($c, '5F') || $c === 'PLS');
     }
 
     private function produksiText(mixed $v, int $len = 150): ?string
