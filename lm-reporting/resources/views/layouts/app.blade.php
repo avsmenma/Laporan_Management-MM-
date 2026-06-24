@@ -100,6 +100,10 @@
         .app-sidebar {
             width: 232px; flex: none; background: var(--surface);
             border-right: 1px solid var(--line); padding: 16px 12px;
+            /* Sidebar menempel di bawah header (60px) agar menu tetap terlihat
+               saat konten panjang di-scroll — tidak ikut tergulung ke atas. */
+            position: sticky; top: 60px; align-self: flex-start;
+            height: calc(100vh - 60px); overflow-y: auto;
         }
         .sidebar-nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
         .sidebar-nav-item { margin: 0; }
