@@ -38,7 +38,7 @@ class ArealProduksiMenuTest extends TestCase
 
         $res->assertOk();
         $res->assertSee('Produksi');
-        $res->assertSee('Segera hadir');
+        $res->assertSee('produksiApp', false);
     }
 
     public function test_guest_redirected_to_login(): void

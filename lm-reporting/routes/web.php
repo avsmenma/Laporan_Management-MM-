@@ -40,10 +40,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
 
     Route::view('/areal', 'areal.index')->name('areal');
 
-    Route::view('/produksi', 'coming-soon', [
-        'judul' => 'Produksi',
-        'subjudul' => 'Laporan Produksi sedang disiapkan dan akan segera tersedia.',
-    ])->name('produksi');
+    Route::view('/produksi', 'produksi.index')->name('produksi');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
