@@ -47,7 +47,9 @@ class ProcessImport implements ShouldQueue
         };
 
         try {
-            if ($isBudget) {
+            if (SpreadsheetImportService::isProduksi($job->type)) {
+                $result = $service->importProduksi($path, $job->user_id, $onProgress);
+            } elseif ($isBudget) {
                 $result = $service->importBudget((int) $job->year, $job->type, $path, $job->user_id, $onProgress);
                 Batch::query()->where('year', $job->year)->update(['needs_regenerate' => true]);
             } else {

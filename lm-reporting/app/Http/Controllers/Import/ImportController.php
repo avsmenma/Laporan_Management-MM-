@@ -91,6 +91,7 @@ class ImportController extends Controller
     {
         $type = (string) $request->input('type');
         $isBudget = SpreadsheetImportService::isBudget($type);
+        $isProduksi = SpreadsheetImportService::isProduksi($type);
 
         $rules = [
             'token' => ['required', 'regex:/^[0-9a-fA-F\-]{36}$/'],
@@ -98,7 +99,7 @@ class ImportController extends Controller
             'type'  => ['required', 'in:'.implode(',', array_keys(SpreadsheetImportService::types()))],
             'year'  => ['required', 'integer', 'min:2000', 'max:2100'],
         ];
-        if (! $isBudget) {
+        if (! $isBudget && ! $isProduksi) {
             $rules['month'] = ['required', 'integer', 'min:1', 'max:12'];
         }
         $data = $request->validate($rules);
@@ -112,7 +113,7 @@ class ImportController extends Controller
             'user_id'     => $request->user()->id,
             'type'        => $type,
             'year'        => (int) $data['year'],
-            'month'       => $isBudget ? null : (int) $data['month'],
+            'month'       => ($isBudget || $isProduksi) ? null : (int) $data['month'],
             'filename'    => "{$data['token']}.{$data['ext']}",
             'staged_path' => $staged,
             'ext'         => $data['ext'],

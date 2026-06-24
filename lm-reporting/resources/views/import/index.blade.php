@@ -36,6 +36,9 @@
                 if ($pType === 'areal') {
                     $pJenis = 'areal';
                     $pKategori = 'wbs'; // kategori tak dipakai utk areal; default aman
+                } elseif ($pType === 'produksi') {
+                    $pJenis = 'produksi';
+                    $pKategori = 'wbs';
                 } elseif ($pIsBudget) {
                     $pJenis = 'rko';
                     $pKategori = substr($pType, 4); // bku/ohc/gc
@@ -54,6 +57,7 @@
                       isBudgetType() { return this.jenis === 'rko' || this.jenis === 'rkap'; },
                       isBudget() { return this.isBudgetType(); },
                       isAreal() { return this.jenis === 'areal'; },
+                      isProduksi() { return this.jenis === 'produksi'; },
                       kategoriOptions() {
                           return this.isBudgetType()
                               ? [{ v: 'bku', t: 'BKU' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }]
@@ -62,6 +66,7 @@
                       backendType() {
                           if (this.jenis === 'aktual') return this.kategori;
                           if (this.jenis === 'areal') return 'areal';
+                          if (this.jenis === 'produksi') return 'produksi';
                           return 'rko_' + this.kategori;
                       }
                   }">
@@ -75,9 +80,10 @@
                         <option value="rko">RKO</option>
                         <option value="rkap">RKAP</option>
                         <option value="areal">Areal</option>
+                        <option value="produksi">Produksi</option>
                     </select>
                 </div>
-                <div class="field" style="margin-bottom:0" x-show="jenis !== 'areal'">
+                <div class="field" style="margin-bottom:0" x-show="jenis !== 'areal' && jenis !== 'produksi'">
                     <label>Kategori Import</label>
                     <select x-model="kategori" class="field-control">
                         <template x-for="opt in kategoriOptions()" :key="opt.v">
@@ -93,7 +99,7 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="field" style="margin-bottom:0" x-show="!isBudgetType()">
+                <div class="field" style="margin-bottom:0" x-show="!isBudgetType() && !isProduksi()">
                     <label>Bulan</label>
                     @php
                         $namaBulan = [1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'];
