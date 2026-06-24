@@ -227,10 +227,23 @@ function produksiApp() {
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',
                 rowFormatter: (row) => {
-                    if (row.getData()._grand) {
-                        row.getElement().style.fontWeight = '700';
-                        row.getElement().style.background = '#eef5f1';
-                    }
+                    const d = row.getData();
+                    let bg = null, fw = null, italic = false;
+                    if (d._grand) { bg = '#eef5f1'; fw = '700'; }
+                    else if (d._section) { bg = '#d7e9df'; fw = '700'; italic = true; }
+                    else if (d._bold) { fw = '700'; }
+                    if (!bg && !fw) return;
+                    const el = row.getElement();
+                    if (fw) el.style.fontWeight = fw;
+                    if (bg) el.style.background = bg;
+                    if (italic) el.style.fontStyle = 'italic';
+                    // Sel beku (kolom Uraian/Kebun) dirender terpisah → warnai tiap sel.
+                    row.getCells().forEach((c) => {
+                        const ce = c.getElement();
+                        if (fw) ce.style.fontWeight = fw;
+                        if (bg) ce.style.background = bg;
+                        if (italic) ce.style.fontStyle = 'italic';
+                    });
                 },
             });
 
@@ -258,10 +271,10 @@ function produksiApp() {
             const block = (b, label) => {
                 const sub = this.plants.map(p => ({
                     title: p.code, field: `${b}_${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
-                    formatter: (c) => c.getRow().getData()._rend ? this.rendFmt(c) : this.qtyFmt(c), minWidth: 90,
+                    formatter: (c) => { const d = c.getRow().getData(); return d._section ? '' : (d._rend ? this.rendFmt(c) : this.qtyFmt(c)); }, minWidth: 90,
                 }));
                 sub.push({ title: 'JLH', field: `${b}_JLH`, hozAlign: 'right', headerHozAlign: 'center',
-                    formatter: (c) => c.getRow().getData()._rend ? this.rendFmt(c) : this.qtyFmt(c), minWidth: 100 });
+                    formatter: (c) => { const d = c.getRow().getData(); return d._section ? '' : (d._rend ? this.rendFmt(c) : this.qtyFmt(c)); }, minWidth: 100 });
                 return { title: label, headerHozAlign: 'center', columns: sub };
             };
             cols.push(block('bi', 'BULAN INI'));
@@ -270,27 +283,34 @@ function produksiApp() {
         },
 
         ringkasanRows(ring) {
-            const defs = [
-                { f: 'restan_awal', t: 'Restan Awal', rend: false },
-                { f: 'tbs_masuk', t: 'TBS Masuk', rend: false },
-                { f: 'tbs_olah', t: 'TBS Olah', rend: false },
-                { f: 'restan_akhir', t: 'Restan Akhir', rend: false },
-                { f: 'ms', t: 'Minyak Sawit', rend: false },
-                { f: 'is', t: 'Inti Sawit', rend: false },
-                { f: 'jumlah', t: 'Jumlah MS + IS', rend: false },
-                { f: 'rend_ms', t: 'Rend. MS (%)', rend: true },
-                { f: 'rend_is', t: 'Rend. IS (%)', rend: true },
-                { f: 'rend_total', t: 'Rend. MS + IS (%)', rend: true },
-            ];
             const cols = [...this.plants.map(p => p.code), 'JLH'];
-            return defs.map(d => {
-                const o = { uraian: d.t, _rend: d.rend };
+            // Baris data biasa (isi nilai per plant + JLH).
+            const dataRow = (f, label, opts = {}) => {
+                const o = { uraian: label, _rend: !!opts.rend, _bold: !!opts.bold };
                 cols.forEach(c => {
-                    o[`bi_${c}`] = ring?.bi?.[c]?.[d.f] ?? 0;
-                    o[`sd_${c}`] = ring?.sd?.[c]?.[d.f] ?? 0;
+                    o[`bi_${c}`] = ring?.bi?.[c]?.[f] ?? 0;
+                    o[`sd_${c}`] = ring?.sd?.[c]?.[f] ?? 0;
                 });
                 return o;
-            });
+            };
+            // Baris label seksi: kosong (tanpa nilai), diberi band hijau.
+            const sectionRow = (label) => ({ uraian: label, _section: true });
+
+            return [
+                sectionRow('PRODUKSI TBS'),
+                dataRow('restan_awal', 'Restan Awal', { bold: true }),
+                dataRow('tbs_masuk', 'TBS Masuk'),
+                dataRow('tbs_olah', 'TBS Olah'),
+                dataRow('restan_akhir', 'Restan Akhir', { bold: true }),
+                sectionRow('PRODUKSI MS + IS'),
+                dataRow('ms', 'Minyak Sawit'),
+                dataRow('is', 'Inti Sawit'),
+                dataRow('jumlah', 'Jumlah MS + IS', { bold: true }),
+                sectionRow('RENDEMEN MS + IS'),
+                dataRow('rend_ms', 'Rend. MS (%)', { rend: true }),
+                dataRow('rend_is', 'Rend. IS (%)', { rend: true }),
+                dataRow('rend_total', 'Rend. MS + IS (%)', { rend: true, bold: true }),
+            ];
         },
     };
 }
