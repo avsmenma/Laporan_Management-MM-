@@ -281,12 +281,15 @@ function arealApp() {
                         if (t === 'subtotal') { bg = '#d7e9df'; fw = '700'; }
                         else if (t === 'grandtotal') { bg = '#c3dccf'; fw = '800'; }
                         if (!bg) return;
-                        const border = '2px solid #0f4c3a';
+                        // Band hijau sudah cukup menandai baris Total; garis batas dibuat
+                        // tipis (1px) dan hanya di sisi atas sebagai pemisah antar grup —
+                        // bukan kotak tebal atas+bawah yang terkesan ramai.
+                        const border = '1px solid #0f4c3a';
                         const el = row.getElement();
                         el.style.fontWeight = fw;
                         el.style.background = bg;
                         el.style.borderTop = border;
-                        el.style.borderBottom = border;
+                        el.style.borderBottom = 'none';
                         // Sel beku (Status Blok/Petak & Tahun Tanam) dirender di container terpisah,
                         // jadi warnai tiap sel agar band hijau & garis batas menutup seluruh baris.
                         row.getCells().forEach((c) => {
@@ -294,7 +297,7 @@ function arealApp() {
                             ce.style.background = bg;
                             ce.style.fontWeight = fw;
                             ce.style.borderTop = border;
-                            ce.style.borderBottom = border;
+                            ce.style.borderBottom = 'none';
                         });
                     },
                 });
