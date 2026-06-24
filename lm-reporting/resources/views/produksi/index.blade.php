@@ -20,16 +20,24 @@
 
     <div x-show="errorMsg" x-cloak class="lm-error-panel" x-text="errorMsg"></div>
 
-    <div class="report-card" x-show="hasData" x-cloak>
+    <div x-show="hasData" x-cloak>
+        {{-- Tiap tabel = frame mandiri, judulnya tampil sebagai tab (gaya tab-bar). --}}
+
         {{-- Ringkasan --}}
-        <h3 class="prod-title">Ringkasan</h3>
-        <div id="prod-ringkasan" class="lm-report-table"></div>
+        <div class="prod-frame">
+            <div class="tabs"><span class="tab active">Ringkasan</span></div>
+            <div class="report-card">
+                <div id="prod-ringkasan" class="lm-report-table"></div>
+            </div>
+        </div>
 
         {{-- 6 tabel pivot --}}
         <template x-for="t in tableDefs" :key="t.key">
-            <div style="margin-top:22px">
-                <h3 class="prod-title" x-text="t.title"></h3>
-                <div :id="'prod-' + t.key" class="lm-report-table"></div>
+            <div class="prod-frame">
+                <div class="tabs"><span class="tab active" x-text="t.title"></span></div>
+                <div class="report-card">
+                    <div :id="'prod-' + t.key" class="lm-report-table"></div>
+                </div>
             </div>
         </template>
     </div>
@@ -41,7 +49,18 @@
 </div>
 
 <style>
-    .prod-title { color: var(--g-700, #0f4c3a); font-weight: 700; margin: 0 0 8px; font-size: 14px; }
+    /* Tiap tabel produksi berdiri sendiri sebagai frame (kartu) dengan judul
+       bergaya tab yang menempel di tepi atas kartu — bukan label biasa. */
+    .prod-frame { margin-top: 22px; }
+    .prod-frame:first-child { margin-top: 0; }
+    .prod-frame .tabs { padding-left: 4px; }
+    /* Tab tidak interaktif di sini (selalu aktif sebagai judul frame). */
+    .prod-frame .tab.active { cursor: default; height: 38px; font-weight: 700; letter-spacing: .01em; }
+    .prod-frame .tab.active:hover { background: var(--surface); color: var(--g-800); }
+    /* Sudut kiri-atas kartu dibuat siku agar tab menyatu mulus dengan kartu. */
+    .prod-frame .report-card { border-top-left-radius: 0; }
+    /* Kartu sudah punya border; hilangkan border-atas tabel agar tidak dobel garis. */
+    .prod-frame .lm-report-table { border-top: 0; }
 </style>
 @endsection
 
