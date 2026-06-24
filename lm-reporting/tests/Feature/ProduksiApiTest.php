@@ -71,9 +71,31 @@ class ProduksiApiTest extends TestCase
         $ra = collect($data['tables']['restan_awal']['rows'])->firstWhere('kebun', '5E01');
         $this->assertEquals(-15, $ra['bi']['5F01']);
 
+        // Restan Akhir: sisa_akhir dipakai apa adanya untuk KEDUA blok (bi == sd).
+        $rk = collect($data['tables']['restan_akhir']['rows'])->firstWhere('kebun', '5E01');
+        $this->assertEquals(5, $rk['bi']['5F01']);
+        $this->assertEquals($rk['bi']['5F01'], $rk['sd']['5F01']);
+
         // Ringkasan bi 5F01: olah=80, ms=16 → rend_ms=20.00
         $this->assertEquals(20.0, round($data['ringkasan']['bi']['5F01']['rend_ms'], 2));
         // Ringkasan bi JLH olah=120, ms=24 → rend_ms=20.00
         $this->assertEquals(20.0, round($data['ringkasan']['bi']['JLH']['rend_ms'], 2));
+
+        // Ringkasan sd 5F01: olah=800, ms=160 → rend_ms=20.00
+        $this->assertEquals(20.0, round($data['ringkasan']['sd']['5F01']['rend_ms'], 2));
+    }
+
+    public function test_tanggal_tidak_ada_fallback_ke_terbaru(): void
+    {
+        $this->seedProduksi();
+        $user = $this->actingViewer();
+
+        // Minta tanggal tanpa data → fallback ke tanggal terbaru yang ada.
+        $resp = $this->actingAs($user)->getJson('/report-data/produksi?date=2026-01-01');
+        $resp->assertOk();
+        $data = $resp->json();
+
+        $this->assertSame('2026-05-31', $data['date']);
+        $this->assertSame(['2026-05-31'], $data['dates']);
     }
 }

@@ -109,7 +109,7 @@ class ProduksiController extends Controller
             'plants' => array_map(fn ($p) => ['code' => $p, 'desc' => $plantDesc[$p] ?? ''], $plants),
             'kebun' => array_map(fn ($k) => ['code' => $k, 'nama' => $kebunNama[$k] ?? ''], $kebun),
             'tables' => $tables,
-            'ringkasan' => $this->buildRingkasan($tables, $plants),
+            'ringkasan' => $this->buildRingkasan($tables, $mat, $kebun, $plants),
         ]);
     }
 
@@ -155,44 +155,87 @@ class ProduksiController extends Controller
     }
 
     /**
-     * Ringkasan per plant (+ JLH), dua blok. Memakai grand (col total) tiap tabel.
-     * Rendemen = ukuran / TBS Olah × 100 (IFERROR→0); JLH dihitung dari total JLH.
+     * Ringkasan per plant (+ JLH), dua blok.
+     *
+     * Kolom kuantitas (restan_awal, tbs_masuk, tbs_olah, restan_akhir, ms, is, jumlah)
+     * memakai grand (col total) tiap tabel (sudah dibulatkan saat emit).
+     *
+     * Rendemen WAJIB round-of-sum murni: pembilang/penyebut memakai total kolom MENTAH
+     * (belum dibulatkan) yang dijumlah ulang dari matriks. Rendemen = ukuran / TBS Olah × 100
+     * (IFERROR→0); JLH rendemen dihitung dari total JLH mentah. Dibulatkan 2 desimal saat emit.
+     *
+     * @param  array<string, array<string, array<string, array<string, float>>>>  $mat  [measure][block][kebun][plant]
+     * @param  array<int, string>  $kebun
+     * @param  array<int, string>  $plants
      */
-    private function buildRingkasan(array $tables, array $plants): array
+    private function buildRingkasan(array $tables, array $mat, array $kebun, array $plants): array
     {
         $ring = ['bi' => [], 'sd' => []];
         foreach (['bi', 'sd'] as $b) {
-            $sum = ['restan_awal' => 0.0, 'tbs_masuk' => 0.0, 'tbs_olah' => 0.0, 'ms' => 0.0, 'is' => 0.0];
+            $sumJ = ['olah' => 0.0, 'ms' => 0.0, 'is' => 0.0];
             foreach ($plants as $p) {
+                // Kuantitas (emit): pakai grand tabel yang sudah dibulatkan.
                 $ra = (float) $tables['restan_awal']['grand'][$b][$p];
                 $masuk = (float) $tables['tbs_diterima']['grand'][$b][$p];
                 $olah = (float) $tables['tbs_diolah']['grand'][$b][$p];
                 $ms = (float) $tables['minyak_sawit']['grand'][$b][$p];
                 $is = (float) $tables['inti_sawit']['grand'][$b][$p];
-                $rms = $olah > 0 ? $ms / $olah * 100 : 0.0;
-                $ris = $olah > 0 ? $is / $olah * 100 : 0.0;
+
+                // Rendemen: total kolom MENTAH (round-of-sum murni).
+                $olahRaw = $this->colTotalRaw($mat, 'tbs_diolah', $b, $kebun, $p);
+                $msRaw = $this->colTotalRaw($mat, 'minyak_sawit', $b, $kebun, $p);
+                $isRaw = $this->colTotalRaw($mat, 'inti_sawit', $b, $kebun, $p);
+                $rms = $olahRaw > 0 ? $msRaw / $olahRaw * 100 : 0.0;
+                $ris = $olahRaw > 0 ? $isRaw / $olahRaw * 100 : 0.0;
+
                 $ring[$b][$p] = [
                     'restan_awal' => $ra, 'tbs_masuk' => $masuk, 'tbs_olah' => $olah,
                     'restan_akhir' => $ra + $masuk - $olah, 'ms' => $ms, 'is' => $is, 'jumlah' => $ms + $is,
                     'rend_ms' => round($rms, 2), 'rend_is' => round($ris, 2), 'rend_total' => round($rms + $ris, 2),
                 ];
-                $sum['restan_awal'] += $ra;
-                $sum['tbs_masuk'] += $masuk;
-                $sum['tbs_olah'] += $olah;
-                $sum['ms'] += $ms;
-                $sum['is'] += $is;
+
+                $sumJ['olah'] += $olahRaw;
+                $sumJ['ms'] += $msRaw;
+                $sumJ['is'] += $isRaw;
             }
-            $olahJ = $sum['tbs_olah'];
-            $rmsJ = $olahJ > 0 ? $sum['ms'] / $olahJ * 100 : 0.0;
-            $risJ = $olahJ > 0 ? $sum['is'] / $olahJ * 100 : 0.0;
+
+            // JLH kuantitas (emit): jumlah dari nilai per-plant yang sudah dibulatkan.
+            $jra = $jmasuk = $jolah = $jms = $jis = 0.0;
+            foreach ($plants as $p) {
+                $jra += $ring[$b][$p]['restan_awal'];
+                $jmasuk += $ring[$b][$p]['tbs_masuk'];
+                $jolah += $ring[$b][$p]['tbs_olah'];
+                $jms += $ring[$b][$p]['ms'];
+                $jis += $ring[$b][$p]['is'];
+            }
+
+            // JLH rendemen: dari total JLH mentah.
+            $rmsJ = $sumJ['olah'] > 0 ? $sumJ['ms'] / $sumJ['olah'] * 100 : 0.0;
+            $risJ = $sumJ['olah'] > 0 ? $sumJ['is'] / $sumJ['olah'] * 100 : 0.0;
             $ring[$b]['JLH'] = [
-                'restan_awal' => $sum['restan_awal'], 'tbs_masuk' => $sum['tbs_masuk'], 'tbs_olah' => $olahJ,
-                'restan_akhir' => $sum['restan_awal'] + $sum['tbs_masuk'] - $olahJ,
-                'ms' => $sum['ms'], 'is' => $sum['is'], 'jumlah' => $sum['ms'] + $sum['is'],
+                'restan_awal' => $jra, 'tbs_masuk' => $jmasuk, 'tbs_olah' => $jolah,
+                'restan_akhir' => $jra + $jmasuk - $jolah,
+                'ms' => $jms, 'is' => $jis, 'jumlah' => $jms + $jis,
                 'rend_ms' => round($rmsJ, 2), 'rend_is' => round($risJ, 2), 'rend_total' => round($rmsJ + $risJ, 2),
             ];
         }
 
         return $ring;
+    }
+
+    /**
+     * Total kolom (per plant) MENTAH untuk satu measure & blok: Σ atas semua kebun.
+     *
+     * @param  array<string, array<string, array<string, array<string, float>>>>  $mat
+     * @param  array<int, string>  $kebun
+     */
+    private function colTotalRaw(array $mat, string $measure, string $b, array $kebun, string $p): float
+    {
+        $sum = 0.0;
+        foreach ($kebun as $k) {
+            $sum += (float) ($mat[$measure][$b][$k][$p] ?? 0);
+        }
+
+        return $sum;
     }
 }
