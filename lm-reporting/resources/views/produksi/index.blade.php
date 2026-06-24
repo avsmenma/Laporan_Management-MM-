@@ -105,6 +105,8 @@ function produksiApp() {
             { key: 'restan_akhir', title: 'RESTAN AKHIR' },
             { key: 'minyak_sawit', title: 'PRODUKSI MINYAK SAWIT' },
             { key: 'inti_sawit', title: 'PRODUKSI INTI SAWIT' },
+            { key: 'rend_minyak', title: 'REND. MINYAK SAWIT (%)', rend: true },
+            { key: 'rend_inti', title: 'REND. INTI SAWIT (%)', rend: true },
         ],
 
         qtyFmt(cell) {
@@ -175,13 +177,15 @@ function produksiApp() {
         },
 
         // Kolom dua blok: identitas (Kebun, Nama) frozen + grup BULAN INI + grup S.D BULAN INI.
-        pivotColumns() {
+        // Tabel rendemen (rend=true) memakai format 2 desimal, selain itu kuantitas 0 desimal.
+        pivotColumns(rend = false) {
+            const fmt = (rend ? this.rendFmt : this.qtyFmt).bind(this);
             const block = (b) => {
                 const cols = this.plants.map(p => ({
                     title: p.code, field: `${b}_${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
-                    formatter: this.qtyFmt.bind(this), minWidth: 90,
+                    formatter: fmt, minWidth: 90,
                 }));
-                cols.push({ title: 'Grand Total', field: `${b}_grand`, hozAlign: 'right', headerHozAlign: 'center', formatter: this.qtyFmt.bind(this), minWidth: 110 });
+                cols.push({ title: 'Grand Total', field: `${b}_grand`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 110 });
                 return cols;
             };
             return [
@@ -251,7 +255,7 @@ function produksiApp() {
             this.tableDefs.forEach(def => {
                 const tbl = data.tables?.[def.key];
                 if (!tbl) return;
-                this.tables[def.key] = mkTable('#prod-' + def.key, this.pivotColumns(), this.pivotRows(tbl));
+                this.tables[def.key] = mkTable('#prod-' + def.key, this.pivotColumns(def.rend), this.pivotRows(tbl));
             });
 
             // Ringkasan

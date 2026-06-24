@@ -21,8 +21,8 @@ class ProduksiController extends Controller
         'inti_sawit' => ['is_sdhari', 'is_sdbulan'],
     ];
 
-    /** Urutan tabel pada output (restan_awal turunan disisipkan paling depan). */
-    private const TABLE_ORDER = ['restan_awal', 'tbs_diterima', 'tbs_diolah', 'restan_akhir', 'minyak_sawit', 'inti_sawit'];
+    /** Tabel kuantitas (restan_awal turunan disisipkan paling depan). */
+    private const QTY_TABLES = ['restan_awal', 'tbs_diterima', 'tbs_diolah', 'restan_akhir', 'minyak_sawit', 'inti_sawit'];
 
     public function index(Request $request): JsonResponse
     {
@@ -124,9 +124,12 @@ class ProduksiController extends Controller
         }
 
         $tables = [];
-        foreach (self::TABLE_ORDER as $m) {
+        foreach (self::QTY_TABLES as $m) {
             $tables[$m] = $this->buildTable($mat[$m], $kebun, $kebunNama, $plants);
         }
+        // Dua tabel rendemen (%) per kebun×plant = ukuran / TBS Diolah × 100.
+        $tables['rend_minyak'] = $this->buildRendemenTable($mat['minyak_sawit'], $mat['tbs_diolah'], $kebun, $kebunNama, $plants);
+        $tables['rend_inti'] = $this->buildRendemenTable($mat['inti_sawit'], $mat['tbs_diolah'], $kebun, $kebunNama, $plants);
 
         return response()->json([
             'periods' => $periods,
@@ -176,6 +179,59 @@ class ProduksiController extends Controller
                 $out['grand'][$b][$p] = round($colTot[$b][$p]);
             }
             $out['grand'][$b]['grand'] = round($grand[$b]);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Tabel rendemen (%) = ukuran / TBS Diolah × 100 per sel (IFERROR→0).
+     * Total baris/kolom/grand = rasio dari JUMLAH MENTAH (Σnum / Σden × 100),
+     * bukan rata-rata sel — konsisten round-of-sum. Dibulatkan 2 desimal saat emit.
+     * Bentuk keluaran identik buildTable agar bisa dipakai pivot frontend yang sama.
+     *
+     * @param  array<string, array<string, array<string, float>>>  $num  [block][kebun][plant]
+     * @param  array<string, array<string, array<string, float>>>  $den  [block][kebun][plant]
+     * @param  array<int, string>  $kebun
+     * @param  array<string, string>  $kebunNama
+     * @param  array<int, string>  $plants
+     */
+    private function buildRendemenTable(array $num, array $den, array $kebun, array $kebunNama, array $plants): array
+    {
+        $colNum = ['bi' => array_fill_keys($plants, 0.0), 'sd' => array_fill_keys($plants, 0.0)];
+        $colDen = ['bi' => array_fill_keys($plants, 0.0), 'sd' => array_fill_keys($plants, 0.0)];
+        $gNum = ['bi' => 0.0, 'sd' => 0.0];
+        $gDen = ['bi' => 0.0, 'sd' => 0.0];
+        $out = ['rows' => [], 'grand' => ['bi' => [], 'sd' => []]];
+
+        $pct = fn (float $n, float $d): float => $d > 0 ? round($n / $d * 100, 2) : 0.0;
+
+        foreach ($kebun as $k) {
+            $row = ['kebun' => $k, 'nama' => $kebunNama[$k] ?? '', 'bi' => [], 'sd' => []];
+            foreach (['bi', 'sd'] as $b) {
+                $rNum = 0.0;
+                $rDen = 0.0;
+                foreach ($plants as $p) {
+                    $n = (float) ($num[$b][$k][$p] ?? 0);
+                    $d = (float) ($den[$b][$k][$p] ?? 0);
+                    $row[$b][$p] = $pct($n, $d);
+                    $rNum += $n;
+                    $rDen += $d;
+                    $colNum[$b][$p] += $n;
+                    $colDen[$b][$p] += $d;
+                }
+                $row[$b]['grand'] = $pct($rNum, $rDen);
+                $gNum[$b] += $rNum;
+                $gDen[$b] += $rDen;
+            }
+            $out['rows'][] = $row;
+        }
+
+        foreach (['bi', 'sd'] as $b) {
+            foreach ($plants as $p) {
+                $out['grand'][$b][$p] = $pct($colNum[$b][$p], $colDen[$b][$p]);
+            }
+            $out['grand'][$b]['grand'] = $pct($gNum[$b], $gDen[$b]);
         }
 
         return $out;

@@ -79,6 +79,21 @@ class ProduksiApiTest extends TestCase
         $this->assertEquals(5, $rk['bi']['5F01']);
         $this->assertEquals($rk['bi']['5F01'], $rk['sd']['5F01']);
 
+        // Tabel REND. MINYAK SAWIT (%): per sel = ms/olah×100; total = rasio Σ mentah.
+        $rm = $data['tables']['rend_minyak'];
+        $rmRow = collect($rm['rows'])->firstWhere('kebun', '5E01');
+        $this->assertEquals(20.0, $rmRow['bi']['5F01']);     // 16/80×100
+        $this->assertEquals(0.0, $rmRow['bi']['5F04']);      // penyebut 0 → 0
+        $this->assertEquals(20.0, $rmRow['bi']['grand']);    // 16/80×100
+        $this->assertEquals(20.0, $rm['grand']['bi']['grand']); // (16+8)/(80+40)×100
+        $this->assertEquals(20.0, $rm['grand']['sd']['grand']); // (160+80)/(800+400)×100
+
+        // Tabel REND. INTI SAWIT (%): 5E01/5F01 bi = 4/80×100 = 5.00
+        $ri = $data['tables']['rend_inti'];
+        $riRow = collect($ri['rows'])->firstWhere('kebun', '5E01');
+        $this->assertEquals(5.0, $riRow['bi']['5F01']);
+        $this->assertEquals(5.0, $ri['grand']['bi']['grand']);  // (4+2)/(80+40)×100
+
         // Ringkasan bi 5F01: olah=80, ms=16 → rend_ms=20.00
         $this->assertEquals(20.0, round($data['ringkasan']['bi']['5F01']['rend_ms'], 2));
         // Ringkasan bi JLH olah=120, ms=24 → rend_ms=20.00
