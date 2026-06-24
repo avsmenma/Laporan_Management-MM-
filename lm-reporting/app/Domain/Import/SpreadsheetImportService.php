@@ -312,7 +312,7 @@ class SpreadsheetImportService
     {
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
 
-        if ($type === 'produksi') {
+        if (self::isProduksi($type)) {
             $total = max(0, $this->rowCountForType('produksi', $path));
             $headers = ['Plant', 'Desc', 'Group Pemilik', 'Kebun', 'Nama Kebun', 'TBS Diterima s/d Hari', 'TBS Diterima s/d Bulan', 'TBS Diolah s/d Hari', 'TBS Diolah s/d Bulan', 'Sisa Akhir', 'Tgl Posting'];
             $idx = [1, 2, 3, 4, 5, 8, 9, 11, 12, 13, 26];
@@ -388,7 +388,7 @@ class SpreadsheetImportService
     /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", produksi pakai sheet "ZPTPNHLPP039", lainnya sheet pertama. */
     public function rowCountForType(string $type, string $path): int
     {
-        if ($type !== 'areal' && $type !== 'produksi') {
+        if ($type !== 'areal' && ! self::isProduksi($type)) {
             return $this->totalDataRows($path);
         }
         $sheet = $type === 'areal' ? 'DB' : 'ZPTPNHLPP039';
@@ -761,7 +761,7 @@ class SpreadsheetImportService
             return null;
         }
         if (is_numeric($v)) {
-            $days = (int) $v;
+            $days = (int) round((float) $v);
 
             return (new \DateTime('1899-12-30'))->modify("+{$days} days")->format('Y-m-d');
         }

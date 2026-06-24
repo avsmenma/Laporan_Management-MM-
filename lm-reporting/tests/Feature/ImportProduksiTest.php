@@ -21,7 +21,7 @@ class ImportProduksiTest extends TestCase
     {
         $path = $this->contohPath();
         if (! is_file($path)) {
-            $this->markTestSkipped('File contoh produksi tidak tersedia.');
+            $this->markTestSkipped("File contoh produksi tidak tersedia di: {$path}");
         }
 
         $service = app(SpreadsheetImportService::class);
