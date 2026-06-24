@@ -63,6 +63,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/drilldown', [ReportController::class, 'drilldown']);
     Route::get('/drilldown-deep', [ReportController::class, 'drilldownDeep']);
     Route::get('/areal', [\App\Http\Controllers\Api\ArealController::class, 'index']);
+    Route::get('/produksi', [\App\Http\Controllers\Api\ProduksiController::class, 'index']);
 });
 
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
