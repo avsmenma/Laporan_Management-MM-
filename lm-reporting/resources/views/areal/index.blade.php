@@ -275,20 +275,27 @@ function arealApp() {
                     height: '70vh',
                     rowFormatter: (row) => {
                         const t = row.getData()._type;
-                        const el = row.getElement();
                         // Baris "{kode} Total" diberi band hijau + garis batas atas/bawah agar
                         // menjadi pemisah visual yang jelas antar grup status.
-                        if (t === 'subtotal') {
-                            el.style.fontWeight = '700';
-                            el.style.background = '#d7e9df';
-                            el.style.borderTop = '2px solid #0f4c3a';
-                            el.style.borderBottom = '2px solid #0f4c3a';
-                        } else if (t === 'grandtotal') {
-                            el.style.fontWeight = '800';
-                            el.style.background = '#c3dccf';
-                            el.style.borderTop = '2px solid #0f4c3a';
-                            el.style.borderBottom = '2px solid #0f4c3a';
-                        }
+                        let bg = null, fw = null;
+                        if (t === 'subtotal') { bg = '#d7e9df'; fw = '700'; }
+                        else if (t === 'grandtotal') { bg = '#c3dccf'; fw = '800'; }
+                        if (!bg) return;
+                        const border = '2px solid #0f4c3a';
+                        const el = row.getElement();
+                        el.style.fontWeight = fw;
+                        el.style.background = bg;
+                        el.style.borderTop = border;
+                        el.style.borderBottom = border;
+                        // Sel beku (Status Blok/Petak & Tahun Tanam) dirender di container terpisah,
+                        // jadi warnai tiap sel agar band hijau & garis batas menutup seluruh baris.
+                        row.getCells().forEach((c) => {
+                            const ce = c.getElement();
+                            ce.style.background = bg;
+                            ce.style.fontWeight = fw;
+                            ce.style.borderTop = border;
+                            ce.style.borderBottom = border;
+                        });
                     },
                 });
             });
