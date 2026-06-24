@@ -83,6 +83,7 @@ class SpreadsheetImportService
             'rko_ohc' => 'RKO/RKAP — OHC',
             'rko_gc' => 'RKO/RKAP — GC',
             'areal' => 'Areal',
+            'produksi' => 'Produksi',
         ];
     }
 
@@ -90,6 +91,12 @@ class SpreadsheetImportService
     public static function isBudget(string $type): bool
     {
         return str_starts_with($type, 'rko_');
+    }
+
+    /** Jenis produksi PKS (snapshot harian, tanpa batch). */
+    public static function isProduksi(string $type): bool
+    {
+        return $type === 'produksi';
     }
 
     /** Sumber budget (BKU/OHC/GC) untuk jenis rko_*, atau null. */
@@ -305,6 +312,25 @@ class SpreadsheetImportService
     {
         abort_unless(array_key_exists($type, self::types()), 422, 'Jenis import tidak dikenal.');
 
+        if ($type === 'produksi') {
+            $total = max(0, $this->rowCountForType('produksi', $path));
+            $headers = ['Plant', 'Desc', 'Group Pemilik', 'Kebun', 'Nama Kebun', 'TBS Diterima s/d Hari', 'TBS Diterima s/d Bulan', 'TBS Diolah s/d Hari', 'TBS Diolah s/d Bulan', 'Sisa Akhir', 'Tgl Posting'];
+            $idx = [1, 2, 3, 4, 5, 8, 9, 11, 12, 13, 26];
+            $rows = [];
+            $emitted = 0;
+            foreach ($this->dataRowsSheet($path, 'ZPTPNHLPP039') as $row) {
+                if ($this->isEmptyRow($row)) {
+                    continue;
+                }
+                $rows[] = array_map(fn ($i) => $row[$i] ?? null, $idx);
+                if (++$emitted >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
+        }
+
         // Areal: baca header + sampel dari sheet "DB", hitung total via rowCountForType.
         if ($type === 'areal') {
             $total = max(0, $this->rowCountForType('areal', $path));
@@ -359,14 +385,15 @@ class SpreadsheetImportService
         return $this->totalDataRows($path);
     }
 
-    /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", lainnya sheet pertama. */
+    /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", produksi pakai sheet "ZPTPNHLPP039", lainnya sheet pertama. */
     public function rowCountForType(string $type, string $path): int
     {
-        if ($type !== 'areal') {
+        if ($type !== 'areal' && $type !== 'produksi') {
             return $this->totalDataRows($path);
         }
+        $sheet = $type === 'areal' ? 'DB' : 'ZPTPNHLPP039';
         $n = 0;
-        foreach ($this->dataRowsSheet($path, 'DB') as $row) {
+        foreach ($this->dataRowsSheet($path, $sheet) as $row) {
             if (! $this->isEmptyRow($row)) {
                 $n++;
             }
@@ -648,6 +675,100 @@ class SpreadsheetImportService
         $t = trim((string) ($v ?? ''));
 
         return $t === '' ? null : mb_substr($t, 0, 250);
+    }
+
+    /** Indeks kolom 0-based sheet ZPTPNHLPP039 yang dipakai. */
+    private const PRODUKSI_COLS = [
+        'plant_code' => 1, 'plant_desc' => 2, 'group_pemilik' => 3, 'kebun_code' => 4, 'nama_kebun' => 5,
+        'sisa_awal' => 6, 'tbs_diterima_sdhari' => 8, 'tbs_diterima_sdbulan' => 9,
+        'tbs_diolah_sdhari' => 11, 'tbs_diolah_sdbulan' => 12, 'sisa_akhir' => 13,
+        'ms_sdhari' => 15, 'ms_sdbulan' => 16, 'is_sdhari' => 18, 'is_sdbulan' => 19,
+        'tgl_posting' => 26, 'tidak_mengolah' => 27,
+    ];
+
+    /**
+     * Impor sheet ZPTPNHLPP039 → produksi_pks (idempoten per posting_date). Tanggal
+     * diturunkan dari kolom "Tgl Posting" (serial Excel atau string Y-m-d). Tanpa Batch.
+     */
+    public function importProduksi(string $path, ?int $userId = null, ?callable $onProgress = null): ImportResult
+    {
+        $records = [];
+        $dates = [];
+        foreach ($this->dataRowsSheet($path, 'ZPTPNHLPP039') as $v) {
+            if ($this->isEmptyRow($v)) {
+                continue;
+            }
+            $plant = trim((string) ($v[self::PRODUKSI_COLS['plant_code']] ?? ''));
+            $date = $this->produksiDate($v[self::PRODUKSI_COLS['tgl_posting']] ?? null);
+            if ($plant === '' || $date === null) {
+                continue;
+            }
+            $dates[$date] = true;
+            $records[] = [
+                'posting_date' => $date,
+                'plant_code' => $plant,
+                'plant_desc' => $this->produksiText($v[self::PRODUKSI_COLS['plant_desc']] ?? null),
+                'group_pemilik' => $this->produksiText($v[self::PRODUKSI_COLS['group_pemilik']] ?? null, 30),
+                'kebun_code' => $this->produksiText($v[self::PRODUKSI_COLS['kebun_code']] ?? null, 20),
+                'nama_kebun' => $this->produksiText($v[self::PRODUKSI_COLS['nama_kebun']] ?? null),
+                'sisa_awal' => $this->produksiNum($v[self::PRODUKSI_COLS['sisa_awal']] ?? null),
+                'tbs_diterima_sdhari' => $this->produksiNum($v[self::PRODUKSI_COLS['tbs_diterima_sdhari']] ?? null),
+                'tbs_diterima_sdbulan' => $this->produksiNum($v[self::PRODUKSI_COLS['tbs_diterima_sdbulan']] ?? null),
+                'tbs_diolah_sdhari' => $this->produksiNum($v[self::PRODUKSI_COLS['tbs_diolah_sdhari']] ?? null),
+                'tbs_diolah_sdbulan' => $this->produksiNum($v[self::PRODUKSI_COLS['tbs_diolah_sdbulan']] ?? null),
+                'sisa_akhir' => $this->produksiNum($v[self::PRODUKSI_COLS['sisa_akhir']] ?? null),
+                'ms_sdhari' => $this->produksiNum($v[self::PRODUKSI_COLS['ms_sdhari']] ?? null),
+                'ms_sdbulan' => $this->produksiNum($v[self::PRODUKSI_COLS['ms_sdbulan']] ?? null),
+                'is_sdhari' => $this->produksiNum($v[self::PRODUKSI_COLS['is_sdhari']] ?? null),
+                'is_sdbulan' => $this->produksiNum($v[self::PRODUKSI_COLS['is_sdbulan']] ?? null),
+                'tidak_mengolah' => trim((string) ($v[self::PRODUKSI_COLS['tidak_mengolah']] ?? '')) !== '',
+            ];
+        }
+
+        $inserted = 0;
+        DB::transaction(function () use ($records, $dates, &$inserted, $onProgress): void {
+            if ($dates !== []) {
+                DB::table('produksi_pks')->whereIn('posting_date', array_keys($dates))->delete();
+            }
+            foreach (array_chunk($records, 500) as $chunk) {
+                DB::table('produksi_pks')->insert($chunk);
+                $inserted += count($chunk);
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
+            }
+        });
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    private function produksiText(mixed $v, int $len = 150): ?string
+    {
+        $t = trim((string) ($v ?? ''));
+
+        return $t === '' ? null : mb_substr($t, 0, $len);
+    }
+
+    private function produksiNum(mixed $v): float
+    {
+        return is_numeric($v) ? (float) $v : 0.0;
+    }
+
+    /** Serial Excel (mis. 46173) atau string 'Y-m-d' → 'Y-m-d'; null bila tak terbaca. */
+    private function produksiDate(mixed $v): ?string
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_numeric($v)) {
+            $days = (int) $v;
+
+            return (new \DateTime('1899-12-30'))->modify("+{$days} days")->format('Y-m-d');
+        }
+        $t = trim((string) $v);
+        $d = \DateTime::createFromFormat('!Y-m-d', substr($t, 0, 10));
+
+        return $d ? $d->format('Y-m-d') : null;
     }
 
     /**

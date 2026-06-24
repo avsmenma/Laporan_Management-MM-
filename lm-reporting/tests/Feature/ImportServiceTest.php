@@ -19,7 +19,7 @@ class ImportServiceTest extends TestCase
     public function test_types_now_include_realisasi_and_budget(): void
     {
         $this->assertSame(
-            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc', 'areal'],
+            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc', 'areal', 'produksi'],
             array_keys(SpreadsheetImportService::types())
         );
         $this->assertFalse(SpreadsheetImportService::isBudget('wbs'));

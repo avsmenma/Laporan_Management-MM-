@@ -908,3 +908,16 @@ Artisan::command('budget:import-test {--dir=} {--year=2026}', function (Spreadsh
 
     return 0;
 })->purpose('Impor RKO/RKAP (docs/rko_rkap) per-sumber via importBudget.');
+
+Artisan::command('produksi:import {--file=}', function (SpreadsheetImportService $service): int {
+    $file = (string) $this->option('file');
+    if ($file === '' || ! is_file($file)) {
+        $this->error('Pakai --file=<path .xlsx berisi sheet ZPTPNHLPP039>.');
+
+        return 1;
+    }
+    $result = $service->importProduksi($file);
+    $this->info("Selesai: {$result->rowCount} baris produksi tersimpan.");
+
+    return 0;
+})->purpose('Impor laporan produksi PKS (sheet ZPTPNHLPP039) ke produksi_pks (idempoten per tanggal).');
