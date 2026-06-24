@@ -3,7 +3,7 @@
 @section('title', 'Produksi')
 
 @section('content')
-<div x-data="produksiApp()" x-init="init()">
+<div x-data="produksiApp()" x-init="init()" class="produksi-page">
     <div class="filter-bar">
         <div class="filter-grid">
             <div class="filter-group">
@@ -20,7 +20,7 @@
 
     <div x-show="errorMsg" x-cloak class="lm-error-panel" x-text="errorMsg"></div>
 
-    <div x-show="hasData" x-cloak>
+    <div x-show="hasData" x-cloak x-ref="frames">
         {{-- Tiap tabel = frame mandiri, judulnya tampil sebagai tab (gaya tab-bar). --}}
 
         {{-- Ringkasan --}}
@@ -49,6 +49,17 @@
 </div>
 
 <style>
+    /* Toolbar filter (dropdown tanggal) dibuat lengket di bawah header (60px)
+       agar tetap terjangkau saat user men-scroll jauh ke bawah — banyak tabel.
+       Hanya berlaku di halaman produksi. */
+    .produksi-page .filter-bar {
+        position: sticky;
+        top: 60px;
+        z-index: 30;
+    }
+    /* Saat mode layar penuh header disembunyikan, jadi lengket ke atas. */
+    body.lm-focus .produksi-page .filter-bar { top: 0; }
+
     /* Tiap tabel produksi berdiri sendiri sebagai frame (kartu) dengan judul
        bergaya tab yang menempel di tepi atas kartu — bukan label biasa. */
     .prod-frame { margin-top: 22px; }
@@ -162,6 +173,14 @@ function produksiApp() {
         },
 
         renderAll(data) {
+            // Saat ganti tanggal, tabel dibongkar-pasang. Tanpa penjagaan, area
+            // frame sempat runtuh ke 0 sehingga scroll user melompat ke atas.
+            // Kunci tinggi area + simpan posisi scroll, lalu pulihkan setelah render.
+            const wrap = this.$refs.frames;
+            const prevScroll = window.scrollY;
+            const prevH = wrap ? wrap.offsetHeight : 0;
+            if (wrap && prevH) wrap.style.minHeight = prevH + 'px';
+
             // hancurkan tabel lama
             Object.values(this.tables).forEach(t => { try { t.destroy(); } catch (e) {} });
             this.tables = {};
@@ -189,6 +208,12 @@ function produksiApp() {
             if (data.ringkasan && (data.ringkasan.bi || data.ringkasan.sd)) {
                 this.tables['ringkasan'] = mkTable('#prod-ringkasan', this.ringkasanColumns(), this.ringkasanRows(data.ringkasan));
             }
+
+            // Pulihkan posisi scroll & lepas kunci tinggi setelah tabel terbentuk.
+            this.$nextTick(() => {
+                window.scrollTo({ top: prevScroll });
+                setTimeout(() => { if (wrap) wrap.style.minHeight = ''; }, 150);
+            });
         },
 
         ringkasanColumns() {
