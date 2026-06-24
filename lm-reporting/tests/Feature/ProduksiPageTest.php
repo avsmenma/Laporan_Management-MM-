@@ -22,7 +22,7 @@ class ProduksiPageTest extends TestCase
         $role = Role::query()->firstOrCreate(['name' => 'Viewer']);
         $user = User::factory()->create(['role_id' => $role->id]);
 
-        $resp = $this->actingAs($user)->get('/produksi');
+        $resp = $this->actingAs($user)->get('/produksi/pks');
         $resp->assertOk();
         $resp->assertSee('produksiApp', false);
         $resp->assertSee('/report-data/produksi', false);

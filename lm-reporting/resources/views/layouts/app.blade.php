@@ -401,10 +401,15 @@
                             <span class="nav-ico">📁</span> AREAL
                         </a>
                     </li>
-                    <li class="sidebar-nav-item">
-                        <a href="{{ route('produksi') }}" class="sidebar-nav-link {{ request()->routeIs('produksi') ? 'active' : '' }}">
+                    <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('produksi*') ? 'true' : 'false' }} }">
+                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('produksi*') ? 'active' : '' }}" @click="if (document.documentElement.classList.contains('sidebar-collapsed')) { lmToggleSidebar(); open = true } else { open = !open }">
                             <span class="nav-ico">📁</span> PRODUKSI
-                        </a>
+                            <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <ul class="sidebar-subnav" x-show="open" x-cloak>
+                            <li><a href="{{ route('produksi.pks') }}" class="sidebar-sublink {{ request()->routeIs('produksi.pks') ? 'active' : '' }}"><span class="tree-ico">📄</span> PKS</a></li>
+                            <li><a href="{{ route('produksi.kebun') }}" class="sidebar-sublink {{ request()->routeIs('produksi.kebun') ? 'active' : '' }}"><span class="tree-ico">📄</span> KEBUN</a></li>
+                        </ul>
                     </li>
                     @if (in_array(optional(optional(auth()->user())->role)->name, ['Operator', 'Admin'], true))
                         <li class="sidebar-nav-item" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">

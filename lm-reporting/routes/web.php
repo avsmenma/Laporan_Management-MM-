@@ -40,7 +40,13 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
 
     Route::view('/areal', 'areal.index')->name('areal');
 
-    Route::view('/produksi', 'produksi.index')->name('produksi');
+    // Produksi punya submenu: PKS (halaman saat ini) & Kebun (akan datang).
+    Route::redirect('/produksi', '/produksi/pks');
+    Route::view('/produksi/pks', 'produksi.index')->name('produksi.pks');
+    Route::view('/produksi/kebun', 'coming-soon', [
+        'judul' => 'Produksi Kebun',
+        'subjudul' => 'Laporan Produksi Kebun sedang disiapkan dan akan segera tersedia.',
+    ])->name('produksi.kebun');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 

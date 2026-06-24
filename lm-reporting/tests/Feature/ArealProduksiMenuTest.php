@@ -34,16 +34,24 @@ class ArealProduksiMenuTest extends TestCase
 
     public function test_produksi_page_renders_for_viewer(): void
     {
-        $res = $this->actingAs($this->makeUser(Role::VIEWER))->get('/produksi');
+        $res = $this->actingAs($this->makeUser(Role::VIEWER))->get('/produksi/pks');
 
         $res->assertOk();
         $res->assertSee('Produksi');
         $res->assertSee('produksiApp', false);
     }
 
+    public function test_produksi_kebun_submenu_coming_soon(): void
+    {
+        $res = $this->actingAs($this->makeUser(Role::VIEWER))->get('/produksi/kebun');
+
+        $res->assertOk();
+        $res->assertSee('Produksi Kebun');
+    }
+
     public function test_guest_redirected_to_login(): void
     {
         $this->get('/areal')->assertRedirect('/login');
-        $this->get('/produksi')->assertRedirect('/login');
+        $this->get('/produksi/pks')->assertRedirect('/login');
     }
 }
