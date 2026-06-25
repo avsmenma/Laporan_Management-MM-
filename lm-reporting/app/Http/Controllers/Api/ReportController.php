@@ -119,6 +119,10 @@ class ReportController extends Controller
             ], 404);
         }
 
+        // Tarik nilai produksi per grup (- Kebun Inti) dari halaman Produksi
+        // (tabel produksi_pks), lalu hitung ulang subtotal & HPP yang terdampak.
+        $rows = $this->applyProduksiToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
+
         // Sisipkan baris "Jumlah" untuk seksi A (Saldo Awal) — turunan dari baris
         // detail yang sudah terverifikasi, tidak mengubah template/mesin hitung.
         $rows = $this->withSaldoAwalJumlah($rows);
@@ -699,6 +703,112 @@ class ReportController extends Controller
             ->orderBy('lm_template_row.urutan')
             ->select($selects)
             ->get();
+    }
+
+    /**
+     * Tarik nilai produksi LM13 (baris "- Kebun Inti" tiap grup + Saldo Akhir TBS) dari
+     * data halaman Produksi (produksi_pks) untuk blok "Kebun Sendiri + Pihak III"
+     * (OLAH_JUAL), lalu hitung ulang subtotal "Jumlah" dan baris HPP yang terdampak.
+     *
+     * Pemetaan grup → Grand Total tabel Produksi (kolom Bln Ini ← blok BULAN INI/sdhari,
+     * s.d ← blok S.D BULAN INI/sdbulan):
+     *   urutan 2  (A Saldo Awal TBS · Kebun Inti)  ← Restan Awal  (= Diolah + Akhir − Diterima)
+     *   urutan 6  (B Diterima Lapangan · Kebun Inti) ← TBS Diterima
+     *   urutan 16 (D Minyak Sawit · Kebun Inti)     ← Produksi Minyak Sawit
+     *   urutan 21 (E Inti Sawit · Kebun Inti)       ← Produksi Inti Sawit
+     *   urutan 28 (F TBS Olah · Kebun Inti)         ← TBS Diolah
+     *   urutan 46 (Saldo Akhir TBS)                 ← Restan Akhir (= sisa_akhir)
+     * Grup C (Produksi di Jual) dibiarkan kosong; blok Olah & Jual/KSO menyusul.
+     * Hanya KS (produksi_pks = sawit). Lapisan presentasi (tanpa regenerasi).
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function applyProduksiToLm13(\Illuminate\Support\Collection $rows, Batch $batch, ?RefUnit $unit, string $komoditi, bool $isAll): \Illuminate\Support\Collection
+    {
+        if (strtoupper($komoditi) !== 'KS') {
+            return $rows;
+        }
+
+        // Tanggal posting terbaru dalam bulan batch (snapshot s.d bulan terlengkap),
+        // sama seperti resolusi di halaman Produksi.
+        $date = DB::table('produksi_pks')
+            ->whereYear('posting_date', $batch->year)
+            ->whereMonth('posting_date', $batch->month)
+            ->max('posting_date');
+        if ($date === null) {
+            return $rows;
+        }
+
+        $q = DB::table('produksi_pks')->whereDate('posting_date', $date);
+        if (! $isAll && $unit !== null) {
+            $q->where('kebun_code', $unit->code);
+        }
+        $a = $q->selectRaw(
+            'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
+            'COALESCE(SUM(tbs_diolah_sdhari),0) tdo_h, COALESCE(SUM(tbs_diolah_sdbulan),0) tdo_b, '.
+            'COALESCE(SUM(sisa_akhir),0) akhir, '.
+            'COALESCE(SUM(ms_sdhari),0) ms_h, COALESCE(SUM(ms_sdbulan),0) ms_b, '.
+            'COALESCE(SUM(is_sdhari),0) is_h, COALESCE(SUM(is_sdbulan),0) is_b'
+        )->first();
+
+        // Nilai produksi per urutan baris "- Kebun Inti" (bi = Bln Ini, sd = s.d).
+        $prod = [
+            2 => ['bi' => $a->tdo_h + $a->akhir - $a->tdi_h, 'sd' => $a->tdo_b + $a->akhir - $a->tdi_b],
+            6 => ['bi' => $a->tdi_h, 'sd' => $a->tdi_b],
+            16 => ['bi' => $a->ms_h, 'sd' => $a->ms_b],
+            21 => ['bi' => $a->is_h, 'sd' => $a->is_b],
+            28 => ['bi' => $a->tdo_h, 'sd' => $a->tdo_b],
+            46 => ['bi' => $a->akhir, 'sd' => $a->akhir],
+        ];
+
+        // Indeks baris blok total (OLAH_JUAL) per urutan.
+        $oj = [];
+        foreach ($rows as $row) {
+            if ($row->blok === 'OLAH_JUAL') {
+                $oj[(int) $row->urutan] = $row;
+            }
+        }
+
+        foreach ($prod as $u => $v) {
+            if (isset($oj[$u])) {
+                $oj[$u]->bi_real_thn_ini = (float) $v['bi'];
+                $oj[$u]->sd_real_thn_ini = (float) $v['sd'];
+            }
+        }
+
+        // Hitung ulang subtotal "Jumlah" yang menjumlahkan baris di atas.
+        $sumInto = function (int $target, array $sources) use ($oj): void {
+            if (! isset($oj[$target])) {
+                return;
+            }
+            $bi = $sd = 0.0;
+            foreach ($sources as $s) {
+                $bi += (float) ($oj[$s]->bi_real_thn_ini ?? 0);
+                $sd += (float) ($oj[$s]->sd_real_thn_ini ?? 0);
+            }
+            $oj[$target]->bi_real_thn_ini = $bi;
+            $oj[$target]->sd_real_thn_ini = $sd;
+        };
+        $sumInto(9, [6, 7, 8]);     // B: Jumlah
+        $sumInto(19, [16, 17, 18]); // D: Jumlah
+        $sumInto(24, [21, 22, 23]); // E: Jumlah
+        $sumInto(25, [19, 24]);     // Jumlah Produksi MS + IS
+        $sumInto(31, [28, 29, 30]); // F TBS Olah: Jumlah
+
+        // HPP (urutan 72,73,74) = Jumlah Biaya Produksi (68) / Jumlah Produksi MS+IS (25).
+        if (isset($oj[68], $oj[25])) {
+            $safeDiv = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d, 4);
+            foreach ([72, 73, 74] as $u) {
+                if (! isset($oj[$u])) {
+                    continue;
+                }
+                $oj[$u]->bi_real_thn_ini = $safeDiv((float) $oj[68]->bi_real_thn_ini, (float) $oj[25]->bi_real_thn_ini);
+                $oj[$u]->sd_real_thn_ini = $safeDiv((float) $oj[68]->sd_real_thn_ini, (float) $oj[25]->sd_real_thn_ini);
+            }
+        }
+
+        return $rows;
     }
 
     /**
