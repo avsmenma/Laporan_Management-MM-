@@ -30,26 +30,18 @@
 
     <div x-show="errorMsg" x-cloak class="lm-error-panel" x-text="errorMsg"></div>
 
-    <div x-show="hasData" x-cloak x-ref="frames">
-        {{-- Tiap tabel = frame mandiri, judulnya tampil sebagai tab (gaya tab-bar). --}}
-
-        {{-- Ringkasan --}}
-        <div class="prod-frame">
-            <div class="tabs"><span class="tab active">Ringkasan</span></div>
-            <div class="report-card">
-                <div id="prod-ringkasan" class="lm-report-table"></div>
-            </div>
+    <div x-show="hasData" x-cloak x-ref="frames" class="prod-frame">
+        {{-- Semua tabel disatukan dalam SATU tab-bar; hanya tabel dari tab
+             terpilih yang ditampilkan agar user tak perlu scroll panjang. --}}
+        <div class="tabs prod-tabs">
+            <template x-for="t in allTabs()" :key="t.key">
+                <span class="tab" :class="{ active: activeTab === t.key }"
+                      @click="setTab(t.key)" x-text="t.title"></span>
+            </template>
         </div>
-
-        {{-- 6 tabel pivot --}}
-        <template x-for="t in tableDefs" :key="t.key">
-            <div class="prod-frame">
-                <div class="tabs"><span class="tab active" x-text="t.title"></span></div>
-                <div class="report-card">
-                    <div :id="'prod-' + t.key" class="lm-report-table"></div>
-                </div>
-            </div>
-        </template>
+        <div class="report-card">
+            <div id="prod-active" class="lm-report-table"></div>
+        </div>
     </div>
 
     <div x-show="!hasData" x-cloak style="background:#fff;padding:4rem 2rem;text-align:center;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid var(--line)">
@@ -70,14 +62,11 @@
     /* Saat mode layar penuh header disembunyikan, jadi lengket ke atas. */
     body.lm-focus .produksi-page .filter-bar { top: 0; }
 
-    /* Tiap tabel produksi berdiri sendiri sebagai frame (kartu) dengan judul
-       bergaya tab yang menempel di tepi atas kartu — bukan label biasa. */
-    .prod-frame { margin-top: 22px; }
-    .prod-frame:first-child { margin-top: 0; }
-    .prod-frame .tabs { padding-left: 4px; }
-    /* Tab tidak interaktif di sini (selalu aktif sebagai judul frame). */
-    .prod-frame .tab.active { cursor: default; height: 38px; font-weight: 700; letter-spacing: .01em; }
-    .prod-frame .tab.active:hover { background: var(--surface); color: var(--g-800); }
+    /* Satu tab-bar untuk semua tabel; tab bisa diklik untuk berpindah tabel.
+       Tab dibuat bisa membungkus (wrap) bila judulnya banyak. */
+    .prod-frame .prod-tabs { padding-left: 4px; flex-wrap: wrap; }
+    .prod-frame .prod-tabs .tab { cursor: pointer; height: 38px; letter-spacing: .01em; }
+    .prod-frame .prod-tabs .tab.active { font-weight: 700; }
     /* Sudut kiri-atas kartu dibuat siku agar tab menyatu mulus dengan kartu. */
     .prod-frame .report-card { border-top-left-radius: 0; }
     /* Kartu sudah punya border; hilangkan border-atas tabel agar tidak dobel garis. */
@@ -98,6 +87,7 @@ function produksiApp() {
         hasData: false,
         errorMsg: null,
         tables: {},
+        activeTab: 'ringkasan',
         tableDefs: [
             { key: 'restan_awal', title: 'RESTAN AWAL TBS' },
             { key: 'tbs_diterima', title: 'TBS DITERIMA' },
@@ -118,6 +108,16 @@ function produksiApp() {
         rendFmt(cell) {
             const v = cell.getValue();
             return (v == null) ? '-' : Number(v).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+
+        // Daftar tab: Ringkasan + semua tabel pivot, dalam satu tab-bar.
+        allTabs() {
+            return [{ key: 'ringkasan', title: 'Ringkasan' }, ...this.tableDefs];
+        },
+        setTab(key) {
+            if (this.activeTab === key) return;
+            this.activeTab = key;
+            this.$nextTick(() => this.renderActive());
         },
 
         bulanNama(m) {
@@ -167,7 +167,7 @@ function produksiApp() {
                 this.payload = data;
                 this.hasData = (this.periods.length > 0);
                 if (this.hasData) {
-                    this.$nextTick(() => this.renderAll(data));
+                    this.$nextTick(() => this.renderActive());
                 }
             } catch (e) {
                 this.hasData = false;
@@ -213,14 +213,10 @@ function produksiApp() {
             return rows;
         },
 
-        renderAll(data) {
-            // Saat ganti tanggal, tabel dibongkar-pasang. Tanpa penjagaan, area
-            // frame sempat runtuh ke 0 sehingga scroll user melompat ke atas.
-            // Kunci tinggi area + simpan posisi scroll, lalu pulihkan setelah render.
-            const wrap = this.$refs.frames;
-            const prevScroll = window.scrollY;
-            const prevH = wrap ? wrap.offsetHeight : 0;
-            if (wrap && prevH) wrap.style.minHeight = prevH + 'px';
+        // Hanya tabel dari tab aktif yang dibangun ke dalam satu kontainer.
+        renderActive() {
+            const data = this.payload;
+            if (!data) return;
 
             // hancurkan tabel lama
             Object.values(this.tables).forEach(t => { try { t.destroy(); } catch (e) {} });
@@ -251,23 +247,18 @@ function produksiApp() {
                 },
             });
 
-            // 6 pivot
-            this.tableDefs.forEach(def => {
-                const tbl = data.tables?.[def.key];
-                if (!tbl) return;
-                this.tables[def.key] = mkTable('#prod-' + def.key, this.pivotColumns(def.rend), this.pivotRows(tbl));
-            });
-
-            // Ringkasan
-            if (data.ringkasan && (data.ringkasan.bi || data.ringkasan.sd)) {
-                this.tables['ringkasan'] = mkTable('#prod-ringkasan', this.ringkasanColumns(), this.ringkasanRows(data.ringkasan));
+            const key = this.activeTab;
+            if (key === 'ringkasan') {
+                if (data.ringkasan && (data.ringkasan.bi || data.ringkasan.sd)) {
+                    this.tables['ringkasan'] = mkTable('#prod-active', this.ringkasanColumns(), this.ringkasanRows(data.ringkasan));
+                }
+            } else {
+                const def = this.tableDefs.find(d => d.key === key);
+                const tbl = data.tables?.[key];
+                if (def && tbl) {
+                    this.tables[key] = mkTable('#prod-active', this.pivotColumns(def.rend), this.pivotRows(tbl));
+                }
             }
-
-            // Pulihkan posisi scroll & lepas kunci tinggi setelah tabel terbentuk.
-            this.$nextTick(() => {
-                window.scrollTo({ top: prevScroll });
-                setTimeout(() => { if (wrap) wrap.style.minHeight = ''; }, 150);
-            });
         },
 
         ringkasanColumns() {
