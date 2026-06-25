@@ -4,6 +4,20 @@
 @section('unit-label', 'Unit Kebun: ')
 
 @section('content')
+<style>
+    /* Baris "Jumlah" (subtotal/total): pita hijau dimulai dari kolom Uraian.
+       Kolom WBS/GL/CC (kode) dibiarkan polos seperti baris biasa — tanpa band hijau.
+       Lebih spesifik (atribut field) + !important agar menang atas aturan app.css. */
+    .lm-report-table .tabulator-row.lm-row-total .tabulator-cell.tabulator-frozen[tabulator-field="kode"],
+    .lm-report-table .tabulator-row.lm-row-total .tabulator-cell[tabulator-field="kode"],
+    .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell.tabulator-frozen[tabulator-field="kode"],
+    .lm-report-table .tabulator-row.lm-row-subtotal .tabulator-cell[tabulator-field="kode"] {
+        background: #fff !important;
+        color: var(--ink-900) !important;
+        border-top-color: transparent !important;
+        border-bottom-color: transparent !important;
+    }
+</style>
 <div x-data="kebunApp()" x-init="init()">
     <div class="filter-bar">
         <div class="filter-grid">
