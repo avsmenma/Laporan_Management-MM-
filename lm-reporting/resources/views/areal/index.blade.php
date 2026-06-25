@@ -17,7 +17,7 @@
 
             <div class="filter-group">
                 <label class="filter-label">Tahun</label>
-                <select class="filter-select" x-model="filters.year" @change="syncBatch(); load()">
+                <select class="filter-select" x-model="filters.year" @change="syncBatch(); reload()">
                     <option value="">— pilih tahun —</option>
                     <template x-for="y in years()" :key="y">
                         <option :value="y" x-text="y"></option>
@@ -27,7 +27,7 @@
 
             <div class="filter-group">
                 <label class="filter-label">Periode (Bulan)</label>
-                <select class="filter-select" x-model="filters.month" @change="load()">
+                <select class="filter-select" x-model="filters.month" @change="reload()">
                     <option value="">— pilih bulan —</option>
                     <template x-for="m in months()" :key="m">
                         <option :value="m" x-text="bulanNama(m)"></option>
@@ -70,11 +70,16 @@
             </div>
         </div>
 
-        {{-- Tab Ringkasan: tabel sedang disiapkan. --}}
-        <div x-show="activeTab === 'ringkasan'" class="areal-empty">
-            <div style="font-size:3rem;margin-bottom:1rem">📊</div>
-            <h3 style="color:#666;font-weight:500">Tabel ringkasan sedang disiapkan</h3>
-            <p style="color:#999;margin-top:0.5rem">Tampilan ringkasan areal akan segera tersedia.</p>
+        {{-- Tab Ringkasan: pivot per unit kebun (gabungan semua unit). --}}
+        <div x-show="activeTab === 'ringkasan'">
+            <div class="report-card" x-show="ringHasData" x-cloak>
+                <div id="areal-ring-table" class="lm-report-table"></div>
+            </div>
+            <div x-show="!ringHasData" x-cloak class="areal-empty">
+                <div style="font-size:3rem;margin-bottom:1rem">📊</div>
+                <h3 style="color:#666;font-weight:500">Pilih periode untuk melihat ringkasan areal</h3>
+                <p style="color:#999;margin-top:0.5rem">Pilih Komoditas, Tahun, dan Bulan</p>
+            </div>
         </div>
     </div>
 
@@ -109,8 +114,10 @@ function arealApp() {
         batches: [],
         units: [],
         hasData: false,
+        ringHasData: false,
         errorMsg: null,
         table: null,
+        ringTable: null,
         activeTab: 'ringkasan',
         tabs: [
             { key: 'ringkasan', title: 'Ringkasan' },
@@ -120,14 +127,15 @@ function arealApp() {
         setTab(key) {
             if (this.activeTab === key) return;
             this.activeTab = key;
-            // Tabel Detail yang dibangun saat tab tersembunyi akan salah ukur kolom;
-            // gambar ulang saat tab Detail ditampilkan (atau muat bila belum ada).
-            if (key === 'detail') {
-                this.$nextTick(() => {
-                    if (this.table) { this.table.redraw(true); }
-                    else { this.load(); }
-                });
-            }
+            // Tabel yang dibangun saat tab tersembunyi akan salah ukur kolom;
+            // gambar ulang saat tab ditampilkan (atau muat bila belum ada).
+            this.$nextTick(() => {
+                if (key === 'detail') {
+                    if (this.table) { this.table.redraw(true); } else { this.load(); }
+                } else {
+                    if (this.ringTable) { this.ringTable.redraw(true); } else { this.loadRingkasan(); }
+                }
+            });
         },
 
         bulanNama(m) {
@@ -180,6 +188,12 @@ function arealApp() {
             if (this.filters.komoditi) {
                 await this.loadUnits();
             }
+            await this.reload();
+        },
+
+        // Muat ulang sesuai tab: Ringkasan (tanpa unit) + Detail (butuh unit).
+        async reload() {
+            await this.loadRingkasan();
             await this.load();
         },
 
@@ -203,6 +217,129 @@ function arealApp() {
                 this.errorMsg = e.message;
                 if (window.lmToast) window.lmToast(e.message, 'err');
             }
+        },
+
+        async loadRingkasan() {
+            if (!this.filters.komoditi || !this.filters.year || !this.filters.month) {
+                this.ringHasData = false;
+                return;
+            }
+            this.errorMsg = null;
+            try {
+                const q = `year=${this.filters.year}&month=${this.filters.month}&komoditi=${this.filters.komoditi}`;
+                const resp = await fetch(`/report-data/areal/ringkasan?${q}`);
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.message || `HTTP ${resp.status}`);
+                }
+                this.renderRingkasan(await resp.json());
+            } catch (e) {
+                this.ringHasData = false;
+                this.errorMsg = e.message;
+                if (window.lmToast) window.lmToast(e.message, 'err');
+            }
+        },
+
+        // Pivot per unit kebun: identitas (Status, Tahun Tanam) frozen + grup TOTAL
+        // dan grup per unit, masing-masing Real (Ha) / RKAP (Ha) / CAP (%).
+        renderRingkasan(data) {
+            const luasFmt = (cell) => {
+                const v = cell.getValue();
+                return (v == null || Math.abs(Number(v)) < 0.005)
+                    ? '-'
+                    : Number(v).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+            const capFmt = (cell) => {
+                const v = cell.getValue();
+                return (v == null || Number(v) === 0)
+                    ? '-'
+                    : Number(v).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+            const triple = (prefix, groupTitle) => ({
+                title: groupTitle,
+                headerHozAlign: 'center',
+                columns: [
+                    { title: 'Real (Ha)', field: `${prefix}_real`, hozAlign: 'right', headerHozAlign: 'center', formatter: luasFmt, minWidth: 90 },
+                    { title: 'RKAP (Ha)', field: `${prefix}_rkap`, hozAlign: 'right', headerHozAlign: 'center', formatter: luasFmt, minWidth: 90 },
+                    { title: 'CAP (%)', field: `${prefix}_cap`, hozAlign: 'right', headerHozAlign: 'center', formatter: capFmt, minWidth: 80 },
+                ],
+            });
+
+            const cols = [
+                {
+                    title: 'Status Blok/Petak', field: 'status', frozen: true, minWidth: 160, headerHozAlign: 'center',
+                    formatter: (cell) => {
+                        const d = cell.getRow().getData();
+                        if (d._type === 'subtotal' || d._type === 'grandtotal') return d.label ?? '';
+                        return d._firstOfStatus ? (d.status ?? '') : '';
+                    },
+                },
+                {
+                    title: 'Tahun Tanam', field: 'tahun_tanam', frozen: true, minWidth: 110, hozAlign: 'center', headerHozAlign: 'center',
+                    formatter: (cell) => {
+                        const d = cell.getRow().getData();
+                        if (d._type === 'subtotal' || d._type === 'grandtotal') return '';
+                        const v = cell.getValue();
+                        return (v != null && v !== '') ? v : '';
+                    },
+                },
+                triple('total', 'TOTAL'),
+            ];
+            (data.units || []).forEach(u => cols.push(triple(`u_${u.code}`, u.code)));
+
+            let prevDetailStatus = null;
+            const rows = (data.rows || []).map(r => {
+                const o = {
+                    status: r.status ?? '', tahun_tanam: r.tahun_tanam ?? '', label: r.label ?? null, _type: r.type,
+                    total_real: r.total?.real ?? 0, total_rkap: r.total?.rkap ?? 0, total_cap: r.total?.cap ?? 0,
+                };
+                if (r.type === 'detail') {
+                    o._firstOfStatus = (r.status !== prevDetailStatus);
+                    prevDetailStatus = r.status;
+                }
+                (data.units || []).forEach(u => {
+                    const c = r.cells?.[u.code];
+                    o[`u_${u.code}_real`] = c?.real ?? 0;
+                    o[`u_${u.code}_rkap`] = c?.rkap ?? 0;
+                    o[`u_${u.code}_cap`] = c?.cap ?? 0;
+                });
+                return o;
+            });
+
+            if (this.ringTable) { this.ringTable.destroy(); this.ringTable = null; }
+
+            this.ringHasData = rows.length > 0;
+            if (!this.ringHasData) return;
+
+            this.$nextTick(() => {
+                this.ringTable = new window.Tabulator('#areal-ring-table', {
+                    data: rows,
+                    columns: cols,
+                    columnDefaults: { headerSort: false },
+                    layout: 'fitDataStretch',
+                    height: '70vh',
+                    rowFormatter: (row) => {
+                        const t = row.getData()._type;
+                        let bg = null, fw = null;
+                        if (t === 'subtotal') { bg = '#d7e9df'; fw = '700'; }
+                        else if (t === 'grandtotal') { bg = '#c3dccf'; fw = '800'; }
+                        if (!bg) return;
+                        const border = '1px solid #0f4c3a';
+                        const el = row.getElement();
+                        el.style.fontWeight = fw;
+                        el.style.background = bg;
+                        el.style.borderTop = border;
+                        el.style.borderBottom = 'none';
+                        row.getCells().forEach((c) => {
+                            const ce = c.getElement();
+                            ce.style.background = bg;
+                            ce.style.fontWeight = fw;
+                            ce.style.borderTop = border;
+                            ce.style.borderBottom = 'none';
+                        });
+                    },
+                });
+            });
         },
 
         render(data) {

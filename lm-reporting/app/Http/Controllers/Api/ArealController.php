@@ -118,4 +118,113 @@ class ArealController extends Controller
 
         return $cells;
     }
+
+    /**
+     * Ringkasan areal: pivot Status × Tahun Tanam dengan kolom per UNIT KEBUN
+     * (gabungan semua unit, tanpa filter unit). Tiap unit punya blok Real (Ha) /
+     * RKAP (Ha) / CAP (%) + kolom TOTAL (= jumlah Real semua unit).
+     *
+     * Real (Ha) = Σ luas_tanam. RKAP belum punya sumber data → 0 (CAP = Real/RKAP → 0).
+     * Mengikuti VIEW1 file "AREAL_STEATMENT_2026_RINGKASAN.xlsx".
+     */
+    public function ringkasan(Request $request): JsonResponse
+    {
+        $this->authenticateReportRequest($request);
+
+        $data = $request->validate([
+            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'komoditi' => ['nullable', 'in:KS,KR'],
+        ]);
+
+        $year = (int) $data['year'];
+        $month = (int) $data['month'];
+        $komoditi = strtoupper((string) ($data['komoditi'] ?? 'KS'));
+
+        $batch = Batch::query()->where('year', $year)->where('month', $month)->first();
+        if (! $batch) {
+            return response()->json(['units' => [], 'rows' => []]);
+        }
+
+        $this->checkBatchAccess($batch);
+
+        $rows = ArealBlok::query()
+            ->where('batch_id', $batch->id)
+            ->where('komoditi', $komoditi)
+            ->get(['status_blok_petak', 'plant_code', 'tahun_tanam', 'luas_tanam']);
+
+        // Unit yang punya data, urut natural berdasarkan kode.
+        $codes = $rows->pluck('plant_code')->filter()->unique()->values()->all();
+        sort($codes, SORT_NATURAL);
+
+        // Nama unit dari master ref_unit.
+        $names = \Illuminate\Support\Facades\DB::table('ref_unit')
+            ->whereIn('code', $codes)->pluck('name', 'code');
+        $units = array_map(fn ($c) => ['code' => $c, 'name' => $names[$c] ?? $c], $codes);
+
+        // Agregasi: status → tahun → unit → luas (Real mentah).
+        $agg = [];
+        foreach ($rows as $r) {
+            $s = (string) $r->status_blok_petak;
+            $t = $r->tahun_tanam !== null ? (int) $r->tahun_tanam : 0;
+            $u = (string) $r->plant_code;
+            $agg[$s][$t][$u] = ($agg[$s][$t][$u] ?? 0) + (float) $r->luas_tanam;
+        }
+
+        $statuses = array_keys($agg);
+        usort($statuses, function ($x, $y) {
+            $ix = array_search($x, self::STATUS_ORDER, true);
+            $iy = array_search($y, self::STATUS_ORDER, true);
+            $ix = $ix === false ? 999 : $ix;
+            $iy = $iy === false ? 999 : $iy;
+
+            return $ix === $iy ? strcmp($x, $y) : $ix <=> $iy;
+        });
+
+        // CAP = Real/RKAP; RKAP 0 → CAP 0 (IFERROR/0). Disiapkan untuk saat RKAP terisi.
+        $mkCell = fn (float $real) => ['real' => round($real, 2), 'rkap' => 0.0, 'cap' => 0.0];
+
+        $out = [];
+        $grandUnit = array_fill_keys($codes, 0.0);
+        $grandTotal = 0.0;
+
+        foreach ($statuses as $s) {
+            $years = array_keys($agg[$s]);
+            sort($years);
+            $subUnit = array_fill_keys($codes, 0.0);
+            $subTotal = 0.0;
+
+            foreach ($years as $t) {
+                $cells = [];
+                $rowTotal = 0.0;
+                foreach ($codes as $u) {
+                    $raw = (float) ($agg[$s][$t][$u] ?? 0);
+                    $cells[$u] = $mkCell($raw);
+                    $rowTotal += $raw;
+                    $subUnit[$u] += $raw;
+                    $grandUnit[$u] += $raw;
+                }
+                $subTotal += $rowTotal;
+                $out[] = [
+                    'type' => 'detail', 'status' => $s, 'tahun_tanam' => $t === 0 ? null : $t,
+                    'cells' => $cells, 'total' => $mkCell($rowTotal),
+                ];
+            }
+
+            $out[] = [
+                'type' => 'subtotal', 'status' => $s, 'label' => $s.' Total',
+                'cells' => array_map($mkCell, $subUnit), 'total' => $mkCell($subTotal),
+            ];
+            $grandTotal += $subTotal;
+        }
+
+        if ($statuses !== []) {
+            $out[] = [
+                'type' => 'grandtotal', 'label' => 'Grand Total',
+                'cells' => array_map($mkCell, $grandUnit), 'total' => $mkCell($grandTotal),
+            ];
+        }
+
+        return response()->json(['units' => $units, 'rows' => $out]);
+    }
 }

@@ -66,6 +66,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/drilldown', [ReportController::class, 'drilldown']);
     Route::get('/drilldown-deep', [ReportController::class, 'drilldownDeep']);
     Route::get('/areal', [\App\Http\Controllers\Api\ArealController::class, 'index']);
+    Route::get('/areal/ringkasan', [\App\Http\Controllers\Api\ArealController::class, 'ringkasan']);
     Route::get('/produksi', [\App\Http\Controllers\Api\ProduksiController::class, 'index']);
 });
 
