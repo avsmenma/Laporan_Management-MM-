@@ -123,9 +123,9 @@ class ReportController extends Controller
         // detail yang sudah terverifikasi, tidak mengubah template/mesin hitung.
         $rows = $this->withSaldoAwalJumlah($rows);
 
-        // Seksi F: "Tandan Buah Segar (TBS) Olah", "Minyak Sawit", "Inti Sawit"
-        // adalah sub-judul kosong (sesuai acuan Excel) — kosongkan nilainya.
-        $rows = $this->markLm13Subheaders($rows, $komoditi);
+        // Penyesuaian tampilan LM13 Sawit: sub-judul seksi F dikosongkan, dan
+        // "Beban Produksi" dijadikan judul grup "G".
+        $rows = $this->adjustLm13SawitRows($rows, $komoditi);
 
         $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
         $meta['area'] = $isAll
@@ -760,15 +760,18 @@ class ReportController extends Controller
     }
 
     /**
-     * Tandai sub-judul seksi F LM13 Sawit (Tandan Buah Segar (TBS) Olah, Minyak Sawit,
-     * Inti Sawit) sebagai baris 'subheader' tanpa nilai — sesuai acuan Excel yang
-     * mengosongkan baris ini (nilai ada di rincian Kebun Inti/Plasma/Pihak III + Jumlah).
-     * Hanya KS (struktur seksi F karet berbeda). Tidak mengubah template/mesin hitung.
+     * Penyesuaian tampilan LM13 Sawit (hanya KS; struktur karet berbeda):
+     * - Sub-judul seksi F (Tandan Buah Segar (TBS) Olah=27, Minyak Sawit=32,
+     *   Inti Sawit=37) → baris 'subheader' tanpa nilai (sesuai acuan Excel; nilai
+     *   ada di rincian Kebun Inti/Plasma/Pihak III + Jumlah).
+     * - "Beban Produksi" (urutan 47) → judul grup "G" (header, kode 'G.', tanpa nilai),
+     *   memisahkan dari grup F yang berakhir di "Saldo Akhir TBS".
+     * Tidak mengubah template/mesin hitung (lapisan presentasi).
      *
      * @param  \Illuminate\Support\Collection<int, object>  $rows
      * @return \Illuminate\Support\Collection<int, object>
      */
-    private function markLm13Subheaders(\Illuminate\Support\Collection $rows, string $komoditi): \Illuminate\Support\Collection
+    private function adjustLm13SawitRows(\Illuminate\Support\Collection $rows, string $komoditi): \Illuminate\Support\Collection
     {
         if (strtoupper($komoditi) !== 'KS') {
             return $rows;
@@ -781,11 +784,17 @@ class ReportController extends Controller
         ];
 
         foreach ($rows as $row) {
-            if (in_array((int) $row->urutan, $subheaderUrutan, true)) {
+            $u = (int) $row->urutan;
+            if (in_array($u, $subheaderUrutan, true)) {
                 $row->row_type = 'subheader';
-                foreach ($valueCols as $col) {
-                    $row->{$col} = 0.0;
-                }
+            } elseif ($u === 47) {
+                $row->row_type = 'header';
+                $row->kode = 'G.';
+            } else {
+                continue;
+            }
+            foreach ($valueCols as $col) {
+                $row->{$col} = 0.0;
             }
         }
 

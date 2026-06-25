@@ -74,5 +74,11 @@ class ReportLm13SaldoAwalJumlahTest extends TestCase
             $this->assertSame('subheader', $sub['row_type']);
             $this->assertEqualsWithDelta(0.0, (float) $sub['bi_jumlah'], 0.001); // dikosongkan walau sumber 999
         }
+
+        // "Beban Produksi" (urutan 47) → judul grup "G" (header, kode 'G.').
+        $g = $rows->first(fn ($r) => (int) $r['urutan'] === 47 && $r['block'] === 'OLAH_JUAL');
+        $this->assertNotNull($g);
+        $this->assertSame('header', $g['row_type']);
+        $this->assertSame('G.', $g['kode']);
     }
 }
