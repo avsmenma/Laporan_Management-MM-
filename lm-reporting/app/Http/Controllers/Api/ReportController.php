@@ -149,23 +149,21 @@ class ReportController extends Controller
      */
     private function lm13AreaValues(Batch $batch, RefUnit $unit, string $komoditi): array
     {
-        // Luas areal karet belum tersedia sumbernya; alokasi_areal hanya berisi sawit
-        // (tanpa kolom komoditi) → jangan pakai nilai sawit untuk karet.
+        // "Luas Area Kebun TM Inti" (Real Bln Ini & s.d) = total luas areal berstatus
+        // TM untuk unit ini — sumber tabel areal_blok, sama dengan "TM Total" pada
+        // halaman Areal Ringkasan. (Karet belum punya sumber luas → 0.)
         if (strtoupper($komoditi) === 'KR') {
             return ['real_thn_lalu' => 0.0, 'real_thn_ini' => 0.0, 'rko' => 0.0, 'rkap' => 0.0];
         }
 
-        $area = DB::table('alokasi_areal')
-            ->where('year', $batch->year)
-            ->where('kebun_code', $unit->code)
-            ->first();
+        $tmReal = (float) DB::table('areal_blok')
+            ->where('batch_id', $batch->id)
+            ->where('komoditi', $komoditi)
+            ->where('plant_code', $unit->code)
+            ->where('status_blok_petak', 'TM')
+            ->sum('luas_tanam');
 
-        return [
-            'real_thn_lalu' => (float) ($area->real_thn_lalu ?? 0),
-            'real_thn_ini' => (float) ($area->real_thn_ini ?? 0),
-            'rko' => (float) ($area->rko ?? 0),
-            'rkap' => (float) ($area->rkap ?? 0),
-        ];
+        return ['real_thn_lalu' => 0.0, 'real_thn_ini' => $tmReal, 'rko' => 0.0, 'rkap' => 0.0];
     }
 
     /**
@@ -180,17 +178,14 @@ class ReportController extends Controller
             return ['real_thn_lalu' => 0.0, 'real_thn_ini' => 0.0, 'rko' => 0.0, 'rkap' => 0.0];
         }
 
-        $area = DB::table('alokasi_areal')
-            ->where('year', $batch->year)
-            ->selectRaw('SUM(real_thn_lalu) as real_thn_lalu, SUM(real_thn_ini) as real_thn_ini, SUM(rko) as rko, SUM(rkap) as rkap')
-            ->first();
+        // Konsolidasi "Semua Unit": total luas areal status TM seluruh kebun pada batch ini.
+        $tmReal = (float) DB::table('areal_blok')
+            ->where('batch_id', $batch->id)
+            ->where('komoditi', $komoditi)
+            ->where('status_blok_petak', 'TM')
+            ->sum('luas_tanam');
 
-        return [
-            'real_thn_lalu' => (float) ($area->real_thn_lalu ?? 0),
-            'real_thn_ini' => (float) ($area->real_thn_ini ?? 0),
-            'rko' => (float) ($area->rko ?? 0),
-            'rkap' => (float) ($area->rkap ?? 0),
-        ];
+        return ['real_thn_lalu' => 0.0, 'real_thn_ini' => $tmReal, 'rko' => 0.0, 'rkap' => 0.0];
     }
 
     /**
