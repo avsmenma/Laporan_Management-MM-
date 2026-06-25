@@ -119,6 +119,10 @@ class ReportController extends Controller
             ], 404);
         }
 
+        // Sisipkan baris "Jumlah" untuk seksi A (Saldo Awal) — turunan dari baris
+        // detail yang sudah terverifikasi, tidak mengubah template/mesin hitung.
+        $rows = $this->withSaldoAwalJumlah($rows);
+
         $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
         $meta['area'] = $isAll
             ? $this->lm13AreaValuesAll($batch, $komoditi)
@@ -696,6 +700,59 @@ class ReportController extends Controller
             ->orderBy('lm_template_row.urutan')
             ->select($selects)
             ->get();
+    }
+
+    /**
+     * Sisipkan baris "Jumlah" untuk seksi A "Saldo Awal" pada LM13 (urutan 2,3,4 =
+     * Kebun Inti + Plasma + Pihak III), tepat di bawah "- Pihak III". Baris ini
+     * TURUNAN dari baris detail yang sudah ada per blok (tidak mengubah template
+     * maupun mesin hitung). urutan 4.5 dipakai agar tampil di antara baris 4 dan 5;
+     * frontend mengelompokkan per urutan & memetakan sel per blok, jadi aman.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function withSaldoAwalJumlah(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
+    {
+        $valueCols = [
+            'bi_real_thn_lalu', 'bi_real_thn_ini', 'bi_rko_tw', 'bi_rkap',
+            'sd_real_thn_lalu', 'sd_real_thn_ini', 'sd_rko_tw', 'sd_rkap',
+        ];
+
+        // Jumlahkan baris detail seksi A (urutan 2,3,4) per blok.
+        $byBlok = [];
+        foreach ($rows as $row) {
+            if (! in_array((int) $row->urutan, [2, 3, 4], true)) {
+                continue;
+            }
+            $byBlok[$row->blok] ??= array_fill_keys($valueCols, 0.0);
+            foreach ($valueCols as $col) {
+                $byBlok[$row->blok][$col] += (float) ($row->{$col} ?? 0);
+            }
+        }
+
+        if ($byBlok === []) {
+            return $rows;
+        }
+
+        $indent = $rows->first(fn ($r) => (int) $r->urutan === 4)->indent ?? 0;
+
+        foreach ($byBlok as $blok => $sums) {
+            $rows->push((object) array_merge([
+                'urutan' => 4.5,
+                'kode' => null,
+                'uraian' => 'Jumlah',
+                'row_type' => 'subtotal',
+                'indent' => $indent,
+                'blok' => $blok,
+            ], $sums));
+        }
+
+        // Pertahankan urutan tampilan (blok asc, urutan asc) seperti query asal.
+        return $rows->sortBy([
+            ['blok', 'asc'],
+            ['urutan', 'asc'],
+        ])->values();
     }
 
     /**
