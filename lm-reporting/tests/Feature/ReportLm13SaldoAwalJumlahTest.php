@@ -37,6 +37,10 @@ class ReportLm13SaldoAwalJumlahTest extends TestCase
         DB::table('alokasi_produksi')->insert([
             ['batch_id' => $batch->id, 'year' => 2026, 'month' => 5, 'kebun_code' => $unit->code, 'pabrik_code' => '5F01', 'produk' => 'Stok Awal TBS', 'jumlah' => 120],
             ['batch_id' => $batch->id, 'year' => 2026, 'month' => 5, 'kebun_code' => $unit->code, 'pabrik_code' => null, 'produk' => 'Stok Awal TBS', 'jumlah' => 80],
+            // Produk seksi F (sub-judul) — harus DIKOSONGKAN di output meski ada nilai.
+            ['batch_id' => $batch->id, 'year' => 2026, 'month' => 5, 'kebun_code' => $unit->code, 'pabrik_code' => '5F01', 'produk' => 'TBS Olah', 'jumlah' => 999],
+            ['batch_id' => $batch->id, 'year' => 2026, 'month' => 5, 'kebun_code' => $unit->code, 'pabrik_code' => '5F01', 'produk' => 'CPO', 'jumlah' => 999],
+            ['batch_id' => $batch->id, 'year' => 2026, 'month' => 5, 'kebun_code' => $unit->code, 'pabrik_code' => '5F01', 'produk' => 'Kernel', 'jumlah' => 999],
         ]);
 
         app(Lm13Service::class)->generate($batch, $unit, 'KS');
@@ -62,5 +66,13 @@ class ReportLm13SaldoAwalJumlahTest extends TestCase
         $idxJumlah = $oj->search(fn ($r) => (string) $r['urutan'] === '4.5');
         $idxB = $oj->search(fn ($r) => (int) $r['urutan'] === 5);
         $this->assertTrue($idxPihak < $idxJumlah && $idxJumlah < $idxB);
+
+        // Sub-judul seksi F (urutan 27/32/37) → row_type 'subheader' & nilai dikosongkan.
+        foreach ([27, 32, 37] as $u) {
+            $sub = $rows->first(fn ($r) => (int) $r['urutan'] === $u && $r['block'] === 'OLAH_JUAL');
+            $this->assertNotNull($sub, "Baris sub-judul urutan $u harus ada.");
+            $this->assertSame('subheader', $sub['row_type']);
+            $this->assertEqualsWithDelta(0.0, (float) $sub['bi_jumlah'], 0.001); // dikosongkan walau sumber 999
+        }
     }
 }

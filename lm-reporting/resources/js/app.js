@@ -116,6 +116,11 @@ function numberColumn(field, title, clickable = true) {
         cssClass: clickable ? 'lm-number-cell' : 'lm-number-cell lm-number-static',
         formatter(cell) {
             const row = cell.getRow().getData();
+            // Baris sub-judul (mis. "Minyak Sawit"/"Inti Sawit" di seksi Produksi
+            // Hasil Olah) tidak menampilkan nilai — kosong, bukan strip "-".
+            if (row.row_type === 'subheader') {
+                return '';
+            }
             const isRendemenRow = String(row.uraian ?? '').toLowerCase().includes('rendemen');
 
             return formatNumber(cell.getValue(), field, isPercent(field) || isRendemenRow);
@@ -374,6 +379,7 @@ function rowFormatter(row) {
     const data = row.getData();
     const element = row.getElement();
     element.classList.toggle('lm-row-header', data.row_type === 'header');
+    element.classList.toggle('lm-row-subheader', data.row_type === 'subheader');
     element.classList.toggle('lm-row-subtotal', data.row_type === 'subtotal');
     element.classList.toggle('lm-row-total', data.row_type === 'total');
     element.classList.toggle('lm-row-area', data.row_type === 'area' || data.row_type === 'area-total');

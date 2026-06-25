@@ -443,6 +443,17 @@ select.field-control { padding-right: 8px; }
     font-size: 11px;
 }
 
+/* sub-judul (mis. "Minyak Sawit"/"Inti Sawit" seksi Produksi Hasil Olah):
+   pita hijau lebih MUDA dari header, tanpa nilai (dikosongkan di formatter). */
+.lm-report-table .tabulator-row.lm-row-subheader td,
+.lm-report-table .tabulator-row.lm-row-subheader .tabulator-cell,
+.lm-report-table .tabulator-row.lm-row-subheader .tabulator-cell.tabulator-frozen,
+.lm-report-table .tabulator-row.lm-row-subheader.tabulator-row-even .tabulator-cell.tabulator-frozen {
+    background: #f1f8f4 !important;
+    font-weight: 600;
+    color: var(--g-800);
+}
+
 /* ===== Baris "Luas Area Kebun" (header LM13): pita terang dengan angka tampil ===== */
 .lm-report-table .tabulator-row.lm-row-area .tabulator-cell,
 .lm-report-table .tabulator-row.lm-row-area .tabulator-cell.tabulator-frozen,

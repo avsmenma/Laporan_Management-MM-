@@ -123,6 +123,10 @@ class ReportController extends Controller
         // detail yang sudah terverifikasi, tidak mengubah template/mesin hitung.
         $rows = $this->withSaldoAwalJumlah($rows);
 
+        // Seksi F: "Tandan Buah Segar (TBS) Olah", "Minyak Sawit", "Inti Sawit"
+        // adalah sub-judul kosong (sesuai acuan Excel) — kosongkan nilainya.
+        $rows = $this->markLm13Subheaders($rows, $komoditi);
+
         $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
         $meta['area'] = $isAll
             ? $this->lm13AreaValuesAll($batch, $komoditi)
@@ -753,6 +757,39 @@ class ReportController extends Controller
             ['blok', 'asc'],
             ['urutan', 'asc'],
         ])->values();
+    }
+
+    /**
+     * Tandai sub-judul seksi F LM13 Sawit (Tandan Buah Segar (TBS) Olah, Minyak Sawit,
+     * Inti Sawit) sebagai baris 'subheader' tanpa nilai — sesuai acuan Excel yang
+     * mengosongkan baris ini (nilai ada di rincian Kebun Inti/Plasma/Pihak III + Jumlah).
+     * Hanya KS (struktur seksi F karet berbeda). Tidak mengubah template/mesin hitung.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function markLm13Subheaders(\Illuminate\Support\Collection $rows, string $komoditi): \Illuminate\Support\Collection
+    {
+        if (strtoupper($komoditi) !== 'KS') {
+            return $rows;
+        }
+
+        $subheaderUrutan = [27, 32, 37];
+        $valueCols = [
+            'bi_real_thn_lalu', 'bi_real_thn_ini', 'bi_rko_tw', 'bi_rkap',
+            'sd_real_thn_lalu', 'sd_real_thn_ini', 'sd_rko_tw', 'sd_rkap',
+        ];
+
+        foreach ($rows as $row) {
+            if (in_array((int) $row->urutan, $subheaderUrutan, true)) {
+                $row->row_type = 'subheader';
+                foreach ($valueCols as $col) {
+                    $row->{$col} = 0.0;
+                }
+            }
+        }
+
+        return $rows;
     }
 
     /**
