@@ -225,6 +225,7 @@ function arealApp() {
                     field: 'status',
                     frozen: true,
                     minWidth: 160,
+                    headerHozAlign: 'center',
                     formatter: (cell) => {
                         const d = cell.getRow().getData();
                         if (d._type === 'subtotal' || d._type === 'grandtotal') {
