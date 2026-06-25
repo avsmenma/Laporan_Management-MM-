@@ -170,9 +170,11 @@ function arealApp() {
         },
 
         syncBatch() {
+            // Jangan auto-pilih bulan saat ganti tahun. Pertahankan bulan bila masih
+            // tersedia di tahun baru; selain itu kosongkan agar user memilih sendiri.
             const ms = this.months();
-            if (!ms.includes(Number(this.filters.month))) {
-                this.filters.month = ms[0] ?? '';
+            if (!(this.filters.month && ms.includes(Number(this.filters.month)))) {
+                this.filters.month = '';
             }
         },
 

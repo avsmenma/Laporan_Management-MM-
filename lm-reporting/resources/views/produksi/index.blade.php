@@ -139,18 +139,27 @@ function produksiApp() {
                 .sort((a, b) => b - a);
         },
         onYearChange() {
+            // Jangan auto-pilih bulan saat ganti tahun. Pertahankan bulan bila masih
+            // tersedia di tahun baru; selain itu kosongkan agar user memilih sendiri.
             const ms = this.months();
-            if (!ms.includes(Number(this.month))) {
-                this.month = ms[0] ?? '';
+            if (!(this.month && ms.includes(Number(this.month)))) {
+                this.month = '';
             }
             this.load();
         },
 
         async init() {
-            await this.load();
+            // Muat-awal: adopsi periode terbaru dari server agar halaman langsung berisi.
+            await this.load(true);
         },
 
-        async load() {
+        async load(adopt = false) {
+            // Aksi pengguna butuh tahun & bulan eksplisit; hanya muat-awal (adopt) yang
+            // boleh mengambil periode terbaru dari server tanpa pilihan user.
+            if (!adopt && (!this.year || !this.month)) {
+                this.hasData = false;
+                return;
+            }
             this.errorMsg = null;
             try {
                 const params = [];
@@ -164,12 +173,16 @@ function produksiApp() {
                 }
                 const data = await resp.json();
                 this.periods = data.periods || [];
-                this.year = data.year ?? '';
-                this.month = data.month ?? '';
+                // Hanya muat-awal yang mengikuti periode pilihan server; aksi user
+                // mempertahankan pilihannya sendiri.
+                if (adopt) {
+                    this.year = data.year ?? '';
+                    this.month = data.month ?? '';
+                }
                 this.plants = data.plants || [];
                 this.kebun = data.kebun || [];
                 this.payload = data;
-                this.hasData = (this.periods.length > 0);
+                this.hasData = (this.periods.length > 0) && !!this.year && !!this.month;
                 if (this.hasData) {
                     this.$nextTick(() => this.renderActive());
                 }
