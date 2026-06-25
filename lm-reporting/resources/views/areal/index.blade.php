@@ -3,7 +3,7 @@
 @section('title', 'Areal')
 
 @section('content')
-<div x-data="arealApp()" x-init="init()">
+<div x-data="arealApp()" x-init="init()" class="areal-page">
     <div class="filter-bar">
         <div class="filter-grid">
             <div class="filter-group">
@@ -35,7 +35,8 @@
                 </select>
             </div>
 
-            <div class="filter-group">
+            {{-- Dropdown Unit Kebun hanya untuk tab Detail; Ringkasan menggabung semua unit. --}}
+            <div class="filter-group" x-show="activeTab === 'detail'">
                 <label class="filter-label">Unit Kebun</label>
                 <select class="filter-select" x-model="filters.unit" @change="load()">
                     <option value="">— pilih unit —</option>
@@ -48,18 +49,56 @@
         </div>
     </div>
 
-    <div class="report-card" x-show="hasData" x-cloak>
-        <div id="areal-table" class="lm-report-table"></div>
+    {{-- Satu tab-bar: Ringkasan (default) & Detail. --}}
+    <div class="areal-frame">
+        <div class="tabs areal-tabs">
+            <template x-for="t in tabs" :key="t.key">
+                <span class="tab" :class="{ active: activeTab === t.key }"
+                      @click="setTab(t.key)" x-text="t.title"></span>
+            </template>
+        </div>
+
+        {{-- Tab Detail: tabel pivot yang sudah ada. --}}
+        <div x-show="activeTab === 'detail'">
+            <div class="report-card" x-show="hasData" x-cloak>
+                <div id="areal-table" class="lm-report-table"></div>
+            </div>
+            <div x-show="!hasData" x-cloak class="areal-empty">
+                <div style="font-size:3rem;margin-bottom:1rem">🗂️</div>
+                <h3 style="color:#666;font-weight:500">Pilih unit &amp; periode untuk melihat data areal</h3>
+                <p style="color:#999;margin-top:0.5rem">Pilih Komoditas, Tahun, Bulan, dan Unit Kebun</p>
+            </div>
+        </div>
+
+        {{-- Tab Ringkasan: tabel sedang disiapkan. --}}
+        <div x-show="activeTab === 'ringkasan'" class="areal-empty">
+            <div style="font-size:3rem;margin-bottom:1rem">📊</div>
+            <h3 style="color:#666;font-weight:500">Tabel ringkasan sedang disiapkan</h3>
+            <p style="color:#999;margin-top:0.5rem">Tampilan ringkasan areal akan segera tersedia.</p>
+        </div>
     </div>
 
     <div x-show="errorMsg" x-cloak class="lm-error-panel" x-text="errorMsg"></div>
-
-    <div x-show="!hasData" x-cloak style="background:#fff;padding:4rem 2rem;text-align:center;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid var(--line)">
-        <div style="font-size:3rem;margin-bottom:1rem">🗂️</div>
-        <h3 style="color:#666;font-weight:500">Pilih unit &amp; periode untuk melihat data areal</h3>
-        <p style="color:#999;margin-top:0.5rem">Pilih Komoditas, Tahun, Bulan, dan Unit Kebun</p>
-    </div>
 </div>
+
+<style>
+    .areal-frame .areal-tabs { padding-left: 4px; flex-wrap: wrap; }
+    .areal-frame .areal-tabs .tab { cursor: pointer; height: 38px; letter-spacing: .01em; }
+    .areal-frame .areal-tabs .tab.active { font-weight: 700; }
+    /* Kartu menyatu dengan tab di tepi atas. */
+    .areal-frame .report-card { border-top-left-radius: 0; }
+    .areal-frame .lm-report-table { border-top: 0; }
+    .areal-empty {
+        background: #fff;
+        padding: 4rem 2rem;
+        text-align: center;
+        border: 1px solid var(--line);
+        border-top: 0;
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+</style>
 @endsection
 
 @push('scripts')
@@ -72,6 +111,24 @@ function arealApp() {
         hasData: false,
         errorMsg: null,
         table: null,
+        activeTab: 'ringkasan',
+        tabs: [
+            { key: 'ringkasan', title: 'Ringkasan' },
+            { key: 'detail', title: 'Detail' },
+        ],
+
+        setTab(key) {
+            if (this.activeTab === key) return;
+            this.activeTab = key;
+            // Tabel Detail yang dibangun saat tab tersembunyi akan salah ukur kolom;
+            // gambar ulang saat tab Detail ditampilkan (atau muat bila belum ada).
+            if (key === 'detail') {
+                this.$nextTick(() => {
+                    if (this.table) { this.table.redraw(true); }
+                    else { this.load(); }
+                });
+            }
+        },
 
         bulanNama(m) {
             return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
