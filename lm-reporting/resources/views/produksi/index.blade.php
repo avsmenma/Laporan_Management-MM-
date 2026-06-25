@@ -199,7 +199,7 @@ function produksiApp() {
             const fmt = (rend ? this.rendFmt : this.qtyFmt).bind(this);
             const block = (b) => {
                 const cols = this.plants.map(p => ({
-                    title: p.code, field: `${b}_${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
+                    title: p.name || p.code, field: `${b}_${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
                     formatter: fmt, minWidth: 90,
                 }));
                 cols.push({ title: 'Grand Total', field: `${b}_grand`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 110 });
@@ -282,7 +282,7 @@ function produksiApp() {
             const cols = [{ title: 'Uraian', field: 'uraian', frozen: true, minWidth: 150 }];
             const block = (b, label) => {
                 const sub = this.plants.map(p => ({
-                    title: p.code, field: `${b}_${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
+                    title: p.name || p.code, field: `${b}_${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
                     formatter: (c) => { const d = c.getRow().getData(); return d._section ? '' : (d._rend ? this.rendFmt(c) : this.qtyFmt(c)); }, minWidth: 90,
                 }));
                 sub.push({ title: 'JLH', field: `${b}_JLH`, hozAlign: 'right', headerHozAlign: 'center',

@@ -59,6 +59,8 @@ class ProduksiApiTest extends TestCase
         $this->assertSame(5, $data['month']);
         $this->assertSame('2026-05-31', $data['date']);
         $this->assertSame(['5F01', '5F04'], array_column($data['plants'], 'code'));
+        // Judul kolom memakai nama singkat PKS (acuan V2), bukan kode 5Fxx.
+        $this->assertSame(['Pagun', 'Parba'], array_column($data['plants'], 'name'));
         $this->assertSame(['5E01', '5E02'], array_column($data['kebun'], 'code'));
 
         // TBS Diterima: 5E01/5F01 Bulan Ini=100, S.D=1000; Grand bulan ini=150, sd=1500

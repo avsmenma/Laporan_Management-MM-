@@ -24,6 +24,22 @@ class ProduksiController extends Controller
     /** Tabel kuantitas (restan_awal turunan disisipkan paling depan). */
     private const QTY_TABLES = ['restan_awal', 'tbs_diterima', 'tbs_diolah', 'restan_akhir', 'minyak_sawit', 'inti_sawit'];
 
+    /**
+     * Nama singkat PKS untuk judul kolom (mengikuti file acuan
+     * CONTOH_PRODUKSI_PKS_V2.xlsx; bukan kode 5Fxx).
+     */
+    private const PLANT_SHORT = [
+        '5F01' => 'Pagun', // PKS Gunung Meliau
+        '5F04' => 'Parba', // PKS Rimba Belian
+        '5F07' => 'Panga', // PKS Ngabang
+        '5F08' => 'Papar', // PKS Parindu
+        '5F09' => 'Pakem', // PKS Kembayan
+        '5F14' => 'Papam', // PKS Pamukan
+        '5F15' => 'Papel', // PKS Pelaihari
+        '5F21' => 'Pasam', // PKS Samuntai
+        '5F22' => 'Palpi', // PKS Long Pinang
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $this->authenticateReportRequest($request);
@@ -136,7 +152,11 @@ class ProduksiController extends Controller
             'year' => $year,
             'month' => $month,
             'date' => $date,
-            'plants' => array_map(fn ($p) => ['code' => $p, 'desc' => $plantDesc[$p] ?? ''], $plants),
+            'plants' => array_map(fn ($p) => [
+                'code' => $p,
+                'desc' => $plantDesc[$p] ?? '',
+                'name' => self::PLANT_SHORT[$p] ?? ($plantDesc[$p] ?? $p),
+            ], $plants),
             'kebun' => array_map(fn ($k) => ['code' => $k, 'nama' => $kebunNama[$k] ?? ''], $kebun),
             'tables' => $tables,
             'ringkasan' => $this->buildRingkasan($tables, $mat, $kebun, $plants),
