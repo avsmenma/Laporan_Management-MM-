@@ -66,6 +66,10 @@
        Tab dibuat bisa membungkus (wrap) bila judulnya banyak. */
     .prod-frame .prod-tabs { padding-left: 4px; flex-wrap: wrap; }
     .prod-frame .prod-tabs .tab { cursor: pointer; height: 38px; letter-spacing: .01em; }
+    /* Tab tak-terpilih tetap berlatar (redup) agar terlihat sebagai blok, namun
+       jelas berbeda dari tab terpilih yang lebih terang (putih + garis hijau). */
+    .prod-frame .prod-tabs .tab:not(.active) { background: #eaf0ec; border-color: var(--line); }
+    .prod-frame .prod-tabs .tab:not(.active):hover { background: #dfe8e2; }
     .prod-frame .prod-tabs .tab.active { font-weight: 700; }
     /* Sudut kiri-atas kartu dibuat siku agar tab menyatu mulus dengan kartu. */
     .prod-frame .report-card { border-top-left-radius: 0; }

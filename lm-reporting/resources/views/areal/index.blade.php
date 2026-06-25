@@ -89,6 +89,10 @@
 <style>
     .areal-frame .areal-tabs { padding-left: 4px; flex-wrap: wrap; }
     .areal-frame .areal-tabs .tab { cursor: pointer; height: 38px; letter-spacing: .01em; }
+    /* Tab tak-terpilih tetap berlatar (redup) agar terlihat sebagai blok, namun
+       jelas berbeda dari tab terpilih yang lebih terang (putih + garis hijau). */
+    .areal-frame .areal-tabs .tab:not(.active) { background: #eaf0ec; border-color: var(--line); }
+    .areal-frame .areal-tabs .tab:not(.active):hover { background: #dfe8e2; }
     .areal-frame .areal-tabs .tab.active { font-weight: 700; }
     /* Kartu menyatu dengan tab di tepi atas. */
     .areal-frame .report-card { border-top-left-radius: 0; }
