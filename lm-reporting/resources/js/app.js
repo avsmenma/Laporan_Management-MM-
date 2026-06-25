@@ -116,9 +116,10 @@ function numberColumn(field, title, clickable = true) {
         cssClass: clickable ? 'lm-number-cell' : 'lm-number-cell lm-number-static',
         formatter(cell) {
             const row = cell.getRow().getData();
-            // Baris sub-judul (mis. "Minyak Sawit"/"Inti Sawit" di seksi Produksi
-            // Hasil Olah) tidak menampilkan nilai — kosong, bukan strip "-".
-            if (row.row_type === 'subheader') {
+            // Baris judul seksi (header, mis. "D. MINYAK SAWIT") & sub-judul
+            // (mis. "Minyak Sawit" di seksi Produksi Hasil Olah) hanya label —
+            // tidak menampilkan nilai, kosong (bukan strip "-"). Sesuai acuan Excel.
+            if (row.row_type === 'header' || row.row_type === 'subheader') {
                 return '';
             }
             const isRendemenRow = String(row.uraian ?? '').toLowerCase().includes('rendemen');
