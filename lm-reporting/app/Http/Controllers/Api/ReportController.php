@@ -132,9 +132,15 @@ class ReportController extends Controller
         $rows = $this->adjustLm13SawitRows($rows, $komoditi);
 
         $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
-        $meta['area'] = $isAll
+        $area = $isAll
             ? $this->lm13AreaValuesAll($batch, $komoditi)
             : $this->lm13AreaValues($batch, $unit, $komoditi);
+        $meta['area'] = $area;
+
+        // Hitung baris "... per Ha" dengan penyebut "Luas Area Kebun TM Inti" yang
+        // sama (dari areal_blok). Penyebut mesin hitung (alokasi_areal) masih kosong,
+        // jadi rasio ini diisi di lapisan presentasi agar konsisten dengan Luas Area.
+        $rows = $this->applyPerHaToLm13($rows, (float) ($area['real_thn_ini'] ?? 0), $komoditi);
 
         return response()->json([
             'success' => true,
@@ -805,6 +811,70 @@ class ReportController extends Controller
                 }
                 $oj[$u]->bi_real_thn_ini = $safeDiv((float) $oj[68]->bi_real_thn_ini, (float) $oj[25]->bi_real_thn_ini);
                 $oj[$u]->sd_real_thn_ini = $safeDiv((float) $oj[68]->sd_real_thn_ini, (float) $oj[25]->sd_real_thn_ini);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Isi baris "... per Ha" LM13 (lapisan presentasi), per blok, dengan penyebut
+     * "Luas Area Kebun TM Inti" (Ha) dari areal_blok:
+     *   - Biaya Tanaman per Ha           = Jumlah Beban Tanaman / Luas
+     *   - Biaya Produksi excl. Penyust.  = (Jumlah Biaya Produksi − Beban Penyusutan
+     *                                       Overhead Kebun) / Luas
+     *   - Biaya Produksi per Ha          = Jumlah Biaya Produksi / Luas
+     * Numerator (rupiah) diambil dari baris subtotal/detail yang sudah dihitung mesin.
+     * Penyebut 0 → 0 (IFERROR). Hanya kolom Real (Bln Ini & s.d) yang diisi, sama
+     * seperti baris HPP. Karet: Luas masih 0 → rasio 0 (tak berubah).
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function applyPerHaToLm13(\Illuminate\Support\Collection $rows, float $area, string $komoditi): \Illuminate\Support\Collection
+    {
+        // [Jumlah Beban Tanaman, Beban Penyusutan Overhead Kebun, Jumlah Biaya Produksi,
+        //  Biaya Tanaman/Ha, Biaya Produksi excl. Penyust./Ha, Biaya Produksi/Ha].
+        $map = [
+            'KS' => [53, 59, 68, 69, 70, 71],
+            'KR' => [33, 39, 48, 49, 50, 51],
+        ];
+        $k = strtoupper($komoditi);
+        if (! isset($map[$k])) {
+            return $rows;
+        }
+        [$uJbt, $uPenyust, $uJbp, $uHaTanaman, $uHaExcl, $uHaProduksi] = $map[$k];
+
+        $safeDiv = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d, 2);
+
+        // Kelompokkan baris per blok (OLAH_JUAL/OLAH/JUAL) lalu hitung per blok.
+        $byBlok = [];
+        foreach ($rows as $row) {
+            $byBlok[$row->blok][(int) $row->urutan] = $row;
+        }
+
+        foreach ($byBlok as $r) {
+            if (! isset($r[$uJbt], $r[$uJbp])) {
+                continue;
+            }
+            $jbtBi = (float) ($r[$uJbt]->bi_real_thn_ini ?? 0);
+            $jbtSd = (float) ($r[$uJbt]->sd_real_thn_ini ?? 0);
+            $jbpBi = (float) ($r[$uJbp]->bi_real_thn_ini ?? 0);
+            $jbpSd = (float) ($r[$uJbp]->sd_real_thn_ini ?? 0);
+            $penBi = (float) ($r[$uPenyust]->bi_real_thn_ini ?? 0);
+            $penSd = (float) ($r[$uPenyust]->sd_real_thn_ini ?? 0);
+
+            if (isset($r[$uHaTanaman])) {
+                $r[$uHaTanaman]->bi_real_thn_ini = $safeDiv($jbtBi, $area);
+                $r[$uHaTanaman]->sd_real_thn_ini = $safeDiv($jbtSd, $area);
+            }
+            if (isset($r[$uHaExcl])) {
+                $r[$uHaExcl]->bi_real_thn_ini = $safeDiv($jbpBi - $penBi, $area);
+                $r[$uHaExcl]->sd_real_thn_ini = $safeDiv($jbpSd - $penSd, $area);
+            }
+            if (isset($r[$uHaProduksi])) {
+                $r[$uHaProduksi]->bi_real_thn_ini = $safeDiv($jbpBi, $area);
+                $r[$uHaProduksi]->sd_real_thn_ini = $safeDiv($jbpSd, $area);
             }
         }
 
