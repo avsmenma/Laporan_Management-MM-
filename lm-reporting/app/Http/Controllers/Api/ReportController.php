@@ -142,6 +142,9 @@ class ReportController extends Controller
         // jadi rasio ini diisi di lapisan presentasi agar konsisten dengan Luas Area.
         $rows = $this->applyPerHaToLm13($rows, (float) ($area['real_thn_ini'] ?? 0), $komoditi);
 
+        // Kosongkan baris "Harga Pokok Pihak III" (belum ada data Pihak III).
+        $rows = $this->blankLm13HppPihakIII($rows);
+
         return response()->json([
             'success' => true,
             'meta' => $meta,
@@ -811,6 +814,32 @@ class ReportController extends Controller
                 }
                 $oj[$u]->bi_real_thn_ini = $safeDiv((float) $oj[68]->bi_real_thn_ini, (float) $oj[25]->bi_real_thn_ini);
                 $oj[$u]->sd_real_thn_ini = $safeDiv((float) $oj[68]->sd_real_thn_ini, (float) $oj[25]->sd_real_thn_ini);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Kosongkan nilai baris "Harga Pokok Pihak III ..." LM13 (KS Rp/Kg Ms+IS,
+     * KR Rp/Kg Lump) di semua blok — belum ada data produksi Pihak III, jadi sel
+     * ditampilkan kosong ("-"). Lapisan presentasi (tidak mengubah mesin hitung).
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function blankLm13HppPihakIII(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
+    {
+        $valueCols = [
+            'bi_real_thn_lalu', 'bi_real_thn_ini', 'bi_rko_tw', 'bi_rkap',
+            'sd_real_thn_lalu', 'sd_real_thn_ini', 'sd_rko_tw', 'sd_rkap',
+        ];
+
+        foreach ($rows as $row) {
+            if (str_starts_with((string) ($row->uraian ?? ''), 'Harga Pokok Pihak III')) {
+                foreach ($valueCols as $col) {
+                    $row->{$col} = 0.0;
+                }
             }
         }
 
