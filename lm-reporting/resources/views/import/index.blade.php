@@ -110,7 +110,6 @@
                             <option value="{{ $m }}" @selected(($pending['month'] ?? null) === $m)>{{ $nama }}</option>
                         @endforeach
                     </select>
-                    <span class="field-hint" x-show="isBudget() || isProduksi()" x-cloak style="margin-top:6px">Hanya baris pada bulan ini yang diimpor.</span>
                 </div>
                 <div class="field" style="margin-bottom:0">
                     <label>File</label>
