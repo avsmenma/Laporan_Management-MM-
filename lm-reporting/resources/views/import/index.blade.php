@@ -99,17 +99,18 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="field" style="margin-bottom:0" x-show="!isBudgetType() && !isProduksi()">
+                <div class="field" style="margin-bottom:0">
                     <label>Bulan</label>
                     @php
                         $namaBulan = [1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'];
                     @endphp
-                    <select name="month" class="field-control" x-bind:required="!isBudgetType() && !isProduksi()">
-                        <option value="">— deteksi dari file —</option>
+                    <select name="month" class="field-control" required>
+                        <option value="">— pilih bulan —</option>
                         @foreach ($namaBulan as $m => $nama)
                             <option value="{{ $m }}" @selected(($pending['month'] ?? null) === $m)>{{ $nama }}</option>
                         @endforeach
                     </select>
+                    <span class="field-hint" x-show="isBudget() || isProduksi()" x-cloak style="margin-top:6px">Hanya baris pada bulan ini yang diimpor.</span>
                 </div>
                 <div class="field" style="margin-bottom:0">
                     <label>File</label>
@@ -170,7 +171,7 @@
                         @click="confirm({
                             token: '{{ $pending['token'] }}', ext: '{{ $pending['ext'] }}',
                             type: '{{ $pending['type'] }}', year: {{ (int) $pending['year'] }},
-                            month: {{ ($pending['is_budget'] ?? false) ? 'null' : (int) ($pending['month'] ?? 0) }}
+                            month: {{ (int) ($pending['month'] ?? 0) }}
                         })">Konfirmasi &amp; Simpan ke Database</button>
                     <form method="POST" action="{{ route('import.cancel') }}">
                         @csrf

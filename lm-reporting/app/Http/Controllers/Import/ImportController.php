@@ -29,15 +29,18 @@ class ImportController extends Controller
     {
         $type = (string) $request->input('type');
         $isBudget = SpreadsheetImportService::isBudget($type);
+        $isProduksi = SpreadsheetImportService::isProduksi($type);
 
         $rules = [
             'type' => ['required', 'in:'.implode(',', array_keys(SpreadsheetImportService::types()))],
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv'],
             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+            // Budget & produksi: bulan WAJIB (dipakai sebagai penjaga/filter period).
+            // Realisasi/areal: boleh kosong → auto-deteksi dari file.
+            'month' => ($isBudget || $isProduksi)
+                ? ['required', 'integer', 'min:1', 'max:12']
+                : ['nullable', 'integer', 'min:1', 'max:12'],
         ];
-        if (! $isBudget) {
-            $rules['month'] = ['nullable', 'integer', 'min:1', 'max:12'];
-        }
         $data = $request->validate($rules);
 
         $file = $request->file('file');
@@ -74,7 +77,7 @@ class ImportController extends Controller
                 'ext'       => $ext,
                 'type'      => $type,
                 'year'      => (int) $data['year'],
-                'month'     => $isBudget ? null : $month,
+                'month'     => $month,
                 'is_budget' => $isBudget,
                 'filename'  => $file->getClientOriginalName(),
             ],
@@ -90,18 +93,15 @@ class ImportController extends Controller
     public function confirm(Request $request): \Illuminate\Http\JsonResponse
     {
         $type = (string) $request->input('type');
-        $isBudget = SpreadsheetImportService::isBudget($type);
-        $isProduksi = SpreadsheetImportService::isProduksi($type);
 
         $rules = [
             'token' => ['required', 'regex:/^[0-9a-fA-F\-]{36}$/'],
             'ext'   => ['required', 'in:xlsx,xls,csv'],
             'type'  => ['required', 'in:'.implode(',', array_keys(SpreadsheetImportService::types()))],
             'year'  => ['required', 'integer', 'min:2000', 'max:2100'],
+            // Bulan kini wajib untuk semua jenis import (penjaga period / batch bulan).
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
         ];
-        if (! $isBudget && ! $isProduksi) {
-            $rules['month'] = ['required', 'integer', 'min:1', 'max:12'];
-        }
         $data = $request->validate($rules);
 
         $staged = "import-staging/{$data['token']}.{$data['ext']}";
@@ -113,7 +113,7 @@ class ImportController extends Controller
             'user_id'     => $request->user()->id,
             'type'        => $type,
             'year'        => (int) $data['year'],
-            'month'       => ($isBudget || $isProduksi) ? null : (int) $data['month'],
+            'month'       => (int) $data['month'],
             'filename'    => "{$data['token']}.{$data['ext']}",
             'staged_path' => $staged,
             'ext'         => $data['ext'],

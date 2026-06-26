@@ -52,6 +52,27 @@ class ImportProduksiTest extends TestCase
         $this->assertSame(57, DB::table('produksi_pks')->count());
     }
 
+    public function test_penjaga_bulan_hanya_impor_tanggal_yang_cocok(): void
+    {
+        $path = $this->contohPath();
+        if (! is_file($path)) {
+            $this->markTestSkipped("File contoh produksi tidak tersedia di: {$path}");
+        }
+
+        $service = app(SpreadsheetImportService::class);
+
+        // File contoh seluruhnya tanggal 2026-05-31.
+        // Pilih bulan 6 → tidak ada baris yang cocok.
+        $r0 = $service->importProduksi($path, null, null, 2026, 6);
+        $this->assertSame(0, $r0->rowCount, 'Bulan 6 tidak punya tanggal yang cocok');
+        $this->assertSame(0, DB::table('produksi_pks')->count());
+
+        // Pilih bulan 5 → semua 57 baris kebun masuk.
+        $r1 = $service->importProduksi($path, null, null, 2026, 5);
+        $this->assertSame(57, $r1->rowCount, 'Bulan 5 cocok dengan seluruh baris');
+        $this->assertSame(57, DB::table('produksi_pks')->count());
+    }
+
     public function test_filter_baris_dikecualikan(): void
     {
         $this->assertTrue(SpreadsheetImportService::isExcludedProduksiKebun('5F08'));

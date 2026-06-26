@@ -186,7 +186,7 @@ class SpreadsheetImportService
      * tipe unit (kebun/pabrik) dan TANPA dipetakan ke budget_rko/rkap — sebab kode GC
      * (AP/AR) tak punya baris template LM14. Ini audit-only by design.
      */
-    public function importBudget(int $year, string $type, UploadedFile|string $file, ?int $userId = null, ?callable $onProgress = null): ImportResult
+    public function importBudget(int $year, string $type, UploadedFile|string $file, ?int $userId = null, ?callable $onProgress = null, ?int $month = null): ImportResult
     {
         abort_unless(self::isBudget($type), 422, 'Jenis bukan anggaran.');
         $source = self::budgetSource($type); // BKU/OHC/GC
@@ -227,6 +227,12 @@ class SpreadsheetImportService
             }
             $nilai = $this->numericValue($c[$C_NILAI] ?? 0);
             $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
+
+            // Penjaga bulan: bila operator memilih bulan, hanya baris dengan period
+            // yang sama yang diimpor (tidak menyentuh period lain di tahun yang sama).
+            if ($month !== null && $period !== $month) {
+                continue;
+            }
 
             // GC: audit-only — hanya ke budget_source, tanpa cek tipe unit & tanpa
             // pemetaan ke budget_rko/rkap (tak ada baris template LM14 untuk kode AP/AR).
@@ -269,11 +275,20 @@ class SpreadsheetImportService
             ];
         }
 
-        DB::transaction(function () use ($rows, $rawSrc, $year, $source): void {
-            // Idempoten per-sumber: hapus hanya baris sumber ini.
-            DB::table('budget_rko')->where('year', $year)->where('report_type', 'LM14')->where('source', $source)->delete();
-            DB::table('budget_rkap')->where('year', $year)->where('report_type', 'LM14')->where('source', $source)->delete();
-            DB::table('budget_source')->where('year', $year)->where('report_type', 'LM14')->where('source', $source)->delete();
+        DB::transaction(function () use ($rows, $rawSrc, $year, $source, $month): void {
+            // Idempoten per-sumber: hapus hanya baris sumber ini. Bila bulan dipilih,
+            // hapus HANYA period itu agar 11 bulan lain di tahun yang sama tetap utuh.
+            $scope = function ($q) use ($year, $source, $month) {
+                $q->where('year', $year)->where('report_type', 'LM14')->where('source', $source);
+                if ($month !== null) {
+                    $q->where('period', $month);
+                }
+
+                return $q;
+            };
+            $scope(DB::table('budget_rko'))->delete();
+            $scope(DB::table('budget_rkap'))->delete();
+            $scope(DB::table('budget_source'))->delete();
             foreach (array_chunk($rows, 500) as $chunk) {
                 DB::table('budget_rko')->insert($chunk);
                 DB::table('budget_rkap')->insert($chunk);
@@ -690,7 +705,7 @@ class SpreadsheetImportService
      * Impor sheet ZPTPNHLPP039 → produksi_pks (idempoten per posting_date). Tanggal
      * diturunkan dari kolom "Tgl Posting" (serial Excel atau string Y-m-d). Tanpa Batch.
      */
-    public function importProduksi(string $path, ?int $userId = null, ?callable $onProgress = null): ImportResult
+    public function importProduksi(string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null, ?int $month = null): ImportResult
     {
         $records = [];
         $dates = [];
@@ -701,6 +716,12 @@ class SpreadsheetImportService
             $plant = trim((string) ($v[self::PRODUKSI_COLS['plant_code']] ?? ''));
             $date = $this->produksiDate($v[self::PRODUKSI_COLS['tgl_posting']] ?? null);
             if ($plant === '' || $date === null) {
+                continue;
+            }
+            // Penjaga bulan: bila operator memilih periode, hanya tanggal pada
+            // tahun+bulan tersebut yang diimpor (cegah file salah-bulan masuk).
+            if ($year !== null && $month !== null
+                && ((int) substr($date, 0, 4) !== $year || (int) substr($date, 5, 2) !== $month)) {
                 continue;
             }
             $kebunCode = $this->produksiText($v[self::PRODUKSI_COLS['kebun_code']] ?? null, 20);

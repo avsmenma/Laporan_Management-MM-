@@ -77,6 +77,65 @@ class BudgetImportTest extends TestCase
         unlink($gc);
     }
 
+    public function test_month_guard_imports_only_selected_period_without_touching_others(): void
+    {
+        RefUnit::query()->create(['code' => '5E11', 'name' => 'Kebun A', 'type' => 'KEBUN', 'komoditi' => 'KS']);
+        DB::table('lm_template_row')->insert([
+            ['report_type' => 'LM14', 'komoditi' => 'KS', 'kode' => '41-01', 'urutan' => 1, 'uraian' => 'X', 'row_type' => 'detail'],
+        ]);
+
+        // File memuat dua period: bulan 5 (1000) dan bulan 6 (2000).
+        $file = $this->buildMultiPeriodFile('41-01', [5 => 1000.0, 6 => 2000.0]);
+
+        // Impor bulan 5 → hanya baris period 5 yang masuk.
+        app(SpreadsheetImportService::class)->importBudget(2026, 'rko_bku', $file, null, null, 5);
+        $this->assertSame(1, DB::table('budget_rko')->where('source', 'BKU')->count());
+        $this->assertEqualsWithDelta(1000.0, (float) DB::table('budget_rko')->sum('nilai'), 0.5);
+        $this->assertSame(5, (int) DB::table('budget_rko')->value('period'));
+
+        // Impor bulan 6 → baris period 6 ditambah, period 5 TETAP UTUH.
+        app(SpreadsheetImportService::class)->importBudget(2026, 'rko_bku', $file, null, null, 6);
+        $this->assertSame(2, DB::table('budget_rko')->where('source', 'BKU')->count());
+        $this->assertEqualsWithDelta(3000.0, (float) DB::table('budget_rko')->sum('nilai'), 0.5);
+        $this->assertSame(1, DB::table('budget_rko')->where('period', 5)->count(), 'period 5 tidak boleh terhapus');
+        $this->assertSame(1, DB::table('budget_rko')->where('period', 6)->count());
+
+        // Re-impor bulan 5 → hanya ganti period 5, period 6 utuh.
+        app(SpreadsheetImportService::class)->importBudget(2026, 'rko_bku', $file, null, null, 5);
+        $this->assertSame(2, DB::table('budget_rko')->where('source', 'BKU')->count());
+        $this->assertSame(1, DB::table('budget_rko')->where('period', 6)->count(), 'period 6 tidak boleh terhapus');
+
+        unlink($file);
+    }
+
+    /**
+     * File budget multi-period: satu baris per (period => nilai), kode sama.
+     *
+     * @param  array<int, float>  $perPeriod
+     */
+    private function buildMultiPeriodFile(string $kode, array $perPeriod): string
+    {
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        foreach (['Komoditi', 'Plant', 'C', 'Period', 'Kode', 'Obj', 'CE', 'CEdesc', 'Klas', 'Nilai'] as $i => $label) {
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1).'1', $label);
+        }
+        $row = 2;
+        foreach ($perPeriod as $period => $nilai) {
+            $sheet->setCellValueExplicit('A'.$row, 'KS', DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('B'.$row, '5E11', DataType::TYPE_STRING);
+            $sheet->setCellValue('D'.$row, $period);
+            $sheet->setCellValueExplicit('E'.$row, $kode, DataType::TYPE_STRING);
+            $sheet->setCellValue('J'.$row, $nilai);
+            $row++;
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'budmp').'.xlsx';
+        (new Xlsx($spreadsheet))->save($path);
+
+        return $path;
+    }
+
     /** File budget: kolom A=komoditi, B=plant, D=period, E=kode, J=nilai. */
     private function buildBudgetFile(string $kode, float $nilai): string
     {

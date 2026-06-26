@@ -47,10 +47,11 @@ class ProcessImport implements ShouldQueue
         };
 
         try {
+            $month = $job->month !== null ? (int) $job->month : null;
             if (SpreadsheetImportService::isProduksi($job->type)) {
-                $result = $service->importProduksi($path, $job->user_id, $onProgress);
+                $result = $service->importProduksi($path, $job->user_id, $onProgress, (int) $job->year, $month);
             } elseif ($isBudget) {
-                $result = $service->importBudget((int) $job->year, $job->type, $path, $job->user_id, $onProgress);
+                $result = $service->importBudget((int) $job->year, $job->type, $path, $job->user_id, $onProgress, $month);
                 Batch::query()->where('year', $job->year)->update(['needs_regenerate' => true]);
             } else {
                 $batch = Batch::query()->firstOrCreate(

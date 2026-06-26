@@ -99,7 +99,7 @@ class ImportControllerBudgetTest extends TestCase
     // TEST 1: Budget path — rko_bku, year-only, is_budget=true
     // ===========================================================================
 
-    public function test_budget_store_returns_preview_with_is_budget_true_and_no_month(): void
+    public function test_budget_store_requires_month_and_keeps_it_in_pending(): void
     {
         $admin = $this->adminUser();
 
@@ -112,12 +112,23 @@ class ImportControllerBudgetTest extends TestCase
         ]);
 
         $budgetPath = $this->buildBudgetFile('41-01', 1000.0);
+
+        // Bulan kini WAJIB untuk budget: tanpa month → gagal validasi.
+        $noMonth = $this->actingAs($admin)->from('/import')->post('/import', [
+            'type' => 'rko_bku',
+            'year' => 2026,
+            'file' => UploadedFile::fake()->createWithContent('bku.xlsx', file_get_contents($budgetPath)),
+        ]);
+        $noMonth->assertRedirect('/import');
+        $noMonth->assertSessionHasErrors('month');
+
         $uploaded = UploadedFile::fake()->createWithContent('bku.xlsx', file_get_contents($budgetPath));
         unlink($budgetPath);
 
         $response = $this->actingAs($admin)->post('/import', [
             'type' => 'rko_bku',
             'year' => 2026,
+            'month' => 5,
             'file' => $uploaded,
         ]);
 
@@ -131,8 +142,8 @@ class ImportControllerBudgetTest extends TestCase
         $this->assertArrayHasKey('ext', $pending);
         $this->assertArrayHasKey('type', $pending);
         $this->assertArrayHasKey('filename', $pending);
-        // month tidak wajib untuk budget; bisa null atau tidak ada
-        $this->assertNull($pending['month'] ?? null, 'month harus null untuk tipe budget');
+        // month kini disimpan untuk budget (dipakai sebagai penjaga period).
+        $this->assertSame(5, $pending['month'], 'month harus 5 untuk budget');
 
         $detectedMonths = $response->viewData('detected_months');
         $this->assertSame([], $detectedMonths, 'detected_months harus [] untuk tipe budget');
@@ -162,6 +173,7 @@ class ImportControllerBudgetTest extends TestCase
         $preview = $this->actingAs($admin)->post('/import', [
             'type' => 'rko_bku',
             'year' => 2026,
+            'month' => 5,
             'file' => $uploaded,
         ]);
         $preview->assertOk();
@@ -173,6 +185,7 @@ class ImportControllerBudgetTest extends TestCase
             'ext'   => $pending['ext'],
             'type'  => $pending['type'],
             'year'  => $pending['year'],
+            'month' => $pending['month'],
         ]);
 
         $confirm->assertStatus(202)->assertJsonStructure(['job_id', 'status_url']);
@@ -183,7 +196,7 @@ class ImportControllerBudgetTest extends TestCase
         $this->assertSame('rko_bku', $importJob->type, 'type harus rko_bku');
         $this->assertSame(2026, (int) $importJob->year, 'year harus 2026');
         $this->assertSame('queued', $importJob->status, 'status awal harus queued');
-        $this->assertNull($importJob->month, 'month harus null untuk tipe budget');
+        $this->assertSame(5, (int) $importJob->month, 'month kini disimpan untuk budget');
 
         // ProcessImport harus di-dispatch ke queue.
         Queue::assertPushed(ProcessImport::class, function (ProcessImport $job) use ($importJob) {
