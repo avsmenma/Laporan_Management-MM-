@@ -122,6 +122,23 @@ function numberColumn(field, title, clickable = true) {
             if (row.row_type === 'header' || row.row_type === 'subheader') {
                 return '';
             }
+
+            // Capaian terhadap RKO/RKAP ("% RKO" / "% RKAP"): bila baris tidak punya
+            // data RKO/RKAP → tampilkan 100,01%. Nilai ≥ 100,01% diwarnai merah.
+            if (/^cap_.*(rko|rkap)$/.test(field)) {
+                const red = (t) => `<span style="color:#c0392b;font-weight:600">${t}</span>`;
+                const denom = Number(row[field.slice(4)] ?? 0); // cap_bi_rko → bi_rko
+                if (Math.abs(denom) < 0.000001) {
+                    return red('100,01');
+                }
+                const pct = Number(cell.getValue() ?? 0);
+                if (Math.abs(pct) < 0.000001) {
+                    return '-';
+                }
+                const text = pct.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return pct >= 100.01 ? red(text) : text;
+            }
+
             const isRendemenRow = String(row.uraian ?? '').toLowerCase().includes('rendemen');
             // Baris Luas Area (Ha) ditampilkan 2 desimal (mis. 3.323,76).
             const isAreaRow = row.row_type === 'area' || row.row_type === 'area-total';
