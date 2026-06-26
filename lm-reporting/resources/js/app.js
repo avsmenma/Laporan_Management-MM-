@@ -123,8 +123,10 @@ function numberColumn(field, title, clickable = true) {
                 return '';
             }
             const isRendemenRow = String(row.uraian ?? '').toLowerCase().includes('rendemen');
+            // Baris Luas Area (Ha) ditampilkan 2 desimal (mis. 3.323,76).
+            const isAreaRow = row.row_type === 'area' || row.row_type === 'area-total';
 
-            return formatNumber(cell.getValue(), field, isPercent(field) || isRendemenRow);
+            return formatNumber(cell.getValue(), field, isPercent(field) || isRendemenRow || isAreaRow);
         },
     };
 
