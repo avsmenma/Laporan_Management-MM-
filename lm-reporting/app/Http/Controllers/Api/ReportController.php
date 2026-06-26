@@ -850,8 +850,8 @@ class ReportController extends Controller
      * Isi baris "... per Ha" LM13 (lapisan presentasi), per blok, dengan penyebut
      * "Luas Area Kebun TM Inti" (Ha) dari areal_blok:
      *   - Biaya Tanaman per Ha           = Jumlah Beban Tanaman / Luas
-     *   - Biaya Produksi excl. Penyust.  = (Jumlah Biaya Produksi − Beban Penyusutan
-     *                                       Overhead Kebun) / Luas
+     *   - Biaya Produksi excl. Penyust.  = (Jumlah Biaya Produksi − Jumlah Beban
+     *                                       Penyusutan) / Luas
      *   - Biaya Produksi per Ha          = Jumlah Biaya Produksi / Luas
      * Numerator (rupiah) diambil dari baris subtotal/detail yang sudah dihitung mesin.
      * Penyebut 0 → 0 (IFERROR). Hanya kolom Real (Bln Ini & s.d) yang diisi, sama
@@ -862,11 +862,11 @@ class ReportController extends Controller
      */
     private function applyPerHaToLm13(\Illuminate\Support\Collection $rows, float $area, string $komoditi): \Illuminate\Support\Collection
     {
-        // [Jumlah Beban Tanaman, Beban Penyusutan Overhead Kebun, Jumlah Biaya Produksi,
+        // [Jumlah Beban Tanaman, Jumlah Beban Penyusutan, Jumlah Biaya Produksi,
         //  Biaya Tanaman/Ha, Biaya Produksi excl. Penyust./Ha, Biaya Produksi/Ha].
         $map = [
-            'KS' => [53, 59, 68, 69, 70, 71],
-            'KR' => [33, 39, 48, 49, 50, 51],
+            'KS' => [53, 61, 68, 69, 70, 71],
+            'KR' => [33, 41, 48, 49, 50, 51],
         ];
         $k = strtoupper($komoditi);
         if (! isset($map[$k])) {

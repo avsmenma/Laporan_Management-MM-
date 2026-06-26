@@ -40,7 +40,7 @@ class ReportLm13PerHaTest extends TestCase
         app(Lm13Service::class)->generate($batch, $unit, 'KS');
 
         // Set numerator (rupiah) pada blok OLAH_JUAL: 53=Jumlah Beban Tanaman,
-        // 59=Beban Penyusutan Overhead Kebun, 68=Jumlah Biaya Produksi.
+        // 61=Jumlah Beban Penyusutan, 68=Jumlah Biaya Produksi.
         $tplId = fn (int $u) => DB::table('lm_template_row')
             ->where('report_type', 'LM13')->where('komoditi', 'KS')->where('urutan', $u)->value('id');
         $set = function (int $u, float $bi, float $sd) use ($batch, $unit, $tplId): void {
@@ -51,7 +51,7 @@ class ReportLm13PerHaTest extends TestCase
             $this->assertSame(1, $affected, "Baris urutan {$u} OLAH_JUAL harus ada");
         };
         $set(53, 1_000_000, 5_000_000);   // Jumlah Beban Tanaman
-        $set(59, 200_000, 800_000);       // Beban Penyusutan Overhead Kebun
+        $set(61, 200_000, 800_000);       // Jumlah Beban Penyusutan
         $set(68, 1_500_000, 7_000_000);   // Jumlah Biaya Produksi
 
         $role = Role::query()->firstOrCreate(['name' => Role::OPERATOR], ['description' => 'Operator']);
@@ -65,7 +65,7 @@ class ReportLm13PerHaTest extends TestCase
         // 69: Biaya Tanaman per Ha = 53 / Luas.
         $this->assertEqualsWithDelta(round(1_000_000 / $area, 2), (float) $oj(69)['bi_jumlah'], 0.01);
         $this->assertEqualsWithDelta(round(5_000_000 / $area, 2), (float) $oj(69)['sd_jumlah'], 0.01);
-        // 70: Biaya Produksi excl. Penyust. per Ha = (68 − 59) / Luas.
+        // 70: Biaya Produksi excl. Penyust. per Ha = (68 − 61) / Luas.
         $this->assertEqualsWithDelta(round((1_500_000 - 200_000) / $area, 2), (float) $oj(70)['bi_jumlah'], 0.01);
         $this->assertEqualsWithDelta(round((7_000_000 - 800_000) / $area, 2), (float) $oj(70)['sd_jumlah'], 0.01);
         // 71: Biaya Produksi per Ha = 68 / Luas.
