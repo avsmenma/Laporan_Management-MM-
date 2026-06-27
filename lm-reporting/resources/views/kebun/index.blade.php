@@ -459,7 +459,7 @@ function kebunApp() {
 
         async loadReport() {
             if (!this.canLoadReport()) {
-                alert('Silakan lengkapi filter terlebih dahulu');
+                (window.lmToast || window.alert)('Silakan lengkapi filter terlebih dahulu', 'err');
                 return;
             }
 
