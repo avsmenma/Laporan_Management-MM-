@@ -31,17 +31,21 @@
         <div class="panel-body">
             @php
                 // Pulihkan pilihan setelah pratinjau dari type backend (wbs/rko_bku/areal/...).
-                $pType = $pending['type'] ?? 'wbs';
-                $pIsBudget = \App\Domain\Import\SpreadsheetImportService::isBudget($pType);
-                if ($pType === 'areal') {
+                // Tanpa pratinjau, SEMUA dropdown default kosong (user wajib memilih).
+                $pType = $pending['type'] ?? '';
+                $pIsBudget = $pType !== '' && \App\Domain\Import\SpreadsheetImportService::isBudget($pType);
+                if ($pType === '') {
+                    $pJenis = '';
+                    $pKategori = '';
+                } elseif ($pType === 'areal') {
                     $pJenis = 'areal';
-                    $pKategori = 'wbs'; // kategori tak dipakai utk areal; default aman
+                    $pKategori = '';
                 } elseif ($pType === 'produksi') {
                     $pJenis = 'produksi';
-                    $pKategori = 'wbs';
+                    $pKategori = '';
                 } elseif ($pType === 'produksi_kebun') {
                     $pJenis = 'produksi_kebun';
-                    $pKategori = 'wbs';
+                    $pKategori = '';
                 } elseif ($pIsBudget) {
                     $pJenis = 'rko';
                     $pKategori = substr($pType, 4); // bku/ohc/gc
@@ -56,6 +60,8 @@
                   x-data="{
                       jenis: '{{ $pJenis }}',
                       kategori: '{{ $pKategori }}',
+                      year: '{{ $pending['year'] ?? '' }}',
+                      month: '{{ $pending['month'] ?? '' }}',
                       fileName: '',
                       isBudgetType() { return this.jenis === 'rko' || this.jenis === 'rkap'; },
                       isBudget() { return this.isBudgetType(); },
@@ -63,17 +69,27 @@
                       isProduksi() { return this.jenis === 'produksi'; },
                       isProduksiKebun() { return this.jenis === 'produksi_kebun'; },
                       noKategori() { return this.isAreal() || this.isProduksi() || this.isProduksiKebun(); },
+                      needKategori() { return this.jenis !== '' && !this.noKategori(); },
                       kategoriOptions() {
                           return this.isBudgetType()
                               ? [{ v: 'bku', t: 'BKU' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }]
                               : [{ v: 'wbs', t: 'WBS' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }];
                       },
                       backendType() {
+                          if (this.jenis === '') return '';
+                          if (this.needKategori() && this.kategori === '') return '';
                           if (this.jenis === 'aktual') return this.kategori;
                           if (this.jenis === 'areal') return 'areal';
                           if (this.jenis === 'produksi') return 'produksi';
                           if (this.jenis === 'produksi_kebun') return 'produksi_kebun';
                           return 'rko_' + this.kategori;
+                      },
+                      // Semua dropdown wajib terisi sebelum boleh pratinjau / unduh template.
+                      allSelected() {
+                          return this.backendType() !== '' && this.year !== '' && this.month !== '';
+                      },
+                      templateUrl() {
+                          return '{{ url('import/template') }}/' + this.backendType();
                       }
                   }">
                 @csrf
@@ -81,7 +97,8 @@
                 <input type="hidden" name="type" :value="backendType()">
                 <div class="field" style="margin-bottom:0">
                     <label>Jenis Import</label>
-                    <select x-model="jenis" @change="kategori = isBudgetType() ? 'bku' : 'wbs'" class="field-control">
+                    <select x-model="jenis" @change="kategori = ''" class="field-control">
+                        <option value="">— pilih jenis —</option>
                         <option value="aktual">Aktual</option>
                         <option value="rko">RKO</option>
                         <option value="rkap">RKAP</option>
@@ -90,9 +107,10 @@
                         <option value="produksi_kebun">Produksi Kebun</option>
                     </select>
                 </div>
-                <div class="field" style="margin-bottom:0" x-show="!noKategori()">
+                <div class="field" style="margin-bottom:0" x-show="needKategori()">
                     <label>Kategori Import</label>
                     <select x-model="kategori" class="field-control">
+                        <option value="">— pilih kategori —</option>
                         <template x-for="opt in kategoriOptions()" :key="opt.v">
                             <option :value="opt.v" x-text="opt.t"></option>
                         </template>
@@ -100,9 +118,10 @@
                 </div>
                 <div class="field" style="margin-bottom:0">
                     <label>Tahun</label>
-                    <select name="year" class="field-control" required>
+                    <select name="year" x-model="year" class="field-control" required>
+                        <option value="">— pilih tahun —</option>
                         @foreach (range((int) date('Y') + 1, 2020) as $y)
-                            <option value="{{ $y }}" @selected((int) ($pending['year'] ?? date('Y')) === $y)>{{ $y }}</option>
+                            <option value="{{ $y }}" @selected((int) ($pending['year'] ?? 0) === $y)>{{ $y }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -111,10 +130,10 @@
                     @php
                         $namaBulan = [1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'];
                     @endphp
-                    <select name="month" class="field-control" required>
+                    <select name="month" x-model="month" class="field-control" required>
                         <option value="">— pilih bulan —</option>
                         @foreach ($namaBulan as $m => $nama)
-                            <option value="{{ $m }}" @selected(($pending['month'] ?? null) === $m)>{{ $nama }}</option>
+                            <option value="{{ $m }}" @selected((int) ($pending['month'] ?? 0) === $m)>{{ $nama }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -125,11 +144,22 @@
                     <span class="field-hint" x-show="fileName" x-cloak x-text="'Terpilih: ' + fileName"
                           style="margin-top:6px;color:var(--g-700);font-weight:600;word-break:break-all"></span>
                 </div>
-                <div class="flex items-end md:col-span-5">
-                    <button class="btn btn-primary" type="submit">Pratinjau</button>
+                <div class="flex items-end gap-3 md:col-span-5">
+                    <button class="btn btn-primary" type="submit"
+                            :disabled="!allSelected()"
+                            :style="!allSelected() ? 'opacity:.5;cursor:not-allowed' : ''">Pratinjau</button>
+                    {{-- Tautan unduh template muncul hanya setelah semua dropdown dipilih. --}}
+                    <a x-show="allSelected()" x-cloak :href="templateUrl()"
+                       class="btn btn-outline" style="text-decoration:none">⬇ Download Template</a>
+                    <span class="field-hint" x-show="!allSelected()" x-cloak style="align-self:center">
+                        Pilih Jenis<span x-show="needKategori()">, Kategori</span>, Tahun &amp; Bulan untuk mengunduh template &amp; pratinjau.
+                    </span>
                 </div>
             </form>
-            <p class="field-hint" style="margin-top:12px">Data tidak langsung disimpan. Setelah unggah, periksa pratinjau lalu klik <b>Konfirmasi &amp; Simpan</b>.</p>
+            <p class="field-hint" style="margin-top:12px">
+                <b>Download Template</b> memberi berkas Excel kosong dengan nama sheet &amp; kolom yang benar untuk jenis terpilih —
+                isi data mulai baris ke-2, lalu unggah di sini. Data tidak langsung disimpan: periksa pratinjau dulu, lalu klik <b>Konfirmasi &amp; Simpan</b>.
+            </p>
         </div>
     </section>
 
