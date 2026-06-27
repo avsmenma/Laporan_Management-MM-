@@ -1,0 +1,159 @@
+<?php
+
+namespace App\Domain\Import;
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+
+/**
+ * Membuat berkas template Excel kosong (hanya baris header) untuk tiap jenis import.
+ * Nama sheet & urutan kolom dibuat persis seperti yang dibaca importer di server,
+ * sehingga berkas yang diunduh pasti diterima saat diunggah kembali.
+ */
+class ImportTemplateService
+{
+    /**
+     * Spesifikasi tiap template: nama sheet (harus cocok dgn yang dibaca importer)
+     * + daftar header kolom sesuai urutan posisi yang dibaca importer.
+     *
+     * @return array<string, array{sheet: string, headers: array<int, string>, note: string}>
+     */
+    public static function specs(): array
+    {
+        return [
+            'wbs' => [
+                'sheet' => 'DB WBS',
+                'note' => 'Realisasi biaya WBS (sheet pertama). Isi data mulai baris ke-2.',
+                'headers' => [
+                    'Company Code', 'Plant', 'Desc.', 'Divisi/Afdeling', 'Blok', 'Status Blok', 'Tahun Tanam',
+                    'Komoditi', 'Period', 'Project', 'WBS', 'WBS Desc.', 'Fase.', 'Group Aktifitas', 'Group Desc',
+                    'Aktifitas', 'Job Name', 'Hierarchy Area', 'Cost Center', 'CC Desc.', 'Partner-CCtr',
+                    'Partner-CCtr Desc.', 'Cost Element', 'Cost Element Desc', 'Value', 'Currency', 'Material',
+                    'Mat. Desc.', 'Qty', 'UoM', 'Object Num.', 'Object Type', 'Profit Center', 'Value Type',
+                    'Reference Procedure', 'Order', 'Order Type', 'Order Category', 'Order Desc.', 'Hectare Planted',
+                    'CO Business Transaction', 'Mapping COGM', 'Klasifikasi', 'Kode', 'Pekerjaan PB712-II',
+                    'Pekerjaan PB7-I', 'Source', 'Keterangan',
+                ],
+            ],
+            'ohc' => [
+                'sheet' => 'DB OHC',
+                'note' => 'Realisasi overhead kebun (OHC). Kolom "Period" = bulan (1-12). Isi mulai baris ke-2.',
+                'headers' => [
+                    'Cost Center', 'CO Object Name', 'Business Transaction', 'Document Number', 'Ref. document number',
+                    'Cost Element', 'Cost element name', 'Period', 'Posting Date', 'Value in Obj. Crcy', 'Total quantity',
+                    'Posted unit of meas.', 'Name', 'User Name', 'Material', 'Material Description', 'Reference procedure',
+                    'Dr/Cr indicator', 'Reference Key', 'Partner Object Class', 'Object Type', 'Partner object name',
+                    'Partner Object Type', 'Offsetting Account', 'Name of offsetting account', 'Name of offsetting account2',
+                    'Document Header Text', 'Partner Object', 'Partner object type3', 'Partner-CCtr', 'Source Object',
+                    'Source object name', 'Origin-obj. type', 'Source object type', 'Cost element descr.', 'Plant',
+                    'lock', 'Kode', 'Pekerjaan PB712-II', 'Klasifikasi', 'Pekerjaan PB7-I', 'Komoditi', 'Unit Kerja',
+                    'Pekerjaan PB712-III',
+                ],
+            ],
+            'gc' => [
+                'sheet' => 'DB CC GC',
+                'note' => 'Realisasi general charge (GC). Kolom "Period" = bulan (1-12). Isi mulai baris ke-2.',
+                'headers' => [
+                    'Cost Center', 'CO Object Name', 'Business Transaction', 'Document Number', 'Ref. document number',
+                    'Cost Element', 'Cost element name', 'Period', 'Posting Date', 'Value in Obj. Crcy', 'Total quantity',
+                    'Posted unit of meas.', 'Name', 'User Name', 'Material', 'Material Description', 'Reference procedure',
+                    'Dr/Cr indicator', 'Reference Key', 'Partner Object Class', 'Object Type', 'Partner object name',
+                    'Partner Object Type', 'Offsetting Account', 'Name of offsetting account', 'Name of offsetting account2',
+                    'Document Header Text', 'Partner Object', 'Partner object type3', 'Partner-CCtr', 'Source Object',
+                    'Source object name', 'Origin-obj. type', 'Source object type', 'Cost element descr.', 'Plant',
+                    'Afdeling', 'Kode', 'Pekerjaan PB712-II', 'Klasifikasi', 'Pekerjaan PB7-I', 'Komoditi', 'Unit Kerja', 'GC',
+                ],
+            ],
+            'rko_bku' => [
+                'sheet' => 'BKU',
+                'note' => 'Anggaran RKO/RKAP — BKU. Kolom: A=Komoditi (KS/KR), D=Period (bulan), E=Aktifitas (kode), J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Desc.', 'Period', 'Aktifitas', 'Job Name', 'Cost Element',
+                    'Cost Element Desc', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'rko_ohc' => [
+                'sheet' => 'OHC',
+                'note' => 'Anggaran RKO/RKAP — OHC. Kolom: A=Komoditi (KS/KR), D=Period (bulan), E=Kode CC, J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode CC', 'CO Object Name', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'rko_gc' => [
+                'sheet' => 'GC',
+                'note' => 'Anggaran RKO/RKAP — GC. Kolom: A=Komoditi (KS/KR), D=Period (bulan), E=Kode GC, J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode GC', 'GC', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'areal' => [
+                'sheet' => 'DB',
+                'note' => 'Areal statement — sheet harus bernama "DB". Isi data mulai baris ke-2.',
+                'headers' => [
+                    'Status', 'Status Blok/Petak', 'Plant', 'Divisi', 'Kode Blok/Petak', 'Tanggal Mulai', 'Sampai',
+                    'Project Definition', 'Deskripsi Blok/Petak', 'Luas Tanam (Ha)', 'Tahun Tanam', 'Total Pokok',
+                    'Luas (Ha)', 'Total Pokok Produktif', 'Kondisi Areal', 'Jenis Tanah', 'GIS ID', 'Unit Kerja', 'Komoditi',
+                ],
+            ],
+            'produksi' => [
+                'sheet' => 'ZPTPNHLPP039',
+                'note' => 'Produksi PKS — sheet harus bernama "ZPTPNHLPP039". Tanggal di kolom "Tgl Posting". Isi mulai baris ke-2.',
+                'headers' => [
+                    'Company Code', 'Plant', 'Desc.', 'Group Pemilik', 'Kebun', 'Nama Kebun', 'Sisa Awal di PKS',
+                    'TBS Diterima Hari Ini', 'TBS Diterima s/d Hari Ini', 'TBS Diterima s/d Bulan Ini', 'TBS Diolah Hari Ini',
+                    'TBS Diolah s/d Hari Ini', 'TBS Diolah s/d Bulan Ini', 'Sisa Akhir di PKS', 'MS Hari Ini',
+                    'MS S/D Hari Ini', 'MS S/D Bulan Ini', 'IS Hari Ini', 'IS S/D Hari Ini', 'IS S/D Bulan Ini',
+                    'Realisasi Hari Ini Minyak Sawit', 'Realisasi S/D Hari Ini Minyak Sawit', 'Realisasi S/D Bulan Ini Minyak Sawit',
+                    'Realisasi Hari Ini Inti Sawit', 'Realisasi S/D Hari Ini Inti Sawit', 'Realisasi S/D Bulan Ini Inti Sawit',
+                    'Tgl Posting', 'Tidak Mengolah',
+                ],
+            ],
+            'produksi_kebun' => [
+                'sheet' => 'ZESTHLE020',
+                'note' => 'Produksi Kebun (jembatan timbang TBS) — sheet harus bernama "ZESTHLE020". Tanggal di "Posting Date", berat di "Weight netto". Isi mulai baris ke-2.',
+                'headers' => [
+                    'Plant', 'Desc Plant WB', 'Goods Recipient', 'Desc Plant Kebun', 'Afdeling', 'Supplier', 'Vendor Name',
+                    'Status', 'In/Out', 'Transaction Code', 'Nomor SPBS', 'Tgl Angkut', 'Posting Date', 'Tanggal Timbang',
+                    'Jam Timbang', 'Tanggal Timbang 2', 'Jam Timbang 2', 'Nomor Polisi', 'Sopir', 'Base Unit of Measure',
+                    'Berat Timbang 1', 'Berat Timbang 2', 'Weight netto',
+                ],
+            ],
+        ];
+    }
+
+    public static function hasTemplate(string $type): bool
+    {
+        return array_key_exists($type, self::specs());
+    }
+
+    public static function filename(string $type): string
+    {
+        return 'template_'.$type.'.xlsx';
+    }
+
+    /**
+     * Bangun workbook template (sheet + baris header bercetak tebal, dibekukan).
+     */
+    public function build(string $type): Spreadsheet
+    {
+        $spec = self::specs()[$type] ?? null;
+        abort_if($spec === null, 404, 'Template tidak tersedia untuk jenis ini.');
+
+        $ss = new Spreadsheet;
+        $sheet = $ss->getActiveSheet();
+        $sheet->setTitle(mb_substr($spec['sheet'], 0, 31)); // batas 31 char nama sheet Excel
+        $sheet->fromArray([$spec['headers']], null, 'A1');
+
+        $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($spec['headers']));
+        $sheet->getStyle("A1:{$lastCol}1")->getFont()->setBold(true);
+        $sheet->getStyle("A1:{$lastCol}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->freezePane('A2');
+        foreach (range(1, count($spec['headers'])) as $i) {
+            $sheet->getColumnDimension(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
+        }
+
+        return $ss;
+    }
+}

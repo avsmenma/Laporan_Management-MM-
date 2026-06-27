@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Import;
 
+use App\Domain\Import\ImportTemplateService;
 use App\Domain\Import\SpreadsheetImportService;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
@@ -11,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ImportController extends Controller
 {
@@ -145,6 +148,25 @@ class ImportController extends Controller
             'total'     => $importJob->total,
             'row_count' => $importJob->row_count,
             'error'     => $importJob->error,
+        ]);
+    }
+
+    /**
+     * Unduh template Excel kosong (header sesuai kebutuhan importer) untuk satu jenis.
+     */
+    public function template(string $type, ImportTemplateService $service): StreamedResponse
+    {
+        abort_unless(ImportTemplateService::hasTemplate($type), 404, 'Template tidak ditemukan.');
+
+        $spreadsheet = $service->build($type);
+        $writer = new XlsxWriter($spreadsheet);
+        $filename = ImportTemplateService::filename($type);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'no-store, no-cache',
         ]);
     }
 

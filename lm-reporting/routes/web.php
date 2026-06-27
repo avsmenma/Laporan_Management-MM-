@@ -72,6 +72,7 @@ Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
     Route::get('/batches', [BatchController::class, 'index'])->name('batches.index');
     Route::post('/batches', [BatchController::class, 'store'])->name('batches.store');
     Route::get('/import', [ImportController::class, 'index'])->name('import.index');
+    Route::get('/import/template/{type}', [ImportController::class, 'template'])->name('import.template');
     Route::post('/import', [ImportController::class, 'store'])->name('import.store');
     Route::post('/import/confirm', [ImportController::class, 'confirm'])->name('import.confirm');
     Route::post('/import/cancel', [ImportController::class, 'cancel'])->name('import.cancel');
