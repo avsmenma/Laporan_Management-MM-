@@ -327,7 +327,9 @@
            muncul mengapung di sebelah kanan. Panel adalah keturunan dari item,
            jadi kursor bisa digeser ke panel tanpa menutupnya (hover induk tetap
            aktif). Ada "jembatan" tak terlihat menutup celah agar tak berkedip. */
-        html.sidebar-collapsed .app-sidebar { overflow: visible; }   /* agar panel tak terpotong */
+        /* overflow visible agar panel tak terpotong; z-index tinggi agar panel tampil
+           DI ATAS toolbar/filter-bar lengket halaman (yang ber-z-index ~30). */
+        html.sidebar-collapsed .app-sidebar { overflow: visible; z-index: 80; }
         html.sidebar-collapsed .sidebar-nav-item { position: relative; }
         html.sidebar-collapsed .sidebar-nav-item:hover { z-index: 61; }
         html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav {
