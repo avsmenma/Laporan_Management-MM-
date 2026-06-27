@@ -280,7 +280,10 @@
                     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || 'Gagal memulai import'); }
                     const { status_url } = await res.json();
                     this.poll(status_url);
-                } catch (e) { this.open = false; window.lmToast(e.message, 'err'); }
+                } catch (e) {
+                    this.open = false;
+                    window.lmModal({ type: 'err', title: 'Gagal Memulai Import', message: e.message });
+                }
             },
             poll(url) {
                 let attempts = 0;
@@ -289,7 +292,7 @@
                     attempts++;
                     if (attempts > MAX_ATTEMPTS) {
                         this.open = false;
-                        window.lmToast('Masih diproses di latar belakang — cek Riwayat Upload nanti.', 'ok');
+                        window.lmModal({ type: 'ok', title: 'Masih Diproses', message: 'Import masih berjalan di latar belakang. Silakan cek "Riwayat Upload" beberapa saat lagi.' });
                         return;
                     }
                     try {
@@ -297,8 +300,23 @@
                         const s = await r.json();
                         if (s.total > 0) this.pct = Math.min(100, Math.round(s.processed / s.total * 100));
                         this.label = (s.processed || 0).toLocaleString('id-ID') + ' / ' + (s.total || 0).toLocaleString('id-ID') + ' baris (' + this.pct + '%)';
-                        if (s.status === 'done') { this.open = false; window.lmToast('Import berhasil: ' + s.row_count + ' baris', 'ok'); setTimeout(() => location.reload(), 1200); return; }
-                        if (s.status === 'failed') { this.open = false; window.lmToast('Import gagal: ' + (s.error || 'tidak diketahui'), 'err'); return; }
+                        if (s.status === 'done') {
+                            this.open = false;
+                            // Popup ditutup manual; setelah ditutup, halaman dimuat ulang agar Riwayat Upload ter-update.
+                            window.lmModal({
+                                type: 'ok',
+                                title: 'Import Berhasil',
+                                message: 'Import selesai. ' + Number(s.row_count || 0).toLocaleString('id-ID') + ' baris tersimpan ke database.',
+                                closeText: 'Selesai',
+                                onClose: () => location.reload(),
+                            });
+                            return;
+                        }
+                        if (s.status === 'failed') {
+                            this.open = false;
+                            window.lmModal({ type: 'err', title: 'Import Gagal', message: s.error || 'Penyebab tidak diketahui. Periksa berkas lalu coba lagi.' });
+                            return;
+                        }
                         setTimeout(tick, 2000);
                     } catch (e) { setTimeout(tick, 3000); }
                 };

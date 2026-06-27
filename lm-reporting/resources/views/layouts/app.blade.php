@@ -481,6 +481,45 @@
             if (text) document.getElementById('lm-overlay-text').textContent = text;
             o.style.display = show ? 'flex' : 'none';
         };
+        // Popup hasil (harus ditutup manual) — untuk notifikasi penting spt selesainya import.
+        // opts: { title, message, type:'ok'|'err', closeText, onClose, dismissable }
+        window.lmModal = function (opts) {
+            opts = opts || {};
+            var type = opts.type === 'err' ? 'err' : 'ok';
+            var accent = type === 'err' ? '#c0392b' : '#0f8a5f';
+            var ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed;inset:0;z-index:210;background:rgba(15,76,58,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+            var card = document.createElement('div');
+            card.style.cssText = 'background:#fff;border-radius:14px;max-width:430px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:24px';
+            var head = document.createElement('div'); head.style.cssText = 'display:flex;gap:14px;align-items:flex-start';
+            var ic = document.createElement('div'); ic.textContent = type === 'err' ? '✕' : '✓';
+            ic.style.cssText = 'flex:none;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:700;color:#fff;background:' + accent;
+            var txt = document.createElement('div'); txt.style.cssText = 'flex:1;min-width:0';
+            var ttl = document.createElement('div');
+            ttl.style.cssText = 'font-weight:700;font-size:16px;color:#1f2a26;margin-bottom:6px';
+            ttl.textContent = opts.title || (type === 'err' ? 'Gagal' : 'Berhasil');
+            var msg = document.createElement('div');
+            msg.style.cssText = 'font-size:13.5px;color:#54625c;line-height:1.5;word-break:break-word;white-space:pre-line';
+            msg.textContent = opts.message || '';
+            txt.appendChild(ttl); txt.appendChild(msg); head.appendChild(ic); head.appendChild(txt);
+            var foot = document.createElement('div'); foot.style.cssText = 'margin-top:20px;text-align:right';
+            var btn = document.createElement('button'); btn.type = 'button'; btn.textContent = opts.closeText || 'Tutup';
+            btn.style.cssText = 'background:' + accent + ';color:#fff;border:0;border-radius:8px;padding:9px 22px;font-weight:600;font-size:13.5px;cursor:pointer';
+            foot.appendChild(btn); card.appendChild(head); card.appendChild(foot); ov.appendChild(card);
+            document.body.appendChild(ov);
+            var closed = false;
+            function close() {
+                if (closed) return; closed = true;
+                ov.remove(); document.removeEventListener('keydown', onKey);
+                if (typeof opts.onClose === 'function') opts.onClose();
+            }
+            function onKey(e) { if (e.key === 'Escape') close(); }
+            btn.addEventListener('click', close);
+            ov.addEventListener('click', function (e) { if (e.target === ov && opts.dismissable !== false) close(); });
+            document.addEventListener('keydown', onKey);
+            btn.focus();
+            return { close: close };
+        };
         // Tampilkan flash status sbg toast saat halaman dimuat.
         @if (session('status'))
             window.lmToast(@json(session('status')), 'ok');
