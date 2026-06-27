@@ -921,3 +921,19 @@ Artisan::command('produksi:import {--file=}', function (SpreadsheetImportService
 
     return 0;
 })->purpose('Impor laporan produksi PKS (sheet ZPTPNHLPP039) ke produksi_pks (idempoten per tanggal).');
+
+Artisan::command('produksi-kebun:import {--file=} {--year=} {--month=}', function (SpreadsheetImportService $service): int {
+    $file = (string) $this->option('file');
+    if ($file === '' || ! is_file($file)) {
+        $this->error('Pakai --file=<path .xlsx berisi sheet ZESTHLE020>.');
+
+        return 1;
+    }
+    $year = $this->option('year') !== null ? (int) $this->option('year') : null;
+    $month = $this->option('month') !== null ? (int) $this->option('month') : null;
+    $result = $service->importProduksiKebun($file, null, null, $year, $month);
+    $guard = ($year !== null && $month !== null) ? " (penjaga {$year}-".str_pad((string) $month, 2, '0', STR_PAD_LEFT).')' : '';
+    $this->info("Selesai: {$result->rowCount} baris produksi kebun tersimpan{$guard}.");
+
+    return 0;
+})->purpose('Impor jembatan timbang TBS kebun (sheet ZESTHLE020) ke produksi_kebun_wb (idempoten per tanggal). --year+--month sebagai penjaga.');

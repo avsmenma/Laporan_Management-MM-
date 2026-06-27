@@ -19,13 +19,19 @@ class ImportServiceTest extends TestCase
     public function test_types_now_include_realisasi_and_budget(): void
     {
         $this->assertSame(
-            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc', 'areal', 'produksi'],
+            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc', 'areal', 'produksi', 'produksi_kebun'],
             array_keys(SpreadsheetImportService::types())
         );
         $this->assertFalse(SpreadsheetImportService::isBudget('wbs'));
         $this->assertTrue(SpreadsheetImportService::isBudget('rko_ohc'));
         $this->assertSame('OHC', SpreadsheetImportService::budgetSource('rko_ohc'));
         $this->assertNull(SpreadsheetImportService::budgetSource('wbs'));
+        $this->assertTrue(SpreadsheetImportService::isProduksiKebun('produksi_kebun'));
+        $this->assertFalse(SpreadsheetImportService::isProduksiKebun('produksi'));
+        $this->assertTrue(SpreadsheetImportService::usesMonthGuard('produksi_kebun'));
+        $this->assertTrue(SpreadsheetImportService::usesMonthGuard('produksi'));
+        $this->assertTrue(SpreadsheetImportService::usesMonthGuard('rko_bku'));
+        $this->assertFalse(SpreadsheetImportService::usesMonthGuard('wbs'));
     }
 
     public function test_detect_periods_reads_distinct_month_from_gc_file(): void

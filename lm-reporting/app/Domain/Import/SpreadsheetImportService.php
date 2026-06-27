@@ -84,6 +84,7 @@ class SpreadsheetImportService
             'rko_gc' => 'RKO/RKAP — GC',
             'areal' => 'Areal',
             'produksi' => 'Produksi',
+            'produksi_kebun' => 'Produksi Kebun',
         ];
     }
 
@@ -97,6 +98,18 @@ class SpreadsheetImportService
     public static function isProduksi(string $type): bool
     {
         return $type === 'produksi';
+    }
+
+    /** Jenis produksi Kebun (jembatan timbang TBS, sheet ZESTHLE020). */
+    public static function isProduksiKebun(string $type): bool
+    {
+        return $type === 'produksi_kebun';
+    }
+
+    /** Jenis yang memakai bulan sebagai penjaga periode (tanpa Batch). */
+    public static function usesMonthGuard(string $type): bool
+    {
+        return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type);
     }
 
     /** Sumber budget (BKU/OHC/GC) untuk jenis rko_*, atau null. */
@@ -346,6 +359,26 @@ class SpreadsheetImportService
             return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
         }
 
+        // Produksi Kebun: sampel dari sheet ZESTHLE020 (kolom utama untuk verifikasi mata).
+        if (self::isProduksiKebun($type)) {
+            $total = max(0, $this->rowCountForType($type, $path));
+            $headers = ['Plant', 'Desc Plant WB', 'Goods Recipient', 'Desc Plant Kebun', 'Afdeling', 'Supplier', 'Vendor Name', 'Weight netto', 'Posting Date'];
+            $idx = [0, 1, 2, 3, 4, 5, 6, 22, 12];
+            $rows = [];
+            $emitted = 0;
+            foreach ($this->dataRowsSheet($path, 'ZESTHLE020') as $row) {
+                if ($this->isEmptyRow($row)) {
+                    continue;
+                }
+                $rows[] = array_map(fn ($i) => $row[$i] ?? null, $idx);
+                if (++$emitted >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
+        }
+
         // Areal: baca header + sampel dari sheet "DB", hitung total via rowCountForType.
         if ($type === 'areal') {
             $total = max(0, $this->rowCountForType('areal', $path));
@@ -403,10 +436,14 @@ class SpreadsheetImportService
     /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", produksi pakai sheet "ZPTPNHLPP039", lainnya sheet pertama. */
     public function rowCountForType(string $type, string $path): int
     {
-        if ($type !== 'areal' && ! self::isProduksi($type)) {
+        if ($type !== 'areal' && ! self::isProduksi($type) && ! self::isProduksiKebun($type)) {
             return $this->totalDataRows($path);
         }
-        $sheet = $type === 'areal' ? 'DB' : 'ZPTPNHLPP039';
+        $sheet = match (true) {
+            $type === 'areal' => 'DB',
+            self::isProduksiKebun($type) => 'ZESTHLE020',
+            default => 'ZPTPNHLPP039',
+        };
         $n = 0;
         foreach ($this->dataRowsSheet($path, $sheet) as $row) {
             if (! $this->isEmptyRow($row)) {
@@ -807,6 +844,97 @@ class SpreadsheetImportService
         $d = \DateTime::createFromFormat('!Y-m-d', substr($t, 0, 10));
 
         return $d ? $d->format('Y-m-d') : null;
+    }
+
+    /** Indeks kolom 0-based sheet ZESTHLE020 yang dipakai untuk produksi kebun. */
+    private const ZESTHLE_COLS = [
+        'plant_code' => 0, 'plant_desc' => 1, 'goods_recipient' => 2, 'desc_plant_kebun' => 3,
+        'afdeling' => 4, 'supplier_code' => 5, 'supplier_name' => 6, 'weight_netto' => 22, 'posting_date' => 12,
+    ];
+
+    /**
+     * Pemetaan kode pabrik penerima → nama pendek "Short Plant" (kolom pivot Pembelian).
+     * Rumus VLOOKUP Short Plant di Excel rusak (#REF), jadi diturunkan di sini.
+     * Selaras dengan ProduksiController::PLANT_SHORT.
+     */
+    public const PLANT_SHORT = [
+        '5F01' => 'Pagun', '5F04' => 'Parba', '5F07' => 'Panga', '5F08' => 'Papar', '5F09' => 'Pakem',
+        '5F14' => 'Papam', '5F15' => 'Papel', '5F21' => 'Pasam', '5F22' => 'Palpi',
+    ];
+
+    /**
+     * Impor sheet ZESTHLE020 → produksi_kebun_wb (idempoten per posting_date). Kolom
+     * turunan dihitung di sini (rumus Excel-nya rusak/#REF):
+     *  - supply           = Goods Recipient terisi ? "Kebun Sendiri" : "Pembelian"
+     *  - kategori_pembelian = kode supplier diawali "25" ? "Kebun Plasma" : "Kebun Pihak 3"
+     *  - short_plant      = PLANT_SHORT[plant_code] (pabrik penerima)
+     */
+    public function importProduksiKebun(string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null, ?int $month = null): ImportResult
+    {
+        $records = [];
+        $dates = [];
+        $seen = 0;
+        foreach ($this->dataRowsSheet($path, 'ZESTHLE020') as $v) {
+            if ($this->isEmptyRow($v)) {
+                continue;
+            }
+            $plant = strtoupper(trim((string) ($v[self::ZESTHLE_COLS['plant_code']] ?? '')));
+            $date = $this->produksiDate($v[self::ZESTHLE_COLS['posting_date']] ?? null);
+            if ($plant === '' || $date === null) {
+                continue;
+            }
+            // Penjaga bulan: hanya baris pada tahun+bulan terpilih yang diimpor.
+            if ($year !== null && $month !== null
+                && ((int) substr($date, 0, 4) !== $year || (int) substr($date, 5, 2) !== $month)) {
+                continue;
+            }
+
+            $goodsRecipient = $this->produksiText($v[self::ZESTHLE_COLS['goods_recipient']] ?? null, 20);
+            $supplierCode = $this->produksiText($v[self::ZESTHLE_COLS['supplier_code']] ?? null, 30);
+            $isKebunSendiri = $goodsRecipient !== null;
+            $supply = $isKebunSendiri ? 'Kebun Sendiri' : 'Pembelian';
+            $kategori = null;
+            if (! $isKebunSendiri) {
+                $kategori = str_starts_with((string) $supplierCode, '25') ? 'Kebun Plasma' : 'Kebun Pihak 3';
+            }
+
+            $seen++;
+            if ($onProgress !== null && $seen % 500 === 0) {
+                $onProgress($seen);
+            }
+
+            $dates[$date] = true;
+            $records[] = [
+                'posting_date' => $date,
+                'plant_code' => $plant,
+                'plant_desc' => $this->produksiText($v[self::ZESTHLE_COLS['plant_desc']] ?? null),
+                'goods_recipient' => $goodsRecipient,
+                'desc_plant_kebun' => $this->produksiText($v[self::ZESTHLE_COLS['desc_plant_kebun']] ?? null),
+                'afdeling' => $this->produksiText($v[self::ZESTHLE_COLS['afdeling']] ?? null, 20),
+                'supplier_code' => $isKebunSendiri ? null : $supplierCode,
+                'supplier_name' => $isKebunSendiri ? null : $this->produksiText($v[self::ZESTHLE_COLS['supplier_name']] ?? null, 200),
+                'weight_netto' => $this->produksiNum($v[self::ZESTHLE_COLS['weight_netto']] ?? null),
+                'supply' => $supply,
+                'kategori_pembelian' => $kategori,
+                'short_plant' => $isKebunSendiri ? null : (self::PLANT_SHORT[$plant] ?? $plant),
+            ];
+        }
+
+        $inserted = 0;
+        DB::transaction(function () use ($records, $dates, &$inserted, $onProgress): void {
+            if ($dates !== []) {
+                DB::table('produksi_kebun_wb')->whereIn('posting_date', array_keys($dates))->delete();
+            }
+            foreach (array_chunk($records, 500) as $chunk) {
+                DB::table('produksi_kebun_wb')->insert($chunk);
+                $inserted += count($chunk);
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
+            }
+        });
+
+        return new ImportResult(rowCount: $inserted, errors: []);
     }
 
     /**

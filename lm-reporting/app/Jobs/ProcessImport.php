@@ -48,7 +48,9 @@ class ProcessImport implements ShouldQueue
 
         try {
             $month = $job->month !== null ? (int) $job->month : null;
-            if (SpreadsheetImportService::isProduksi($job->type)) {
+            if (SpreadsheetImportService::isProduksiKebun($job->type)) {
+                $result = $service->importProduksiKebun($path, $job->user_id, $onProgress, (int) $job->year, $month);
+            } elseif (SpreadsheetImportService::isProduksi($job->type)) {
                 $result = $service->importProduksi($path, $job->user_id, $onProgress, (int) $job->year, $month);
             } elseif ($isBudget) {
                 $result = $service->importBudget((int) $job->year, $job->type, $path, $job->user_id, $onProgress, $month);

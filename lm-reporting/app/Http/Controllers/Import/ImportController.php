@@ -29,15 +29,15 @@ class ImportController extends Controller
     {
         $type = (string) $request->input('type');
         $isBudget = SpreadsheetImportService::isBudget($type);
-        $isProduksi = SpreadsheetImportService::isProduksi($type);
+        $usesMonthGuard = SpreadsheetImportService::usesMonthGuard($type);
 
         $rules = [
             'type' => ['required', 'in:'.implode(',', array_keys(SpreadsheetImportService::types()))],
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv'],
             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
-            // Budget & produksi: bulan WAJIB (dipakai sebagai penjaga/filter period).
+            // Budget & produksi (PKS/Kebun): bulan WAJIB (penjaga/filter period).
             // Realisasi/areal: boleh kosong → auto-deteksi dari file.
-            'month' => ($isBudget || $isProduksi)
+            'month' => $usesMonthGuard
                 ? ['required', 'integer', 'min:1', 'max:12']
                 : ['nullable', 'integer', 'min:1', 'max:12'],
         ];

@@ -39,6 +39,9 @@
                 } elseif ($pType === 'produksi') {
                     $pJenis = 'produksi';
                     $pKategori = 'wbs';
+                } elseif ($pType === 'produksi_kebun') {
+                    $pJenis = 'produksi_kebun';
+                    $pKategori = 'wbs';
                 } elseif ($pIsBudget) {
                     $pJenis = 'rko';
                     $pKategori = substr($pType, 4); // bku/ohc/gc
@@ -58,6 +61,8 @@
                       isBudget() { return this.isBudgetType(); },
                       isAreal() { return this.jenis === 'areal'; },
                       isProduksi() { return this.jenis === 'produksi'; },
+                      isProduksiKebun() { return this.jenis === 'produksi_kebun'; },
+                      noKategori() { return this.isAreal() || this.isProduksi() || this.isProduksiKebun(); },
                       kategoriOptions() {
                           return this.isBudgetType()
                               ? [{ v: 'bku', t: 'BKU' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }]
@@ -67,6 +72,7 @@
                           if (this.jenis === 'aktual') return this.kategori;
                           if (this.jenis === 'areal') return 'areal';
                           if (this.jenis === 'produksi') return 'produksi';
+                          if (this.jenis === 'produksi_kebun') return 'produksi_kebun';
                           return 'rko_' + this.kategori;
                       }
                   }">
@@ -81,9 +87,10 @@
                         <option value="rkap">RKAP</option>
                         <option value="areal">Areal</option>
                         <option value="produksi">Produksi</option>
+                        <option value="produksi_kebun">Produksi Kebun</option>
                     </select>
                 </div>
-                <div class="field" style="margin-bottom:0" x-show="jenis !== 'areal' && jenis !== 'produksi'">
+                <div class="field" style="margin-bottom:0" x-show="!noKategori()">
                     <label>Kategori Import</label>
                     <select x-model="kategori" class="field-control">
                         <template x-for="opt in kategoriOptions()" :key="opt.v">
