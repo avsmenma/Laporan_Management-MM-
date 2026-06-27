@@ -43,10 +43,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     // Produksi punya submenu: PKS (halaman saat ini) & Kebun (akan datang).
     Route::redirect('/produksi', '/produksi/pks');
     Route::view('/produksi/pks', 'produksi.index')->name('produksi.pks');
-    Route::view('/produksi/kebun', 'coming-soon', [
-        'judul' => 'Produksi Kebun',
-        'subjudul' => 'Laporan Produksi Kebun sedang disiapkan dan akan segera tersedia.',
-    ])->name('produksi.kebun');
+    Route::view('/produksi/kebun', 'produksi.kebun')->name('produksi.kebun');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
@@ -68,6 +65,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/areal', [\App\Http\Controllers\Api\ArealController::class, 'index']);
     Route::get('/areal/ringkasan', [\App\Http\Controllers\Api\ArealController::class, 'ringkasan']);
     Route::get('/produksi', [\App\Http\Controllers\Api\ProduksiController::class, 'index']);
+    Route::get('/produksi/kebun', [\App\Http\Controllers\Api\ProduksiKebunController::class, 'index']);
 });
 
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
