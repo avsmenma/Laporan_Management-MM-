@@ -156,10 +156,6 @@
                     </span>
                 </div>
             </form>
-            <p class="field-hint" style="margin-top:12px">
-                <b>Download Template</b> memberi berkas Excel kosong dengan nama sheet &amp; kolom yang benar untuk jenis terpilih —
-                isi data mulai baris ke-2, lalu unggah di sini. Data tidak langsung disimpan: periksa pratinjau dulu, lalu klik <b>Konfirmasi &amp; Simpan</b>.
-            </p>
         </div>
     </section>
 
