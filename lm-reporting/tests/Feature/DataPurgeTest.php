@@ -131,6 +131,20 @@ class DataPurgeTest extends TestCase
         $this->assertSame(1, Batch::query()->count());
     }
 
+    public function test_halaman_data_menampilkan_value_target_yang_benar(): void
+    {
+        $admin = \App\Models\User::factory()->create([
+            'role_id' => \App\Models\Role::query()->firstOrCreate(['name' => 'Admin'])->id,
+        ]);
+
+        $resp = $this->actingAs($admin)->get('/data')->assertOk();
+        // Value <option> harus berupa key target (bukan indeks numerik dari groupBy).
+        $resp->assertSee('value="produksi_kebun_sendiri"', false);
+        $resp->assertSee('value="produksi_kebun_pembelian"', false);
+        $resp->assertSee('value="areal"', false);
+        $resp->assertDontSee('<option value="0">', false);
+    }
+
     public function test_endpoint_target_requires_admin_and_konfirmasi(): void
     {
         $this->seedKebunWb();

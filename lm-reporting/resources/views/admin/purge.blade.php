@@ -8,6 +8,17 @@
         <div class="alert alert-ok" style="margin-bottom:18px">{{ session('status') }}</div>
     @endif
 
+    @if ($errors->any())
+        <div class="alert alert-warn" style="margin-bottom:18px;flex-direction:column;align-items:stretch">
+            <div><b>Gagal menghapus</b> — periksa input:</div>
+            <ul class="mt-2 list-disc pl-5">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <section class="panel" style="border-color:#e6b8b3">
         <div class="panel-head"><span class="panel-title" style="color:#b42318">⚠️ Hapus Data (Admin)</span></div>
         <div class="panel-body" x-data="{ mode: 'month', konfirmasi: '' }">
@@ -20,7 +31,9 @@
                 @csrf
                 @php
                     // Kelompokkan target per "group" untuk <optgroup>.
-                    $grouped = collect($targets)->groupBy('group');
+                    // preserveKeys=true WAJIB agar key target (mis. produksi_kebun_sendiri)
+                    // tetap jadi value <option>, bukan indeks numerik.
+                    $grouped = collect($targets)->groupBy('group', true);
                 @endphp
                 <div class="field" style="margin-bottom:16px;max-width:520px">
                     <label>Sumber Data / Tabel</label>
@@ -74,12 +87,6 @@
                         :disabled="konfirmasi !== 'HAPUS'" :style="konfirmasi !== 'HAPUS' ? 'opacity:.5;cursor:not-allowed' : ''">
                     Hapus Data
                 </button>
-                <p class="field-hint" style="margin-top:12px">
-                    <b>Semua tabel</b> + <b>Per Bulan</b>: hapus data &amp; batch periode tsb (anggaran tahunan RKAP/RKO/areal tidak ikut).
-                    + <b>Per Tahun</b>: hapus seluruh data, batch, dan anggaran tahun tsb. + <b>Semua Periode</b>: kosongkan semua.<br>
-                    <b>Sumber data tertentu</b>: hanya tabel itu yang dihapus (anggaran &amp; alokasi areal dikunci per tahun, jadi
-                    "Per Bulan" pada keduanya tetap menghapus satu tahun penuh).
-                </p>
             </form>
         </div>
     </section>
