@@ -78,4 +78,74 @@ class DataPurgeTest extends TestCase
         $this->assertSame(0, DB::table('budget_source')->count());
         $this->assertSame(0, DB::table('db_wbs_tahun_lalu')->count());
     }
+
+    private function seedKebunWb(): void
+    {
+        $row = fn (string $supply, float $w) => [
+            'posting_date' => '2026-05-31', 'plant_code' => '5F01',
+            'weight_netto' => $w, 'supply' => $supply,
+            'goods_recipient' => $supply === 'Kebun Sendiri' ? '5E01' : null,
+        ];
+        DB::table('produksi_kebun_wb')->insert([
+            $row('Kebun Sendiri', 100), $row('Kebun Sendiri', 200), $row('Pembelian', 300),
+        ]);
+    }
+
+    public function test_target_produksi_kebun_sendiri_deletes_only_supply_kebun_sendiri(): void
+    {
+        $this->seedKebunWb();
+
+        $counts = app(DataPurgeService::class)->purgeTarget('produksi_kebun_sendiri', 'month', 2026, 5);
+
+        $this->assertSame(2, $counts['produksi_kebun_wb']);
+        $this->assertSame(0, DB::table('produksi_kebun_wb')->where('supply', 'Kebun Sendiri')->count());
+        // Pembelian tetap utuh.
+        $this->assertSame(1, DB::table('produksi_kebun_wb')->where('supply', 'Pembelian')->count());
+    }
+
+    public function test_target_produksi_kebun_bulan_lain_tidak_terhapus(): void
+    {
+        $this->seedKebunWb();
+
+        // Hapus bulan 4 (tak ada datanya) → tidak menyentuh data Mei.
+        app(DataPurgeService::class)->purgeTarget('produksi_kebun_all', 'month', 2026, 4);
+        $this->assertSame(3, DB::table('produksi_kebun_wb')->count());
+
+        // Hapus bulan 5 → semua 3 baris terhapus.
+        app(DataPurgeService::class)->purgeTarget('produksi_kebun_all', 'month', 2026, 5);
+        $this->assertSame(0, DB::table('produksi_kebun_wb')->count());
+    }
+
+    public function test_target_areal_only_touches_areal_tables(): void
+    {
+        $batchId = $this->seedPeriod(2026, 5);
+        DB::table('areal_blok')->insert(['batch_id' => $batchId, 'komoditi' => 'KS']);
+        DB::table('alokasi_areal')->insert(['year' => 2026, 'kebun_code' => '5E01']);
+
+        app(DataPurgeService::class)->purgeTarget('areal', 'month', 2026, 5);
+
+        $this->assertSame(0, DB::table('areal_blok')->count());
+        $this->assertSame(0, DB::table('alokasi_areal')->count());
+        // Tabel lain & batch tidak tersentuh.
+        $this->assertSame(1, DB::table('db_wbs_raw')->count());
+        $this->assertSame(1, Batch::query()->count());
+    }
+
+    public function test_endpoint_target_requires_admin_and_konfirmasi(): void
+    {
+        $this->seedKebunWb();
+        $admin = \App\Models\User::factory()->create([
+            'role_id' => \App\Models\Role::query()->firstOrCreate(['name' => 'Admin'])->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->post('/data/purge', [
+                'target' => 'produksi_kebun_pembelian', 'mode' => 'month',
+                'year' => 2026, 'month' => 5, 'konfirmasi' => 'HAPUS',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(0, DB::table('produksi_kebun_wb')->where('supply', 'Pembelian')->count());
+        $this->assertSame(2, DB::table('produksi_kebun_wb')->where('supply', 'Kebun Sendiri')->count());
+    }
 }

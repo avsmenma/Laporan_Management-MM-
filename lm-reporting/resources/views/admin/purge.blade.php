@@ -4,22 +4,47 @@
 
 @section('content')
 <div>
+    @if (session('status'))
+        <div class="alert alert-ok" style="margin-bottom:18px">{{ session('status') }}</div>
+    @endif
+
     <section class="panel" style="border-color:#e6b8b3">
         <div class="panel-head"><span class="panel-title" style="color:#b42318">⚠️ Hapus Data (Admin)</span></div>
         <div class="panel-body" x-data="{ mode: 'month', konfirmasi: '' }">
             <p class="field-hint" style="margin-top:0;margin-bottom:16px">
-                Menghapus data laporan &amp; impor sesuai cakupan beserta batch periodenya. Tindakan ini <b>permanen</b> dan tidak bisa dibatalkan.
+                Pilih <b>sumber data</b> (satu tabel/halaman) atau biarkan <b>Semua tabel</b>, lalu tentukan cakupan periode.
+                Tindakan ini <b>permanen</b> dan tidak bisa dibatalkan.
             </p>
             <form method="POST" action="{{ route('data.purge') }}"
                   @submit="if (!confirm('Yakin menghapus data? Tindakan ini permanen dan tidak bisa dibatalkan.')) { $event.preventDefault(); } else { window.lmOverlay(true,'Menghapus data…'); }">
                 @csrf
+                @php
+                    // Kelompokkan target per "group" untuk <optgroup>.
+                    $grouped = collect($targets)->groupBy('group');
+                @endphp
+                <div class="field" style="margin-bottom:16px;max-width:520px">
+                    <label>Sumber Data / Tabel</label>
+                    <select name="target" class="field-control">
+                        <option value="all_tables">Semua tabel (sesuai cakupan)</option>
+                        @foreach ($grouped as $group => $items)
+                            <optgroup label="{{ $group }}">
+                                @foreach ($items as $key => $t)
+                                    <option value="{{ $key }}">{{ $t['group'] }} — {{ $t['label'] }}</option>
+                                @endforeach
+                            </optgroup>
+                        @endforeach
+                    </select>
+                    <span class="field-hint" style="margin-top:6px">
+                        Contoh: pilih <b>Produksi Kebun — Kebun Sendiri</b> untuk menghapus hanya data tersebut (mis. saat salah impor), tanpa menyentuh data lain.
+                    </span>
+                </div>
                 <div class="grid gap-4 md:grid-cols-4">
                     <div class="field" style="margin-bottom:0">
                         <label>Cakupan</label>
                         <select name="mode" x-model="mode" class="field-control">
                             <option value="month">Per Bulan</option>
                             <option value="year">Per Tahun</option>
-                            <option value="all">Semua Data</option>
+                            <option value="all">Semua Periode</option>
                         </select>
                     </div>
                     <div class="field" style="margin-bottom:0" x-show="mode !== 'all'">
@@ -50,9 +75,10 @@
                     Hapus Data
                 </button>
                 <p class="field-hint" style="margin-top:12px">
-                    <b>Per Bulan</b> menghapus data &amp; batch periode tsb (anggaran tahunan RKAP/RKO/areal tidak ikut terhapus).
-                    <b>Per Tahun</b> menghapus seluruh data, batch, dan anggaran tahun tsb.
-                    <b>Semua Data</b> mengosongkan seluruh batch &amp; data.
+                    <b>Semua tabel</b> + <b>Per Bulan</b>: hapus data &amp; batch periode tsb (anggaran tahunan RKAP/RKO/areal tidak ikut).
+                    + <b>Per Tahun</b>: hapus seluruh data, batch, dan anggaran tahun tsb. + <b>Semua Periode</b>: kosongkan semua.<br>
+                    <b>Sumber data tertentu</b>: hanya tabel itu yang dihapus (anggaran &amp; alokasi areal dikunci per tahun, jadi
+                    "Per Bulan" pada keduanya tetap menghapus satu tahun penuh).
                 </p>
             </form>
         </div>
