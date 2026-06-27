@@ -277,17 +277,33 @@ select.field-control { padding-right: 8px; }
 .login-brandpane { position: relative;
     background: radial-gradient(120% 90% at 15% 10%, #15604a 0%, #0f4c3a 42%, #0a3a2c 100%);
     color: #eaf4ef; padding: 54px 56px; display: flex; flex-direction: column; overflow: hidden; }
-.login-brandpane::after { content: ""; position: absolute; inset: 0; opacity: .5; pointer-events: none;
+.login-brandpane::after { content: ""; position: absolute; inset: 0; opacity: .5; pointer-events: none; z-index: 2;
     background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, .035) 0 2px, transparent 2px 22px); }
-.lb-top { display: flex; align-items: center; gap: 13px; position: relative; z-index: 1; }
+/* slideshow foto kebun/pabrik di belakang teks */
+.lb-slideshow { position: absolute; inset: 0; z-index: 0; }
+.lb-slide { position: absolute; inset: 0; background-size: cover; background-position: center;
+    opacity: 0; transition: opacity 1.2s ease-in-out; }
+.lb-slide.is-active { opacity: 1; }
+/* scrim hijau gelap agar logo & teks tetap terbaca di atas foto */
+.lb-scrim { position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background:
+        linear-gradient(90deg, rgba(8, 46, 35, .86) 0%, rgba(8, 46, 35, .58) 48%, rgba(8, 46, 35, .34) 100%),
+        linear-gradient(180deg, rgba(8, 46, 35, .58) 0%, rgba(8, 46, 35, .22) 38%, rgba(8, 46, 35, .88) 100%); }
+.lb-top { display: flex; align-items: center; gap: 13px; position: relative; z-index: 3; }
 .lb-mark { width: 46px; height: 46px; border-radius: 11px; display: grid; place-items: center; overflow: hidden; padding: 5px;
     background: #fff; border: 1px solid rgba(255, 255, 255, .18); }
 .lb-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.lb-mid { margin-top: auto; position: relative; z-index: 1; }
+.lb-mid { margin-top: auto; position: relative; z-index: 3; }
 .lb-kicker { font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: #8dbfae; font-weight: 600; }
 .lb-title { font-size: 33px; font-weight: 700; line-height: 1.12; margin: 14px 0 0; letter-spacing: -.015em; max-width: 16ch; }
 .lb-desc { margin-top: 16px; color: #bcdacd; font-size: 14px; max-width: 42ch; line-height: 1.55; }
-.lb-copy { position: relative; z-index: 1; margin-top: 38px; font-size: 11.5px; color: #7fae9d; }
+.lb-copy { position: relative; z-index: 3; margin-top: 38px; font-size: 11.5px; color: #cfe6db; }
+/* bayangan halus agar teks tetap kontras di atas foto slideshow */
+.login-brandpane .brand-name, .login-brandpane .brand-sub,
+.login-brandpane .lb-kicker, .login-brandpane .lb-title,
+.login-brandpane .lb-desc, .login-brandpane .lb-copy { text-shadow: 0 1px 14px rgba(0, 0, 0, .5); }
+.login-brandpane .lb-kicker { color: #b3dccd; }
+.login-brandpane .lb-desc { color: #d4e8df; }
 
 .login-formpane { display: flex; align-items: center; justify-content: center; padding: 40px; }
 .login-card { width: 100%; max-width: 392px; }

@@ -18,6 +18,12 @@
 <body>
     <div class="login-stage">
         <aside class="login-brandpane">
+            <div class="lb-slideshow" aria-hidden="true">
+                <div class="lb-slide is-active" style="background-image:url('{{ asset('images/login/1.png') }}')"></div>
+                <div class="lb-slide" style="background-image:url('{{ asset('images/login/2.png') }}')"></div>
+                <div class="lb-slide" style="background-image:url('{{ asset('images/login/3.png') }}')"></div>
+            </div>
+            <div class="lb-scrim" aria-hidden="true"></div>
             <div class="lb-top">
                 <div class="lb-mark"><img src="{{ asset('images/logo-ptpn4.png') }}" alt="Logo PTPN IV"></div>
                 <div>
@@ -101,6 +107,20 @@
             </section>
         </main>
     </div>
+
+    <script>
+        // Slideshow background panel kiri: ganti gambar tiap 3 detik, berurutan sesuai nomor file.
+        (function () {
+            var slides = document.querySelectorAll('.lb-slideshow .lb-slide');
+            if (slides.length < 2) return;
+            var i = 0;
+            setInterval(function () {
+                slides[i].classList.remove('is-active');
+                i = (i + 1) % slides.length;
+                slides[i].classList.add('is-active');
+            }, 3000);
+        })();
+    </script>
 
     <script>
         // Klik kartu "Akun seed" → isi otomatis field email sesuai akun yang dipilih.
