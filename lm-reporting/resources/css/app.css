@@ -280,8 +280,9 @@ select.field-control { padding-right: 8px; }
 .login-brandpane::after { content: ""; position: absolute; inset: 0; opacity: .5; pointer-events: none;
     background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, .035) 0 2px, transparent 2px 22px); }
 .lb-top { display: flex; align-items: center; gap: 13px; position: relative; z-index: 1; }
-.lb-mark { width: 46px; height: 46px; border-radius: 11px; display: grid; place-items: center; font-weight: 700; font-size: 17px;
-    background: rgba(255, 255, 255, .10); border: 1px solid rgba(255, 255, 255, .18); }
+.lb-mark { width: 46px; height: 46px; border-radius: 11px; display: grid; place-items: center; overflow: hidden; padding: 5px;
+    background: #fff; border: 1px solid rgba(255, 255, 255, .18); }
+.lb-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .lb-mid { margin-top: auto; position: relative; z-index: 1; }
 .lb-kicker { font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: #8dbfae; font-weight: 600; }
 .lb-title { font-size: 33px; font-weight: 700; line-height: 1.12; margin: 14px 0 0; letter-spacing: -.015em; max-width: 16ch; }

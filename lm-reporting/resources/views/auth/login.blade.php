@@ -19,7 +19,7 @@
     <div class="login-stage">
         <aside class="login-brandpane">
             <div class="lb-top">
-                <div class="lb-mark">PN</div>
+                <div class="lb-mark"><img src="{{ asset('images/logo-ptpn4.png') }}" alt="Logo PTPN IV"></div>
                 <div>
                     <div class="brand-name">Sistem Pelaporan LM</div>
                     <div class="brand-sub">PTPN IV Regional V - Report Viewer</div>
@@ -28,7 +28,7 @@
             <div class="lb-mid">
                 <div class="lb-kicker">PT Perkebunan Nusantara IV</div>
                 <h1 class="lb-title">Report Viewer Biaya Produksi Kebun &amp; Pabrik</h1>
-                <p class="lb-desc">Laporan Manajemen biaya produksi Kebun &amp; Pabrik, menggantikan workbook Excel LM dengan tampilan yang identik dan kalkulasi yang tepat.</p>
+                <p class="lb-desc">Laporan Manajemen biaya produksi Kebun &amp; Pabrik dalam satu tempat — angka selalu terkini, rinciannya bisa ditelusuri, dan siap diekspor kapan saja.</p>
             </div>
             <div class="lb-copy">PTPN IV Regional V &middot; Sistem Pelaporan Kebun - MIS</div>
         </aside>
