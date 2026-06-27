@@ -233,8 +233,10 @@ function produksiKebunApp() {
                 rowFormatter: (row) => {
                     const d = row.getData();
                     let bg = null, fw = null;
-                    if (d._type === 'grand') { bg = '#eef5f1'; fw = '700'; }
-                    else if (d._type === 'subtotal') { bg = '#f3f8f5'; fw = '700'; }
+                    // Baris total (Grand Total kebun sendiri & total/subtotal pembelian)
+                    // pakai warna band hijau muda yang sama dgn seksi "PRODUKSI TBS"
+                    // pada halaman produksi/pks (tab Ringkasan).
+                    if (d._type === 'grand' || d._type === 'subtotal') { bg = '#d7e9df'; fw = '700'; }
                     if (!bg && !fw) return;
                     const el = row.getElement();
                     if (fw) el.style.fontWeight = fw;
