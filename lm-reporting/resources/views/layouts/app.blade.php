@@ -322,6 +322,39 @@
         html.sidebar-collapsed .sidebar-subnav { display: none !important; }
         html.sidebar-collapsed .sidebar-logout button { justify-content: center; font-size: 0; gap: 0; padding: 10px; }
 
+        /* ---------------- Flyout submenu (sidebar tertutup) ----------------
+           Saat sidebar tertutup, arahkan kursor ke ikon induk → panel submenu
+           muncul mengapung di sebelah kanan. Panel adalah keturunan dari item,
+           jadi kursor bisa digeser ke panel tanpa menutupnya (hover induk tetap
+           aktif). Ada "jembatan" tak terlihat menutup celah agar tak berkedip. */
+        html.sidebar-collapsed .app-sidebar { overflow: visible; }   /* agar panel tak terpotong */
+        html.sidebar-collapsed .sidebar-nav-item { position: relative; }
+        html.sidebar-collapsed .sidebar-nav-item:hover { z-index: 61; }
+        html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav {
+            display: block !important;
+            position: absolute; left: calc(100% + 6px); top: -6px;
+            min-width: 198px; margin: 0; padding: 6px;
+            background: var(--surface, #fff); border: 1px solid var(--line);
+            border-radius: 10px; box-shadow: 0 12px 34px rgba(0, 0, 0, .18); z-index: 62;
+        }
+        /* judul flyout = nama induk (dari atribut data-flyout) */
+        html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav::before {
+            content: attr(data-flyout); display: block;
+            font-size: 11px; font-weight: 700; letter-spacing: .05em; color: var(--ink-500);
+            padding: 4px 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line);
+        }
+        /* jembatan tak terlihat menutup celah 6px ke kiri panel */
+        html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav::after {
+            content: ""; position: absolute; top: 0; left: -12px; width: 12px; height: 100%;
+        }
+        /* item flyout: buang garis tree & indent inline, jadikan menu rapi */
+        html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav li { padding-left: 0; }
+        html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav li::before,
+        html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav li::after { display: none; }
+        html.sidebar-collapsed .sidebar-nav-item:hover > .sidebar-subnav .sidebar-sublink {
+            font-size: 12.5px; padding: 8px 10px; white-space: nowrap;
+        }
+
         @media (max-width: 820px) {
             .app-sidebar { width: 64px; padding: 16px 8px; }
             .sidebar-nav-link { justify-content: center; padding: 10px; font-size: 0; gap: 0; }
@@ -381,7 +414,7 @@
                             <span class="nav-ico">📁</span> KEBUN
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
-                        <ul class="sidebar-subnav" x-show="open" x-cloak>
+                        <ul class="sidebar-subnav" data-flyout="KEBUN" x-show="open" x-cloak>
                             <li><a href="{{ route('kebun') }}" class="sidebar-sublink {{ request()->routeIs('kebun') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Eksploitasi</a></li>
                             <li><a href="{{ route('kebun.investasi') }}" class="sidebar-sublink {{ request()->routeIs('kebun.investasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
                         </ul>
@@ -391,7 +424,7 @@
                             <span class="nav-ico">📁</span> PABRIK
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
-                        <ul class="sidebar-subnav" x-show="open" x-cloak>
+                        <ul class="sidebar-subnav" data-flyout="PABRIK" x-show="open" x-cloak>
                             <li><a href="{{ route('pabrik') }}" class="sidebar-sublink {{ request()->routeIs('pabrik') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Eksploitasi</a></li>
                             <li><a href="{{ route('pabrik.investasi') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.investasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
                         </ul>
@@ -406,7 +439,7 @@
                             <span class="nav-ico">📁</span> PRODUKSI
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
-                        <ul class="sidebar-subnav" x-show="open" x-cloak>
+                        <ul class="sidebar-subnav" data-flyout="PRODUKSI" x-show="open" x-cloak>
                             <li><a href="{{ route('produksi.pks') }}" class="sidebar-sublink {{ request()->routeIs('produksi.pks') ? 'active' : '' }}"><span class="tree-ico">📄</span> PKS</a></li>
                             <li><a href="{{ route('produksi.kebun') }}" class="sidebar-sublink {{ request()->routeIs('produksi.kebun') ? 'active' : '' }}"><span class="tree-ico">📄</span> KEBUN</a></li>
                         </ul>
