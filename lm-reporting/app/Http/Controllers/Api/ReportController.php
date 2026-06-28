@@ -240,6 +240,10 @@ class ReportController extends Controller
             ], 404);
         }
 
+        // Tarik nilai PRODUKSI TBS / M+I / Rendemen dari halaman Produksi (produksi_pks),
+        // lapisan presentasi — tidak mengubah mesin hitung LM16.
+        $rows = $this->applyProduksiToLm16($rows, $batch, $unit);
+
         return response()->json([
             'success' => true,
             'meta' => $this->buildMeta($batch, $unit, 'LM16'),
@@ -815,6 +819,86 @@ class ReportController extends Controller
                 $oj[$u]->bi_real_thn_ini = $safeDiv((float) $oj[68]->bi_real_thn_ini, (float) $oj[25]->bi_real_thn_ini);
                 $oj[$u]->sd_real_thn_ini = $safeDiv((float) $oj[68]->sd_real_thn_ini, (float) $oj[25]->sd_real_thn_ini);
             }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Isi baris PRODUKSI TBS / M+I / Rendemen LM16 dari data halaman Produksi
+     * (tabel produksi_pks), untuk SATU pabrik (plant_code = unit). Snapshot dipakai
+     * tanggal posting terbaru dalam bulan batch; nilai disumkan lintas kebun pemasok.
+     *
+     * Pemetaan urutan baris LM16 (lihat seed template) → nilai produksi:
+     *   2  Stok Awal TBS  = TBS Olah + Sisa Akhir − TBS Diterima
+     *   3  TBS dari Lapangan (masuk) = TBS Diterima
+     *   4  TBS di olah    = TBS Diolah
+     *   5  Stok Akhir TBS = Sisa Akhir
+     *   7  Minyak Sawit   · 8 Inti Sawit · 9 Jumlah M+I (= 7+8)
+     *   11 Rend. MS (%)   = MS / TBS Diolah × 100
+     *   12 Rend. IS (%)   = IS / TBS Diolah × 100
+     *   13 Rend. M+I (%)  = (MS+IS) / TBS Diolah × 100
+     *
+     * Kolom Olah/KSO mengikuti ref_unit.olah_status (Jumlah = nilai). bi ← s/d hari,
+     * sd ← s/d bulan. Lapisan presentasi (tidak menyentuh Lm16Service / regenerasi).
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function applyProduksiToLm16(\Illuminate\Support\Collection $rows, Batch $batch, RefUnit $unit): \Illuminate\Support\Collection
+    {
+        $date = DB::table('produksi_pks')
+            ->whereYear('posting_date', $batch->year)
+            ->whereMonth('posting_date', $batch->month)
+            ->max('posting_date');
+        if ($date === null) {
+            return $rows;
+        }
+
+        $a = DB::table('produksi_pks')
+            ->whereDate('posting_date', $date)
+            ->where('plant_code', $unit->code)
+            ->selectRaw(
+                'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
+                'COALESCE(SUM(tbs_diolah_sdhari),0) tdo_h, COALESCE(SUM(tbs_diolah_sdbulan),0) tdo_b, '.
+                'COALESCE(SUM(sisa_akhir),0) akhir, '.
+                'COALESCE(SUM(ms_sdhari),0) ms_h, COALESCE(SUM(ms_sdbulan),0) ms_b, '.
+                'COALESCE(SUM(is_sdhari),0) is_h, COALESCE(SUM(is_sdbulan),0) is_b'
+            )->first();
+
+        $isOlah = $unit->olah_status === 'Olah';
+        $pct = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d * 100, 2);
+        $f = fn ($v): float => (float) $v;
+
+        // urutan => [nilai bi (s/d hari), nilai sd (s/d bulan)]
+        $vals = [
+            2 => [$f($a->tdo_h) + $f($a->akhir) - $f($a->tdi_h), $f($a->tdo_b) + $f($a->akhir) - $f($a->tdi_b)],
+            3 => [$f($a->tdi_h), $f($a->tdi_b)],
+            4 => [$f($a->tdo_h), $f($a->tdo_b)],
+            5 => [$f($a->akhir), $f($a->akhir)],
+            7 => [$f($a->ms_h), $f($a->ms_b)],
+            8 => [$f($a->is_h), $f($a->is_b)],
+            9 => [$f($a->ms_h) + $f($a->is_h), $f($a->ms_b) + $f($a->is_b)],
+            11 => [$pct($f($a->ms_h), $f($a->tdo_h)), $pct($f($a->ms_b), $f($a->tdo_b))],
+            12 => [$pct($f($a->is_h), $f($a->tdo_h)), $pct($f($a->is_b), $f($a->tdo_b))],
+            13 => [$pct($f($a->ms_h) + $f($a->is_h), $f($a->tdo_h)), $pct($f($a->ms_b) + $f($a->is_b), $f($a->tdo_b))],
+        ];
+
+        $byU = [];
+        foreach ($rows as $row) {
+            $byU[(int) $row->urutan] = $row;
+        }
+        foreach ($vals as $u => [$bi, $sd]) {
+            if (! isset($byU[$u])) {
+                continue;
+            }
+            $r = $byU[$u];
+            $r->bi_olah = $isOlah ? $bi : 0.0;
+            $r->bi_kso = $isOlah ? 0.0 : $bi;
+            $r->bi_jumlah = $bi;
+            $r->sd_olah = $isOlah ? $sd : 0.0;
+            $r->sd_kso = $isOlah ? 0.0 : $sd;
+            $r->sd_jumlah = $sd;
         }
 
         return $rows;
