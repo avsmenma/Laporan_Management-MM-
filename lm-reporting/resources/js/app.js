@@ -123,8 +123,10 @@ function numberColumn(field, title, clickable = true) {
                 return '';
             }
 
-            // Capaian terhadap RKO/RKAP ("% RKO" / "% RKAP"): bila baris tidak punya
-            // data RKO/RKAP → tampilkan strip "-". Nilai ≥ 100,01% diwarnai merah.
+            // Capaian terhadap RKO/RKAP ("% RKO" / "% RKAP"):
+            //  - Tak ada RKO/RKAP DAN tak ada biaya (Real = 0) → strip "-".
+            //  - Tak ada RKO/RKAP tapi ADA biaya (Real > 0)    → 100,01 (merah).
+            //  - Ada RKO/RKAP → rasio biasa; ≥ 100,01% diwarnai merah.
             if (/^cap_.*(rko|rkap)$/.test(field)) {
                 // Pada baris subtotal/total (latar hijau gelap), angka merah nyaris hilang.
                 // Bungkus dengan "chip" latar putih agar kontras tetap tinggi; baris biasa
@@ -133,9 +135,12 @@ function numberColumn(field, title, clickable = true) {
                 const red = (t) => darkRow
                     ? `<span style="color:#c0392b;font-weight:700;background:#fff;border-radius:5px;padding:0 6px;display:inline-block;line-height:1.45">${t}</span>`
                     : `<span style="color:#c0392b;font-weight:600">${t}</span>`;
-                const denom = Number(row[field.slice(4)] ?? 0); // cap_bi_rko → bi_rko
+                const base = field.slice(4);                       // cap_bi_rko → bi_rko
+                const denom = Number(row[base] ?? 0);             // nilai RKO/RKAP
+                const real = Number(row[base.split('_')[0] + '_jumlah'] ?? 0); // bi_jumlah / sd_jumlah (Real)
                 if (Math.abs(denom) < 0.000001) {
-                    return '-'; // tak ada data RKO/RKAP → strip
+                    // Tak ada RKO/RKAP: strip bila tak ada biaya, selain itu sentinel 100,01.
+                    return Math.abs(real) < 0.000001 ? '-' : red('100,01');
                 }
                 const pct = Number(cell.getValue() ?? 0);
                 if (Math.abs(pct) < 0.000001) {
