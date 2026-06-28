@@ -230,6 +230,9 @@ function produksiKebunApp() {
                 data: rows, columns,
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',
+                // Tinggi tetap → tabel punya area gulir sendiri sehingga header tabel
+                // tetap terlihat (frozen) saat baris digulir ke bawah.
+                height: '70vh',
                 rowFormatter: (row) => {
                     const d = row.getData();
                     let bg = null, fw = null;
