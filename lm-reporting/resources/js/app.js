@@ -124,7 +124,7 @@ function numberColumn(field, title, clickable = true) {
             }
 
             // Capaian terhadap RKO/RKAP ("% RKO" / "% RKAP"): bila baris tidak punya
-            // data RKO/RKAP → tampilkan 100,01%. Nilai ≥ 100,01% diwarnai merah.
+            // data RKO/RKAP → tampilkan strip "-". Nilai ≥ 100,01% diwarnai merah.
             if (/^cap_.*(rko|rkap)$/.test(field)) {
                 // Pada baris subtotal/total (latar hijau gelap), angka merah nyaris hilang.
                 // Bungkus dengan "chip" latar putih agar kontras tetap tinggi; baris biasa
@@ -135,7 +135,7 @@ function numberColumn(field, title, clickable = true) {
                     : `<span style="color:#c0392b;font-weight:600">${t}</span>`;
                 const denom = Number(row[field.slice(4)] ?? 0); // cap_bi_rko → bi_rko
                 if (Math.abs(denom) < 0.000001) {
-                    return red('100,01');
+                    return '-'; // tak ada data RKO/RKAP → strip
                 }
                 const pct = Number(cell.getValue() ?? 0);
                 if (Math.abs(pct) < 0.000001) {
