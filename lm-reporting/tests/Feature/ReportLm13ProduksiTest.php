@@ -74,4 +74,64 @@ class ReportLm13ProduksiTest extends TestCase
         $this->assertEqualsWithDelta(7.0, (float) $oj('46')['bi_jumlah'], 0.001);
         $this->assertEqualsWithDelta(7.0, (float) $oj('46')['sd_jumlah'], 0.001);
     }
+
+    public function test_kolom_real_thn_lalu_produksi_ditarik_dari_produksi_pks_tahun_lalu(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'draft']);
+        $unit = RefUnit::query()->where('code', '5E01')->firstOrFail();
+
+        $mk = fn (string $plant, string $date, array $v) => array_merge([
+            'posting_date' => $date, 'tidak_mengolah' => false,
+            'plant_code' => $plant, 'plant_desc' => 'PKS', 'group_pemilik' => 'Kebun Sendiri',
+            'kebun_code' => '5E01', 'nama_kebun' => 'KEBUN GUNUNG MELIAU',
+        ], $v);
+
+        // Tahun ini (2026-05) — agar laporan punya nilai Real Bln Ini juga.
+        DB::table('produksi_pks')->insert([
+            $mk('5F01', '2026-05-31', ['tbs_diterima_sdhari' => 70, 'tbs_diterima_sdbulan' => 700, 'tbs_diolah_sdhari' => 50, 'tbs_diolah_sdbulan' => 500, 'sisa_akhir' => 6, 'ms_sdhari' => 12, 'ms_sdbulan' => 120, 'is_sdhari' => 3, 'is_sdbulan' => 30]),
+        ]);
+
+        // Tahun lalu (2025-05) — sumber kolom "Real Thn Lalu" / "s.d Thn Lalu".
+        DB::table('produksi_pks')->insert([
+            $mk('5F01', '2025-05-31', ['tbs_diterima_sdhari' => 60, 'tbs_diterima_sdbulan' => 600, 'tbs_diolah_sdhari' => 48, 'tbs_diolah_sdbulan' => 480, 'sisa_akhir' => 3, 'ms_sdhari' => 10, 'ms_sdbulan' => 100, 'is_sdhari' => 2, 'is_sdbulan' => 20]),
+            $mk('5F04', '2025-05-31', ['tbs_diterima_sdhari' => 40, 'tbs_diterima_sdbulan' => 400, 'tbs_diolah_sdhari' => 32, 'tbs_diolah_sdbulan' => 320, 'sisa_akhir' => 1, 'ms_sdhari' => 6, 'ms_sdbulan' => 60, 'is_sdhari' => 1, 'is_sdbulan' => 10]),
+        ]);
+        // Kebun lain tahun lalu tidak boleh ikut (uji filter kebun).
+        DB::table('produksi_pks')->insert($mk('5F01', '2025-05-31', ['kebun_code' => '5E02', 'tbs_diterima_sdhari' => 999, 'tbs_diterima_sdbulan' => 999]));
+
+        app(Lm13Service::class)->generate($batch, $unit, 'KS');
+
+        $role = Role::query()->firstOrCreate(['name' => Role::OPERATOR], ['description' => 'Operator']);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        $data = $this->actingAs($user)->getJson('/report-data/lm13?batch='.$batch->id.'&unit='.$unit->code.'&komoditi=KS')->assertOk()->json();
+        $rows = collect($data['rows']);
+        $oj = fn (string $urutan) => $rows->first(fn ($r) => (string) $r['urutan'] === $urutan && $r['block'] === 'OLAH_JUAL');
+
+        // Agregat tahun lalu (5E01, 2025-05-31): diterima 100/1000, olah 80/800, akhir 4,
+        // MS 16/160, IS 3/30. (5E02 dikecualikan.)
+        // B Diterima · Kebun Inti (6) → Real Thn Lalu 100, s.d Thn Lalu 1000.
+        $this->assertEqualsWithDelta(100.0, (float) $oj('6')['real_thn_lalu'], 0.001);
+        $this->assertEqualsWithDelta(1000.0, (float) $oj('6')['sd_real_thn_lalu'], 0.001);
+        // B Jumlah (9) = 6+7+8.
+        $this->assertEqualsWithDelta(100.0, (float) $oj('9')['real_thn_lalu'], 0.001);
+        // D Minyak Sawit · Kebun Inti (16) → 16/160; E Inti Sawit (21) → 3/30.
+        $this->assertEqualsWithDelta(16.0, (float) $oj('16')['real_thn_lalu'], 0.001);
+        $this->assertEqualsWithDelta(3.0, (float) $oj('21')['real_thn_lalu'], 0.001);
+        // Jumlah Produksi MS + IS (25) = 19/190.
+        $this->assertEqualsWithDelta(19.0, (float) $oj('25')['real_thn_lalu'], 0.001);
+        $this->assertEqualsWithDelta(190.0, (float) $oj('25')['sd_real_thn_lalu'], 0.001);
+        // F TBS Olah · Kebun Inti (28) → 80/800; Jumlah (31) sama.
+        $this->assertEqualsWithDelta(80.0, (float) $oj('28')['real_thn_lalu'], 0.001);
+        $this->assertEqualsWithDelta(80.0, (float) $oj('31')['real_thn_lalu'], 0.001);
+        // A Saldo Awal · Kebun Inti (2) = olah+akhir−diterima = 80+4−100 = −16 (sd 800+4−1000 = −196).
+        $this->assertEqualsWithDelta(-16.0, (float) $oj('2')['real_thn_lalu'], 0.001);
+        $this->assertEqualsWithDelta(-196.0, (float) $oj('2')['sd_real_thn_lalu'], 0.001);
+        // Saldo Akhir TBS (46) → sisa_akhir 4 (bi & sd sama).
+        $this->assertEqualsWithDelta(4.0, (float) $oj('46')['real_thn_lalu'], 0.001);
+
+        // Kolom "Real Bln Ini" (tahun ini) tetap dari snapshot 2026-05: diterima 70.
+        $this->assertEqualsWithDelta(70.0, (float) $oj('6')['bi_jumlah'], 0.001);
+    }
 }
