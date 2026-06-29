@@ -88,6 +88,30 @@ class ImportTemplateService
                     'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
                 ],
             ],
+            'rkap_bku' => [
+                'sheet' => 'BKU',
+                'note' => 'Anggaran RKAP — BKU. Kolom: A=Komoditi (KS/KR), D=Period (bulan), E=Aktifitas (kode), J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Desc.', 'Period', 'Aktifitas', 'Job Name', 'Cost Element',
+                    'Cost Element Desc', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'rkap_ohc' => [
+                'sheet' => 'OHC',
+                'note' => 'Anggaran RKAP — OHC. Kolom: A=Komoditi (KS/KR), D=Period (bulan), E=Kode CC, J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode CC', 'CO Object Name', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'rkap_gc' => [
+                'sheet' => 'GC',
+                'note' => 'Anggaran RKAP — GC. Kolom: A=Komoditi (KS/KR), D=Period (bulan), E=Kode GC, J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode GC', 'GC', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
             'areal' => [
                 'sheet' => 'DB',
                 'note' => 'Areal statement — sheet harus bernama "DB". Isi data mulai baris ke-2.',

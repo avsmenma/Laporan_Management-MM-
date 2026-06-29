@@ -1503,10 +1503,15 @@ class ReportController extends Controller
             return ['sections' => [], 'grand_total' => 0.0, 'row_count' => 0];
         }
 
+        // Jenis anggaran dari kolom yang diklik: bi_rkap/sd_rkap → RKAP, lainnya → RKO.
+        // (orWhereNull = toleran terhadap data lama sebelum kolom 'jenis' ada.)
+        $kind = str_contains($columnKey, 'rkap') ? 'rkap' : 'rko';
+
         $query = DB::table('budget_source')
             ->where('year', $batch->year)
             ->where('komoditi', $komoditi)
             ->where('report_type', 'LM14')
+            ->where(fn ($q) => $q->where('jenis', $kind)->orWhereNull('jenis'))
             ->whereIn('kode', array_keys($kodes));
 
         // Filter periode selaras kolom: sd_* (s.d. bulan ini) = akumulasi 1..bulan;

@@ -35,12 +35,13 @@ class BudgetImportTest extends TestCase
         $this->assertSame(1, DB::table('budget_rko')->where('source', 'BKU')->count());
         $this->assertSame(1, DB::table('budget_rko')->where('source', 'OHC')->count());
         $this->assertEqualsWithDelta(3000.0, (float) DB::table('budget_rko')->sum('nilai'), 0.5);
-        // budget_rkap identik dengan budget_rko.
-        $this->assertEqualsWithDelta(3000.0, (float) DB::table('budget_rkap')->sum('nilai'), 0.5);
+        // RKO & RKAP terpisah: impor rko_* TIDAK mengisi budget_rkap.
+        $this->assertSame(0, DB::table('budget_rkap')->count());
 
-        // budget_source (audit) juga menyimpan baris mentah per-sumber.
+        // budget_source (audit) juga menyimpan baris mentah per-sumber, ditandai jenis=rko.
         $this->assertSame(1, DB::table('budget_source')->where('source', 'BKU')->count());
         $this->assertSame(1, DB::table('budget_source')->where('source', 'OHC')->count());
+        $this->assertSame(2, DB::table('budget_source')->where('jenis', 'rko')->count());
         $this->assertEqualsWithDelta(3000.0, (float) DB::table('budget_source')->sum('nilai'), 0.5);
 
         // Re-import BKU hanya mengganti baris BKU, OHC utuh (rko & audit).
@@ -51,6 +52,39 @@ class BudgetImportTest extends TestCase
 
         unlink($bku);
         unlink($ohc);
+    }
+
+    public function test_rko_dan_rkap_disimpan_terpisah_dengan_nilai_berbeda(): void
+    {
+        RefUnit::query()->create(['code' => '5E11', 'name' => 'Kebun A', 'type' => 'KEBUN', 'komoditi' => 'KS']);
+        DB::table('lm_template_row')->insert([
+            ['report_type' => 'LM14', 'komoditi' => 'KS', 'kode' => '41-01', 'urutan' => 1, 'uraian' => 'X', 'row_type' => 'detail'],
+        ]);
+
+        // Dua file dengan NILAI BERBEDA untuk kode yang sama.
+        $rko = $this->buildBudgetFile('41-01', 1000.0);
+        $rkap = $this->buildBudgetFile('41-01', 1500.0);
+
+        app(SpreadsheetImportService::class)->importBudget(2026, 'rko_bku', $rko);
+        app(SpreadsheetImportService::class)->importBudget(2026, 'rkap_bku', $rkap);
+
+        // Tiap tabel menyimpan nilainya sendiri — tidak saling menimpa.
+        $this->assertEqualsWithDelta(1000.0, (float) DB::table('budget_rko')->sum('nilai'), 0.5);
+        $this->assertEqualsWithDelta(1500.0, (float) DB::table('budget_rkap')->sum('nilai'), 0.5);
+
+        // budget_source memisahkan jenis: satu baris rko (1000) & satu baris rkap (1500).
+        $this->assertEqualsWithDelta(1000.0, (float) DB::table('budget_source')->where('jenis', 'rko')->sum('nilai'), 0.5);
+        $this->assertEqualsWithDelta(1500.0, (float) DB::table('budget_source')->where('jenis', 'rkap')->sum('nilai'), 0.5);
+
+        // Re-impor RKAP dengan nilai baru tidak menyentuh RKO.
+        $rkap2 = $this->buildBudgetFile('41-01', 1800.0);
+        app(SpreadsheetImportService::class)->importBudget(2026, 'rkap_bku', $rkap2);
+        $this->assertEqualsWithDelta(1000.0, (float) DB::table('budget_rko')->sum('nilai'), 0.5, 'RKO tidak boleh berubah');
+        $this->assertEqualsWithDelta(1800.0, (float) DB::table('budget_rkap')->sum('nilai'), 0.5);
+
+        unlink($rko);
+        unlink($rkap);
+        unlink($rkap2);
     }
 
     public function test_gc_writes_only_to_budget_source_audit(): void

@@ -19,13 +19,19 @@ class ImportServiceTest extends TestCase
     public function test_types_now_include_realisasi_and_budget(): void
     {
         $this->assertSame(
-            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc', 'areal', 'produksi', 'produksi_kebun'],
+            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc', 'rkap_bku', 'rkap_ohc', 'rkap_gc', 'areal', 'produksi', 'produksi_kebun'],
             array_keys(SpreadsheetImportService::types())
         );
         $this->assertFalse(SpreadsheetImportService::isBudget('wbs'));
         $this->assertTrue(SpreadsheetImportService::isBudget('rko_ohc'));
+        $this->assertTrue(SpreadsheetImportService::isBudget('rkap_ohc'));
         $this->assertSame('OHC', SpreadsheetImportService::budgetSource('rko_ohc'));
+        $this->assertSame('OHC', SpreadsheetImportService::budgetSource('rkap_ohc'));
         $this->assertNull(SpreadsheetImportService::budgetSource('wbs'));
+        $this->assertSame('rko', SpreadsheetImportService::budgetKind('rko_bku'));
+        $this->assertSame('rkap', SpreadsheetImportService::budgetKind('rkap_gc'));
+        $this->assertNull(SpreadsheetImportService::budgetKind('wbs'));
+        $this->assertTrue(SpreadsheetImportService::usesMonthGuard('rkap_bku'));
         $this->assertTrue(SpreadsheetImportService::isProduksiKebun('produksi_kebun'));
         $this->assertFalse(SpreadsheetImportService::isProduksiKebun('produksi'));
         $this->assertTrue(SpreadsheetImportService::usesMonthGuard('produksi_kebun'));

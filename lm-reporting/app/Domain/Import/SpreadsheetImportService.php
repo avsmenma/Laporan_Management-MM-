@@ -79,19 +79,35 @@ class SpreadsheetImportService
             'wbs' => 'DB WBS',
             'ohc' => 'DB OHC',
             'gc' => 'DB GC',
-            'rko_bku' => 'RKO/RKAP — BKU',
-            'rko_ohc' => 'RKO/RKAP — OHC',
-            'rko_gc' => 'RKO/RKAP — GC',
+            'rko_bku' => 'RKO — BKU',
+            'rko_ohc' => 'RKO — OHC',
+            'rko_gc' => 'RKO — GC',
+            'rkap_bku' => 'RKAP — BKU',
+            'rkap_ohc' => 'RKAP — OHC',
+            'rkap_gc' => 'RKAP — GC',
             'areal' => 'Areal',
             'produksi' => 'Produksi',
             'produksi_kebun' => 'Produksi Kebun',
         ];
     }
 
-    /** Jenis realisasi (per bulan) vs anggaran (per tahun). */
+    /** Jenis realisasi (per bulan) vs anggaran (per tahun). RKO & RKAP keduanya anggaran. */
     public static function isBudget(string $type): bool
     {
-        return str_starts_with($type, 'rko_');
+        return str_starts_with($type, 'rko_') || str_starts_with($type, 'rkap_');
+    }
+
+    /** Jenis anggaran: 'rko' atau 'rkap' (tabel tujuan), atau null bila bukan anggaran. */
+    public static function budgetKind(string $type): ?string
+    {
+        if (str_starts_with($type, 'rkap_')) {
+            return 'rkap';
+        }
+        if (str_starts_with($type, 'rko_')) {
+            return 'rko';
+        }
+
+        return null;
     }
 
     /** Jenis produksi PKS (snapshot harian, tanpa batch). */
@@ -116,9 +132,9 @@ class SpreadsheetImportService
     public static function budgetSource(string $type): ?string
     {
         return match ($type) {
-            'rko_bku' => 'BKU',
-            'rko_ohc' => 'OHC',
-            'rko_gc' => 'GC',
+            'rko_bku', 'rkap_bku' => 'BKU',
+            'rko_ohc', 'rkap_ohc' => 'OHC',
+            'rko_gc', 'rkap_gc' => 'GC',
             default => null,
         };
     }
@@ -203,6 +219,8 @@ class SpreadsheetImportService
     {
         abort_unless(self::isBudget($type), 422, 'Jenis bukan anggaran.');
         $source = self::budgetSource($type); // BKU/OHC/GC
+        $kind = self::budgetKind($type);     // rko | rkap
+        $targetTable = $kind === 'rkap' ? 'budget_rkap' : 'budget_rko';
         $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
         $filename = $file instanceof UploadedFile ? $file->getClientOriginalName() : basename($file);
 
@@ -267,7 +285,7 @@ class SpreadsheetImportService
 
             $rawSrc[] = [
                 'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
-                'report_type' => 'LM14', 'kode' => $kode, 'source' => $source, 'period' => $period,
+                'report_type' => 'LM14', 'kode' => $kode, 'source' => $source, 'jenis' => $kind, 'period' => $period,
                 'object_name' => $str($c[$C_OBJ] ?? null, 250),
                 'cost_element' => $str($c[$C_CE] ?? null, 40),
                 'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
@@ -288,9 +306,10 @@ class SpreadsheetImportService
             ];
         }
 
-        DB::transaction(function () use ($rows, $rawSrc, $year, $source, $month): void {
-            // Idempoten per-sumber: hapus hanya baris sumber ini. Bila bulan dipilih,
-            // hapus HANYA period itu agar 11 bulan lain di tahun yang sama tetap utuh.
+        DB::transaction(function () use ($rows, $rawSrc, $year, $source, $kind, $targetTable, $month): void {
+            // Idempoten per-(sumber, jenis): RKO & RKAP tabel terpisah → impor RKAP tidak
+            // menyentuh RKO (dan sebaliknya). Bila bulan dipilih, hapus HANYA period itu
+            // agar 11 bulan lain di tahun yang sama tetap utuh.
             $scope = function ($q) use ($year, $source, $month) {
                 $q->where('year', $year)->where('report_type', 'LM14')->where('source', $source);
                 if ($month !== null) {
@@ -299,12 +318,12 @@ class SpreadsheetImportService
 
                 return $q;
             };
-            $scope(DB::table('budget_rko'))->delete();
-            $scope(DB::table('budget_rkap'))->delete();
-            $scope(DB::table('budget_source'))->delete();
+            // Tabel anggaran tujuan (budget_rko ATAU budget_rkap) — hanya satu yang disentuh.
+            $scope(DB::table($targetTable))->delete();
+            // budget_source (audit/drill-down) dipisah per jenis agar rincian RKO ≠ RKAP.
+            $scope(DB::table('budget_source'))->where('jenis', $kind)->delete();
             foreach (array_chunk($rows, 500) as $chunk) {
-                DB::table('budget_rko')->insert($chunk);
-                DB::table('budget_rkap')->insert($chunk);
+                DB::table($targetTable)->insert($chunk);
             }
             foreach (array_chunk($rawSrc, 500) as $chunk) {
                 DB::table('budget_source')->insert($chunk);

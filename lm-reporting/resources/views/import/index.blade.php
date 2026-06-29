@@ -47,8 +47,13 @@
                     $pJenis = 'produksi_kebun';
                     $pKategori = '';
                 } elseif ($pIsBudget) {
-                    $pJenis = 'rko';
-                    $pKategori = substr($pType, 4); // bku/ohc/gc
+                    if (str_starts_with($pType, 'rkap_')) {
+                        $pJenis = 'rkap';
+                        $pKategori = substr($pType, 5); // bku/ohc/gc
+                    } else {
+                        $pJenis = 'rko';
+                        $pKategori = substr($pType, 4); // bku/ohc/gc
+                    }
                 } else {
                     $pJenis = 'aktual';
                     $pKategori = $pType; // wbs/ohc/gc
@@ -82,6 +87,7 @@
                           if (this.jenis === 'areal') return 'areal';
                           if (this.jenis === 'produksi') return 'produksi';
                           if (this.jenis === 'produksi_kebun') return 'produksi_kebun';
+                          if (this.jenis === 'rkap') return 'rkap_' + this.kategori;
                           return 'rko_' + this.kategori;
                       },
                       // Semua dropdown wajib terisi sebelum boleh pratinjau / unduh template.
