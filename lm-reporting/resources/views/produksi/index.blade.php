@@ -136,7 +136,7 @@ function produksiApp() {
             return this.periods
                 .filter(p => String(p.year) === String(this.year))
                 .map(p => Number(p.month))
-                .sort((a, b) => b - a);
+                .sort((a, b) => a - b); // Januari di atas, menurun ke bawah
         },
         onYearChange() {
             // Jangan auto-pilih bulan saat ganti tahun. Pertahankan bulan bila masih
