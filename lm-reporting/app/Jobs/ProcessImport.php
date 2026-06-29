@@ -46,15 +46,22 @@ class ProcessImport implements ShouldQueue
             }
         };
 
+        // Batch yang terdampak impor ini → diregenerasi otomatis setelah sukses.
+        $affected = [];
+
         try {
             $month = $job->month !== null ? (int) $job->month : null;
             if (SpreadsheetImportService::isProduksiKebun($job->type)) {
                 $result = $service->importProduksiKebun($path, $job->user_id, $onProgress, (int) $job->year, $month);
+                $affected = $this->batchIdsForPeriod((int) $job->year, $month);
             } elseif (SpreadsheetImportService::isProduksi($job->type)) {
                 $result = $service->importProduksi($path, $job->user_id, $onProgress, (int) $job->year, $month);
+                $affected = $this->batchIdsForPeriod((int) $job->year, $month);
             } elseif ($isBudget) {
                 $result = $service->importBudget((int) $job->year, $job->type, $path, $job->user_id, $onProgress, $month);
+                // Anggaran terkunci per tahun → seluruh batch tahun itu perlu regenerasi.
                 Batch::query()->where('year', $job->year)->update(['needs_regenerate' => true]);
+                $affected = $this->batchIdsForPeriod((int) $job->year, null);
             } else {
                 $batch = Batch::query()->firstOrCreate(
                     ['year' => $job->year, 'month' => $job->month],
@@ -62,6 +69,7 @@ class ProcessImport implements ShouldQueue
                 );
                 $result = $service->import($job->type, $batch, $path, $job->user_id, $onProgress);
                 $batch->forceFill(['needs_regenerate' => true])->save();
+                $affected = [$batch->id];
             }
 
             $job->forceFill([
@@ -74,5 +82,25 @@ class ProcessImport implements ShouldQueue
         } finally {
             Storage::disk('local')->delete($job->staged_path);
         }
+
+        // Regenerasi laporan otomatis (di-antrikan, hanya bila impor sukses & ada batch).
+        if ($job->status === 'done' && $affected !== []) {
+            RegenerateReports::dispatch(array_values(array_unique($affected)));
+        }
+    }
+
+    /**
+     * Batch untuk satu periode. $month null → semua bulan di tahun itu.
+     *
+     * @return array<int, int>
+     */
+    private function batchIdsForPeriod(int $year, ?int $month): array
+    {
+        $q = Batch::query()->where('year', $year);
+        if ($month !== null) {
+            $q->where('month', $month);
+        }
+
+        return $q->pluck('id')->all();
     }
 }

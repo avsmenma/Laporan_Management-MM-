@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domain\Admin\DataPurgeService;
 use App\Http\Controllers\Controller;
+use App\Jobs\RegenerateReports;
 use App\Models\Batch;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -57,10 +58,43 @@ class DataPurgeController extends Controller
             ? (DataPurgeService::targets()[$target]['group'].' — '.DataPurgeService::targets()[$target]['label'])
             : 'Semua tabel';
 
+        // Regenerasi laporan otomatis setelah hapus SELEKTIF (batch tetap ada). Hapus
+        // global (per bulan/tahun/semua) menghapus batch sekaligus → tak perlu regenerasi.
+        // Target "laporan" dikecualikan: user memang ingin laporan terhapus, bukan dibangun ulang.
+        $regenInfo = '';
+        if ($perTarget && $target !== 'laporan') {
+            $batchIds = $this->scopedBatchIds($data['mode'], $year);
+            if ($batchIds !== []) {
+                Batch::query()->whereIn('id', $batchIds)->update(['needs_regenerate' => true]);
+                RegenerateReports::dispatch($batchIds);
+                $regenInfo = ' Regenerasi laporan ('.count($batchIds).' batch) dijadwalkan otomatis.';
+            }
+        }
+
         $total = array_sum($counts);
         $detail = collect($counts)->map(fn ($n, $table) => "{$table}: {$n}")->implode(', ');
 
         return back()->with('status', "Hapus data [{$label}] ({$scope}) selesai: {$total} baris terhapus."
-            .($detail !== '' ? " [{$detail}]" : ''));
+            .($detail !== '' ? " [{$detail}]" : '').$regenInfo);
+    }
+
+    /**
+     * Batch yang perlu diregenerasi setelah hapus selektif. Selalu mencakup seluruh
+     * batch dalam cakupan TAHUN (mode month pun) karena sumber per-tahun (anggaran,
+     * tahun lalu, alokasi) memengaruhi semua bulan; aman & cukup murah (sedikit batch).
+     *
+     * @return array<int, int>
+     */
+    private function scopedBatchIds(string $mode, ?int $year): array
+    {
+        $q = Batch::query();
+        if ($mode !== 'all') {
+            if ($year === null) {
+                return [];
+            }
+            $q->where('year', $year);
+        }
+
+        return $q->pluck('id')->all();
     }
 }
