@@ -46,6 +46,9 @@
                 } elseif ($pType === 'produksi_kebun') {
                     $pJenis = 'produksi_kebun';
                     $pKategori = '';
+                } elseif ($pType === 'pks_biaya') {
+                    $pJenis = 'pabrik';
+                    $pKategori = '';
                 } elseif ($pIsBudget) {
                     if (str_starts_with($pType, 'rkap_')) {
                         $pJenis = 'rkap';
@@ -73,7 +76,8 @@
                       isAreal() { return this.jenis === 'areal'; },
                       isProduksi() { return this.jenis === 'produksi'; },
                       isProduksiKebun() { return this.jenis === 'produksi_kebun'; },
-                      noKategori() { return this.isAreal() || this.isProduksi() || this.isProduksiKebun(); },
+                      isPabrik() { return this.jenis === 'pabrik'; },
+                      noKategori() { return this.isAreal() || this.isProduksi() || this.isProduksiKebun() || this.isPabrik(); },
                       needKategori() { return this.jenis !== '' && !this.noKategori(); },
                       kategoriOptions() {
                           return this.isBudgetType()
@@ -87,6 +91,7 @@
                           if (this.jenis === 'areal') return 'areal';
                           if (this.jenis === 'produksi') return 'produksi';
                           if (this.jenis === 'produksi_kebun') return 'produksi_kebun';
+                          if (this.jenis === 'pabrik') return 'pks_biaya';
                           if (this.jenis === 'rkap') return 'rkap_' + this.kategori;
                           return 'rko_' + this.kategori;
                       },
@@ -111,6 +116,7 @@
                         <option value="areal">Areal</option>
                         <option value="produksi">Produksi</option>
                         <option value="produksi_kebun">Produksi Kebun</option>
+                        <option value="pabrik">Pabrik (Biaya PKS)</option>
                     </select>
                 </div>
                 <div class="field" style="margin-bottom:0" x-show="needKategori()">

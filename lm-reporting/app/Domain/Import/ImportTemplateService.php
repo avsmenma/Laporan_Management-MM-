@@ -134,6 +134,20 @@ class ImportTemplateService
                     'Tgl Posting', 'Tidak Mengolah',
                 ],
             ],
+            'pks_biaya' => [
+                'sheet' => 'Sheet1',
+                'note' => 'Biaya PKS (ekspor SAP cost) — dibaca dari sheet pertama. Kolom kunci LM16: F=Cost Element (GL), H=Period (bulan 1-12), J=Value in Obj. Crcy (nilai), AN=Plant (5F01..), AO=Kode A (STAS/BT../SUP3). Isi data mulai baris ke-2.',
+                'headers' => [
+                    'Cost Center', 'CO Object Name', 'Business Transaction', 'Document Number', 'Ref. document number',
+                    'Cost Element', 'Cost element name', 'Period', 'Posting Date', 'Value in Obj. Crcy', 'Total quantity',
+                    'Posted unit of meas.', 'Name', 'User Name', 'Material', 'Material Description', 'Reference procedure',
+                    'Dr/Cr indicator', 'Reference Key', 'Partner Object Class', 'Object Type', 'Partner object name',
+                    'Partner Object Type', 'Offsetting Account', 'Name of offsetting account', 'Name of offsetting account2',
+                    'Document Header Text', 'Partner Object', 'Partner object type3', 'Partner-CCtr', 'Source Object',
+                    'Source object name', 'Origin-obj. type', 'Source object type', 'Cost element descr.', 'Lock',
+                    'Kode B', 'Klasifikasi', 'PB71', 'Plant', 'Kode A', 'Klasifikasi 2', 'Bulan', 'Klasifikasi STAS', 'Unit Kerja',
+                ],
+            ],
             'produksi_kebun' => [
                 'sheet' => 'ZESTHLE020',
                 'note' => 'Produksi Kebun (jembatan timbang TBS) — sheet harus bernama "ZESTHLE020". Tanggal di "Posting Date", berat di "Weight netto". Isi mulai baris ke-2.',

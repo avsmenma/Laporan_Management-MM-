@@ -88,6 +88,7 @@ class SpreadsheetImportService
             'areal' => 'Areal',
             'produksi' => 'Produksi',
             'produksi_kebun' => 'Produksi Kebun',
+            'pks_biaya' => 'Biaya PKS (LM16)',
         ];
     }
 
@@ -191,6 +192,7 @@ class SpreadsheetImportService
             'ohc' => $this->importRaw($batch, 'db_ohc', self::OHC_COLUMNS, $this->dataRows($path), 'gcohc', $onProgress),
             'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $this->dataRows($path), 'gcohc', $onProgress),
             'areal' => $this->importAreal($batch, $this->dataRowsSheet($path, 'DB'), $onProgress),
+            'pks_biaya' => $this->importPksBiayaFlat($batch, $this->dataRows($path), $onProgress),
         });
 
         ImportUploadLog::query()->create([
@@ -954,6 +956,94 @@ class SpreadsheetImportService
         });
 
         return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /**
+     * Indeks kolom 0-based file biaya PKS (ekspor SAP cost, sheet pertama "Sheet1").
+     * Hanya kolom yang dipakai LM16: identitas pabrik + kode pemetaan + nilai.
+     *  - cost_center ← "Kode A" (AO): STAS (pengolahan), BT.. (overhead), SUP3 (depresiasi).
+     *  - cost_element ← "Cost Element" (F): kode GL, dipakai untuk baris Biaya Pengolahan.
+     * Pemetaan ke baris LM16 dilakukan di Lm16Service via lm16_account_map.
+     */
+    private const PKS_BIAYA_COLS = [
+        'cost_element' => 5,   // F  Cost Element (GL)
+        'period' => 7,         // H  Period (bulan 1-12)
+        'nilai' => 9,          // J  Value in Obj. Crcy
+        'plant_code' => 39,    // AN Plant (5F01..)
+        'cost_center' => 40,   // AO Kode A (STAS/BT../SUP3)
+    ];
+
+    /**
+     * Impor file biaya PKS (ekspor SAP cost, satu baris per posting) ke pks_biaya
+     * (idempoten per batch). Penjaga bulan: hanya baris dengan Period = bulan batch yang
+     * diimpor (cegah file salah-bulan masuk). Hanya unit PABRIK dikenal yang diterima;
+     * plant lain dicatat sebagai error & dilewati. Baris disisipkan per-chunk (memori konstan).
+     *
+     * @param  iterable<int, array<int, mixed>>  $rows
+     */
+    private function importPksBiayaFlat(Batch $batch, iterable $rows, ?callable $onProgress = null): ImportResult
+    {
+        DB::table('pks_biaya')->where('batch_id', $batch->id)->delete();
+
+        $C = self::PKS_BIAYA_COLS;
+        $month = (int) $batch->month;
+        $records = [];
+        $inserted = 0;
+        $skippedPlant = [];
+
+        $flush = function () use (&$records, &$inserted, $onProgress): void {
+            if ($records === []) {
+                return;
+            }
+            DB::table('pks_biaya')->insert($records);
+            $inserted += count($records);
+            $records = [];
+            if ($onProgress !== null) {
+                $onProgress($inserted);
+            }
+        };
+
+        foreach ($rows as $v) {
+            if ($this->isEmptyRow($v)) {
+                continue;
+            }
+            $period = is_numeric($v[$C['period']] ?? null) ? (int) $v[$C['period']] : null;
+            // Penjaga bulan: hanya baris periode = bulan batch yang diimpor.
+            if ($period !== $month) {
+                continue;
+            }
+            $plant = strtoupper(trim((string) ($v[$C['plant_code']] ?? '')));
+            if ($plant === '') {
+                continue;
+            }
+            // Hanya unit PABRIK yang dikenal; lainnya dicatat & dilewati (audit error).
+            if (! $this->isKnownUnit($plant, 'PABRIK')) {
+                $skippedPlant[$plant] = ($skippedPlant[$plant] ?? 0) + 1;
+
+                continue;
+            }
+
+            $records[] = [
+                'batch_id' => $batch->id,
+                'plant_code' => $plant,
+                'period' => $period,
+                'cost_center' => $this->nullableText($v[$C['cost_center']] ?? null),
+                'cost_element' => $this->nullableText($v[$C['cost_element']] ?? null),
+                'klasifikasi_code' => null,
+                'nilai' => round($this->numericValue($v[$C['nilai']] ?? 0), 2),
+            ];
+            if (count($records) >= 500) {
+                $flush();
+            }
+        }
+        $flush();
+
+        $errors = [];
+        foreach ($skippedPlant as $code => $n) {
+            $errors[] = "Plant di luar master pabrik dilewati: {$code} ({$n} baris).";
+        }
+
+        return new ImportResult($inserted, array_slice($errors, 0, 50));
     }
 
     /**
