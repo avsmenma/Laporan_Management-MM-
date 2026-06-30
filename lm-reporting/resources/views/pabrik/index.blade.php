@@ -189,14 +189,11 @@
             </div>
 
             <!-- FOOTER: jumlah baris + Grand Total (gaya referensi) -->
-            <div class="lm-dd-foot"
-                 x-show="(drill.view==='pivot' && drill.pivot && drill.pivot.row_count) || (drill.view==='deep' && drill.deep.data && drill.deep.data.row_count)">
-                <div class="lm-dd-foot-stat">
-                    <strong x-text="fmtInt(drill.view==='pivot' ? (drill.pivot?.row_count ?? 0) : (drill.deep.data?.row_count ?? 0))"></strong> baris data
-                </div>
+            <div class="lm-dd-foot" x-show="drill.footTotal">
+                <div class="lm-dd-foot-stat"><strong x-text="drill.footCount"></strong></div>
                 <div class="lm-dd-foot-total">
                     <span class="lm-dd-foot-label">Grand Total</span>
-                    <span class="lm-dd-foot-amount">Rp <span x-text="fmtNum(drill.view==='pivot' ? (drill.pivot?.grand_total ?? 0) : (drill.deep.value ?? 0))"></span></span>
+                    <span class="lm-dd-foot-amount" x-text="drill.footTotal"></span>
                 </div>
             </div>
         </div>
@@ -226,6 +223,7 @@ function pabrikApp() {
         drill: {
             open: false, view: 'pivot', direct: false, loading: false, error: null,
             title: '', columnLabel: '', value: 0, pivot: null, message: null,
+            footCount: '', footTotal: '',
             ctx: { kode: '', column: '' },
             deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
         },
@@ -491,6 +489,7 @@ function pabrikApp() {
                 open: true, view: 'pivot', direct: false, loading: true, error: null,
                 title: String(event.detail.row?.uraian ?? '').trim() || dd.kode_baris,
                 columnLabel: '', value: Number(event.detail.value ?? 0), pivot: null, message: null,
+                footCount: '', footTotal: '',
                 ctx: { kode: dd.kode_baris, column: dd.column_key },
                 deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
             };
@@ -508,8 +507,22 @@ function pabrikApp() {
                 this.drill.columnLabel = data.context?.column_label ?? dd.column_key;
                 this.drill.message = data.context?.message ?? null;
 
+                // Baris produksi: rincian per kebun (tabel sederhana, tanpa level-2).
+                if (data.context?.produksi_detail && data.produksi) {
+                    const p = data.produksi;
+                    this.drill.direct = true;
+                    this.drill.view = 'deep';
+                    this.drill.deep = {
+                        loading: false, error: null, data: { row_count: p.row_count },
+                        html: this.buildProduksiHtml(p),
+                        pb7: '', pb712: '', klasifikasi: '', value: this.drill.value,
+                    };
+                    this.drill.footCount = this.fmtInt(p.row_count) + ' kebun';
+                    this.drill.footTotal = p.is_ratio
+                        ? this.fmtNum(p.grand) + ' %'
+                        : this.fmtNum(p.grand) + ' Kg';
                 // Kolom RKO/RKAP: server kirim detail langsung (tanpa pivot).
-                if (data.context?.direct_detail && data.detail) {
+                } else if (data.context?.direct_detail && data.detail) {
                     this.drill.direct = true;
                     this.drill.view = 'deep';
                     this.drill.deep = {
@@ -517,8 +530,14 @@ function pabrikApp() {
                         data: data.detail, html: this.buildDeepHtml(data.detail),
                         pb7: '', pb712: '', klasifikasi: '', value: this.drill.value,
                     };
+                    this.drill.footCount = this.fmtInt(data.detail.row_count) + ' baris data';
+                    this.drill.footTotal = 'Rp ' + this.fmtNum(this.drill.value);
                 } else {
                     this.drill.pivot = data.pivot;
+                    if (data.pivot && data.pivot.row_count) {
+                        this.drill.footCount = this.fmtInt(data.pivot.row_count) + ' baris data';
+                        this.drill.footTotal = 'Rp ' + this.fmtNum(data.pivot.grand_total);
+                    }
                 }
             } catch (error) {
                 this.drill.error = error.message;
@@ -556,6 +575,8 @@ function pabrikApp() {
                 const data = await this.fetchReport(`/report-data/drilldown-deep?${params.toString()}`);
                 this.drill.deep.data = data.detail;
                 this.drill.deep.html = this.buildDeepHtml(data.detail);
+                this.drill.footCount = this.fmtInt(data.detail?.row_count ?? 0) + ' baris data';
+                this.drill.footTotal = 'Rp ' + this.fmtNum(value);
             } catch (error) {
                 this.drill.deep.error = error.message;
             } finally {
@@ -565,6 +586,10 @@ function pabrikApp() {
 
         backToPivot() {
             this.drill.view = 'pivot';
+            if (this.drill.pivot && this.drill.pivot.row_count) {
+                this.drill.footCount = this.fmtInt(this.drill.pivot.row_count) + ' baris data';
+                this.drill.footTotal = 'Rp ' + this.fmtNum(this.drill.pivot.grand_total);
+            }
         },
 
         closeDrill() {
@@ -636,6 +661,48 @@ function pabrikApp() {
             }
 
             return out;
+        },
+
+        // Rincian per kebun untuk baris PRODUKSI LM16 (aditif: nilai/kebun; rendemen: MS·olah·%).
+        buildProduksiHtml(p) {
+            if (!p || !p.row_count) return '';
+            const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const code = (s) => '<span class="lm-dd-code">' + esc(s) + '</span>';
+            let head, body = '', foot, i = 0;
+
+            if (p.kind === 'rendemen') {
+                head = '<tr><th class="lm-dd-n">#</th><th class="lm-dd-l">Kebun</th><th class="lm-dd-l">Nama Kebun</th>'
+                    + '<th class="lm-dd-n">' + esc(p.comp_label) + '</th><th class="lm-dd-n">TBS Diolah</th><th class="lm-dd-n">Rendemen (%)</th></tr>';
+                for (const r of p.rows) {
+                    i++;
+                    body += '<tr><td class="lm-dd-n lm-dd-rownum">' + i + '</td>'
+                        + '<td class="lm-dd-l">' + code(r.kebun) + '</td><td class="lm-dd-l">' + esc(r.nama) + '</td>'
+                        + '<td class="lm-dd-n">' + esc(this.fmtNum(r.comp)) + '</td>'
+                        + '<td class="lm-dd-n">' + esc(this.fmtNum(r.olah)) + '</td>'
+                        + '<td class="lm-dd-n">' + esc(this.fmtNum(r.rendemen)) + ' %</td></tr>';
+                }
+                foot = '<tr class="lm-dd-subrow"><td class="lm-dd-n"></td><td class="lm-dd-l" colspan="2">Grand Total</td>'
+                    + '<td class="lm-dd-n">' + esc(this.fmtNum(p.grand_comp)) + '</td>'
+                    + '<td class="lm-dd-n">' + esc(this.fmtNum(p.grand_olah)) + '</td>'
+                    + '<td class="lm-dd-n">' + esc(this.fmtNum(p.grand)) + ' %</td></tr>';
+            } else {
+                head = '<tr><th class="lm-dd-n">#</th><th class="lm-dd-l">Kebun</th><th class="lm-dd-l">Nama Kebun</th>'
+                    + '<th class="lm-dd-n">' + esc(p.value_label) + ' (Kg)</th></tr>';
+                for (const r of p.rows) {
+                    i++;
+                    body += '<tr><td class="lm-dd-n lm-dd-rownum">' + i + '</td>'
+                        + '<td class="lm-dd-l">' + code(r.kebun) + '</td><td class="lm-dd-l">' + esc(r.nama) + '</td>'
+                        + '<td class="lm-dd-n">' + esc(this.fmtNum(r.value)) + '</td></tr>';
+                }
+                foot = '<tr class="lm-dd-subrow"><td class="lm-dd-n"></td><td class="lm-dd-l" colspan="2">Grand Total</td>'
+                    + '<td class="lm-dd-n">' + esc(this.fmtNum(p.grand)) + '</td></tr>';
+            }
+
+            return '<div class="lm-dd-section">'
+                + '<div class="lm-dd-section-head"><span class="lm-dd-section-name">Produksi per Kebun — ' + esc(p.title) + '</span>'
+                + '<span class="lm-dd-section-meta">' + this.fmtInt(p.row_count) + ' kebun</span></div>'
+                + '<table class="lm-dd-table lm-dd-raw"><thead>' + head + '</thead><tbody>' + body + '</tbody>'
+                + '<tfoot>' + foot + '</tfoot></table></div>';
         },
 
         deepDragStart(event) {

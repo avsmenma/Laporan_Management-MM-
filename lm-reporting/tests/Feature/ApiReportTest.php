@@ -263,6 +263,52 @@ class ApiReportTest extends TestCase
             ->assertOk()->assertJsonPath('pivot', null);
     }
 
+    public function test_lm16_drilldown_produksi_per_kebun(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'final', 'processed_at' => '2026-05-20 08:00:00']);
+        $unit = RefUnit::query()->where('code', '5F01')->firstOrFail(); // Olah
+        $operator = User::query()->whereHas('role', fn ($q) => $q->where('name', Role::OPERATOR))->firstOrFail();
+
+        $mk = fn (string $plant, string $kebun, array $v) => array_merge([
+            'posting_date' => '2026-05-31', 'tidak_mengolah' => false,
+            'plant_code' => $plant, 'plant_desc' => 'PKS', 'group_pemilik' => 'Kebun Sendiri',
+            'kebun_code' => $kebun, 'nama_kebun' => 'KEBUN '.$kebun,
+            'tbs_diterima_sdhari' => 0, 'tbs_diterima_sdbulan' => 0, 'tbs_diolah_sdhari' => 0, 'tbs_diolah_sdbulan' => 0,
+            'sisa_akhir' => 0, 'ms_sdhari' => 0, 'ms_sdbulan' => 0, 'is_sdhari' => 0, 'is_sdbulan' => 0,
+        ], $v);
+        DB::table('produksi_pks')->insert([
+            $mk('5F01', '5E01', ['tbs_diterima_sdhari' => 60, 'tbs_diolah_sdhari' => 50, 'sisa_akhir' => 3, 'ms_sdhari' => 10, 'is_sdhari' => 2]),
+            $mk('5F01', '5E02', ['tbs_diterima_sdhari' => 40, 'tbs_diolah_sdhari' => 30, 'sisa_akhir' => 1, 'ms_sdhari' => 6, 'is_sdhari' => 0]),
+            $mk('5F01', '5E09', []), // semua nol → harus disembunyikan
+            $mk('5F04', '5E03', ['tbs_diterima_sdhari' => 999]), // pabrik lain → diabaikan
+        ]);
+
+        $base = ['type' => 'LM16', 'batch' => $batch->id, 'unit' => $unit->code];
+
+        // Baris aditif "TBS dari Lapangan (masuk)" (urut 3): per kebun, Grand Total = Σ = 100.
+        $tbs = $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($base + ['kode' => 3, 'column' => 'bi_jumlah']));
+        $tbs->assertOk()
+            ->assertJsonPath('context.produksi_detail', true)
+            ->assertJsonPath('produksi.kind', 'additive')
+            ->assertJsonPath('produksi.row_count', 2)       // 5E09 nol disembunyikan, 5F04 diabaikan
+            ->assertJsonPath('produksi.grand', 100)
+            ->assertJsonPath('produksi.rows.0.kebun', '5E01')
+            ->assertJsonPath('produksi.rows.0.value', 60)
+            ->assertJsonPath('produksi.rows.1.kebun', '5E02')
+            ->assertJsonPath('produksi.rows.1.value', 40);
+
+        // Baris rendemen MS (urut 11): per kebun + komponen; Grand Total = ΣMS/Σolah×100 = 16/80×100 = 20.
+        $rms = $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($base + ['kode' => 11, 'column' => 'bi_jumlah']));
+        $rms->assertOk()
+            ->assertJsonPath('produksi.kind', 'rendemen')
+            ->assertJsonPath('produksi.row_count', 2)
+            ->assertJsonPath('produksi.grand_comp', 16)
+            ->assertJsonPath('produksi.grand_olah', 80)
+            ->assertJsonPath('produksi.grand', 20)
+            ->assertJsonPath('produksi.rows.0.rendemen', 20); // 10/50×100
+    }
+
     private function insertLm14Source(Batch $batch, RefUnit $unit): void
     {
         DB::table('db_wbs_raw')->insert([

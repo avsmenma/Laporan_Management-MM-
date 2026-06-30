@@ -323,6 +323,29 @@ class ReportController extends Controller
             ]);
         }
 
+        // Baris PRODUKSI LM16 (TBS/MS/IS/rendemen): rincian per kebun LANGSUNG (tanpa pivot/level-2).
+        $produksi = $this->drilldownProduksiLm16($type, $batch, $unit, $template, $columnKey);
+        if ($produksi !== null) {
+            return response()->json([
+                'success' => true,
+                'meta' => $this->buildMeta($batch, $unitMeta, $type, $komoditi),
+                'context' => [
+                    'type' => $type,
+                    'kode_baris' => (string) $request->kode,
+                    'column_key' => $columnKey,
+                    'column_label' => $this->columnLabel($type, $columnKey),
+                    'template' => $templateMeta,
+                    'direct_detail' => true,
+                    'produksi_detail' => true,
+                    'message' => $produksi['row_count'] === 0
+                        ? 'Tidak ada produksi per kebun untuk sel ini.'
+                        : null,
+                ],
+                'pivot' => null,
+                'produksi' => $produksi,
+            ]);
+        }
+
         $pivot = $this->drilldownPivot($type, $batch, $unit, $komoditi, $template, $columnKey)
             ?? $this->drilldownPivotLm16($type, $batch, $unit, $template, $columnKey);
 
@@ -2094,6 +2117,132 @@ class ReportController extends Controller
         }
 
         return [$subRek, $kodeB, $kategori];
+    }
+
+    // ===== Drill-down PRODUKSI LM16 — sumber: produksi_pks (rincian per kebun) =====
+
+    /** Lingkup periode produksi untuk kolom LM16: bi = s/d hari, sd = s/d bulan. */
+    private function lm16ProduksiScope(string $columnKey): ?string
+    {
+        return match ($columnKey) {
+            'bi_olah', 'bi_kso', 'bi_jumlah' => 'bi',
+            'sd_olah', 'sd_kso', 'sd_jumlah' => 'sd',
+            default => null,
+        };
+    }
+
+    /**
+     * Rincian per kebun untuk sel baris PRODUKSI LM16 (asal TBS/MS/IS per kebun pemasok).
+     * Sumber `produksi_pks`, snapshot tanggal & filter plant sama dgn applyProduksiToLm16.
+     *   - Baris aditif (urut 2,3,4,5,7,8): nilai per kebun; Grand Total = Σ = nilai sel laporan.
+     *   - Baris rendemen (urut 11,12): per kebun komponen (MS/IS) + TBS Diolah + Rendemen%;
+     *     Grand Total = ΣMS/Σolah×100 (rasio agregat), BUKAN penjumlahan.
+     * Hanya kebun yang ada nilainya yang ditampilkan.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function drilldownProduksiLm16(string $type, Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey): ?array
+    {
+        if ($type !== 'LM16' || $unit === null || $template === null) {
+            return null;
+        }
+        $urut = (int) $template->urutan;
+        $additive = [
+            2 => 'Stok Awal TBS', 3 => 'TBS Diterima', 4 => 'TBS Diolah',
+            5 => 'Stok Akhir TBS', 7 => 'Minyak Sawit', 8 => 'Inti Sawit',
+        ];
+        $rendemen = [11 => 'Minyak Sawit', 12 => 'Inti Sawit'];
+        $isRendemen = isset($rendemen[$urut]);
+        if (! isset($additive[$urut]) && ! $isRendemen) {
+            return null;
+        }
+        $scope = $this->lm16ProduksiScope($columnKey);
+        if ($scope === null) {
+            return null;
+        }
+
+        $title = (string) $template->uraian;
+        $empty = [
+            'kind' => $isRendemen ? 'rendemen' : 'additive', 'title' => $title,
+            'rows' => [], 'grand' => 0.0, 'is_ratio' => $isRendemen, 'row_count' => 0,
+        ];
+
+        $date = DB::table('produksi_pks')
+            ->whereYear('posting_date', $batch->year)
+            ->whereMonth('posting_date', $batch->month)
+            ->max('posting_date');
+        if ($date === null) {
+            return $empty;
+        }
+
+        $g = DB::table('produksi_pks')
+            ->whereDate('posting_date', $date)
+            ->where('plant_code', $unit->code)
+            ->selectRaw(
+                'kebun_code, MAX(nama_kebun) nama, '.
+                'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
+                'COALESCE(SUM(tbs_diolah_sdhari),0) tdo_h, COALESCE(SUM(tbs_diolah_sdbulan),0) tdo_b, '.
+                'COALESCE(SUM(sisa_akhir),0) akhir, '.
+                'COALESCE(SUM(ms_sdhari),0) ms_h, COALESCE(SUM(ms_sdbulan),0) ms_b, '.
+                'COALESCE(SUM(is_sdhari),0) is_h, COALESCE(SUM(is_sdbulan),0) is_b'
+            )
+            ->groupBy('kebun_code')->orderBy('kebun_code')->get();
+
+        $pick = fn (object $r, string $h, string $b): float => $scope === 'bi' ? (float) $r->$h : (float) $r->$b;
+
+        if ($isRendemen) {
+            $rows = [];
+            $sumComp = 0.0;
+            $sumOlah = 0.0;
+            foreach ($g as $r) {
+                $comp = $urut === 11 ? $pick($r, 'ms_h', 'ms_b') : $pick($r, 'is_h', 'is_b');
+                $olah = $pick($r, 'tdo_h', 'tdo_b');
+                if (abs($comp) < 0.00001 && abs($olah) < 0.00001) {
+                    continue;
+                }
+                $rows[] = [
+                    'kebun' => (string) $r->kebun_code,
+                    'nama' => (string) $r->nama,
+                    'comp' => $comp,
+                    'olah' => $olah,
+                    'rendemen' => abs($olah) < 0.00001 ? 0.0 : round($comp / $olah * 100, 2),
+                ];
+                $sumComp += $comp;
+                $sumOlah += $olah;
+            }
+
+            return [
+                'kind' => 'rendemen', 'title' => $title, 'comp_label' => $rendemen[$urut],
+                'rows' => $rows,
+                'grand' => abs($sumOlah) < 0.00001 ? 0.0 : round($sumComp / $sumOlah * 100, 2),
+                'grand_comp' => $sumComp, 'grand_olah' => $sumOlah,
+                'is_ratio' => true, 'row_count' => count($rows),
+            ];
+        }
+
+        $rows = [];
+        $sum = 0.0;
+        foreach ($g as $r) {
+            $v = match ($urut) {
+                2 => $pick($r, 'tdo_h', 'tdo_b') + (float) $r->akhir - $pick($r, 'tdi_h', 'tdi_b'),
+                3 => $pick($r, 'tdi_h', 'tdi_b'),
+                4 => $pick($r, 'tdo_h', 'tdo_b'),
+                5 => (float) $r->akhir,
+                7 => $pick($r, 'ms_h', 'ms_b'),
+                8 => $pick($r, 'is_h', 'is_b'),
+                default => 0.0,
+            };
+            if (abs($v) < 0.00001) {
+                continue;
+            }
+            $rows[] = ['kebun' => (string) $r->kebun_code, 'nama' => (string) $r->nama, 'value' => $v];
+            $sum += $v;
+        }
+
+        return [
+            'kind' => 'additive', 'title' => $title, 'value_label' => $additive[$urut],
+            'rows' => $rows, 'grand' => $sum, 'is_ratio' => false, 'row_count' => count($rows),
+        ];
     }
 
     /**
