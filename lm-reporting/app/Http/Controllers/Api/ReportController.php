@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Concerns\AuthorizesReportRequests;
+use App\Domain\Import\ImportTemplateService;
 use App\Domain\Report\Lm16Service;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
@@ -2052,7 +2053,8 @@ class ReportController extends Controller
             return ($pb7 === null || $cc === $pb7) && ($pb712 === null || $ce === $pb712);
         }));
 
-        // Kolom mentah = semua kolom asli file (urutan dari baris pertama yg punya `raw`).
+        // Kolom mentah = semua kolom asli file. Ambil key dari baris pertama yg punya `raw`,
+        // lalu urutkan sesuai urutan asli file (MySQL JSON tidak menjaga urutan key).
         $rawKeys = [];
         foreach ($filtered as $r) {
             $decoded = $r->raw !== null ? json_decode((string) $r->raw, true) : null;
@@ -2060,6 +2062,10 @@ class ReportController extends Controller
                 $rawKeys = array_keys($decoded);
                 break;
             }
+        }
+        if ($rawKeys !== []) {
+            $pos = array_flip(ImportTemplateService::specs()['pks_biaya']['headers']);
+            usort($rawKeys, fn ($a, $b) => ($pos[$a] ?? 999) <=> ($pos[$b] ?? 999));
         }
 
         $subtotal = 0.0;
