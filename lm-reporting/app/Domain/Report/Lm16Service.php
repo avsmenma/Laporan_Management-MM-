@@ -124,11 +124,21 @@ class Lm16Service
             ->mapWithKeys(fn ($map) => [$map->kode => $map->lm16_uraian])
             ->all();
 
-        $data = [];
-        foreach ($maps->pluck('lm16_uraian')->unique() as $uraian) {
-            $data[$uraian] = ['bi' => 0.0, 'sd' => 0.0, 'lalu' => 0.0];
+        // Dua ember terpisah supaya baris berlabel sama di dua grup tidak saling bocor:
+        //  - 'pengolahan' (Biaya Langsung)   → hanya dari Cost Element (cost center STAS)
+        //  - 'overhead'   (Biaya Tdk Lgsg)   → hanya dari Cost Center (BT../SUP) + catch-all
+        // Acuan: sheet Pagun — mis. "Biaya Penerangan" pengolahan dari GL 51100601 dsb,
+        // sedangkan "Biaya Penerangan" overhead dari cost center BT13.
+        $zero = fn (): array => ['bi' => 0.0, 'sd' => 0.0, 'lalu' => 0.0];
+        $pengolahan = [];
+        $overhead = [];
+        foreach ($costElementMap as $uraian) {
+            $pengolahan[$uraian] ??= $zero();
         }
-        $data['Pengeluaran Lainnya'] ??= ['bi' => 0.0, 'sd' => 0.0, 'lalu' => 0.0];
+        foreach ($costCenterMap as $uraian) {
+            $overhead[$uraian] ??= $zero();
+        }
+        $overhead['Pengeluaran Lainnya'] ??= $zero();
 
         $rows = DB::table('pks_biaya')
             ->where('batch_id', $batch->id)
@@ -139,37 +149,53 @@ class Lm16Service
         foreach ($rows as $row) {
             $costCenter = trim((string) $row->cost_center);
             $costElement = $this->normalizeCode($row->cost_element);
-            $target = $this->lm16CostTarget($costCenter, $costElement, $costCenterMap, $costElementMap);
-            $data[$target] ??= ['bi' => 0.0, 'sd' => 0.0, 'lalu' => 0.0];
+            [$ember, $target] = $this->lm16CostTarget($costCenter, $costElement, $costCenterMap, $costElementMap);
+            if ($ember === 'pengolahan') {
+                $pengolahan[$target] ??= $zero();
+                $ref = &$pengolahan[$target];
+            } else {
+                $overhead[$target] ??= $zero();
+                $ref = &$overhead[$target];
+            }
 
             $nilai = (float) $row->nilai;
             if ((int) $row->period === $batch->month) {
-                $data[$target]['bi'] += $nilai;
+                $ref['bi'] += $nilai;
             }
             if ((int) $row->period === $batch->month - 1) {
-                $data[$target]['lalu'] += $nilai;
+                $ref['lalu'] += $nilai;
             }
-            $data[$target]['sd'] += $nilai;
+            $ref['sd'] += $nilai;
+            unset($ref);
         }
 
-        return $data;
+        return ['pengolahan' => $pengolahan, 'overhead' => $overhead];
     }
 
     /**
      * @param  array<string, string>  $costCenterMap
      * @param  array<string, string>  $costElementMap
      */
-    private function lm16CostTarget(string $costCenter, string $costElement, array $costCenterMap, array $costElementMap): string
+    /**
+     * @param  array<string, string>  $costCenterMap
+     * @param  array<string, string>  $costElementMap
+     * @return array{0: string, 1: string}  [ember ('pengolahan'|'overhead'), uraian baris LM16]
+     */
+    private function lm16CostTarget(string $costCenter, string $costElement, array $costCenterMap, array $costElementMap): array
     {
         if ($costCenter !== '' && isset($costCenterMap[$costCenter])) {
-            return $costCenterMap[$costCenter];
+            return ['overhead', $costCenterMap[$costCenter]];
         }
 
         if (preg_match('/^(BT|SUP)/i', $costCenter)) {
-            return 'Pengeluaran Lainnya';
+            return ['overhead', 'Pengeluaran Lainnya'];
         }
 
-        return $costElementMap[$costElement] ?? 'Pengeluaran Lainnya';
+        if (isset($costElementMap[$costElement])) {
+            return ['pengolahan', $costElementMap[$costElement]];
+        }
+
+        return ['overhead', 'Pengeluaran Lainnya'];
     }
 
     /**
@@ -201,9 +227,14 @@ class Lm16Service
             return $this->rendemenValues($batch, $unit, $template->uraian, $productionData);
         }
 
+        // Baris pengolahan (kode 600.0/603-604) ambil dari ember 'pengolahan';
+        // baris overhead (kode 4xx.0/490.0) dari ember 'overhead'. Mencegah baris
+        // berlabel sama (Penerangan/Air) saling tumpang tindih antar grup.
+        $ember = ($template->kode !== null && str_starts_with($template->kode, '6')) ? 'pengolahan' : 'overhead';
+        $bucket = $costData[$ember] ?? [];
         $costKey = $template->urutan === 55 ? 'Penyusutan a/b Harga Pokok' : $template->uraian;
-        if (isset($costData[$costKey])) {
-            $values = $costData[$costKey];
+        if (isset($bucket[$costKey])) {
+            $values = $bucket[$costKey];
 
             return $this->withBudget($batch, $unit, $template, $this->splitOlahKso($unit, [
                 'real_bln_lalu' => $values['lalu'],

@@ -74,6 +74,46 @@ class Lm16ServiceTest extends TestCase
         $this->assertEquals(25.70, (float) $this->reportRow($batch, $unit, 13)->sd_jumlah);
     }
 
+    public function test_baris_pengolahan_dan_overhead_berlabel_sama_tidak_saling_bocor(): void
+    {
+        // Regresi: "Biaya Penerangan"/"Biaya Air" ada di grup Pengolahan (kode 603-604)
+        // DAN Overhead (kode 424/425). Nilai overhead (cost center BT13/BT14) tidak boleh
+        // ikut terhitung di baris pengolahan, dan sebaliknya (sumber: lihat sheet Pagun acuan).
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'draft']);
+        $unit = RefUnit::query()->where('code', '5F01')->firstOrFail();
+
+        foreach ([
+            // overhead Biaya Penerangan ← cost center BT13
+            [5, 'BT13', '0', 273000],
+            // pengolahan Biaya Penerangan ← cost element 51100601 (di bawah STAS)
+            [5, 'STAS', '51100601', 5000],
+            // overhead Biaya Air ← cost center BT14 (pengolahan Biaya Air harus tetap 0)
+            [5, 'BT14', '0', 41000],
+        ] as [$period, $cc, $ce, $nilai]) {
+            DB::table('pks_biaya')->insert([
+                'batch_id' => $batch->id,
+                'plant_code' => $unit->code,
+                'period' => $period,
+                'cost_center' => $cc,
+                'cost_element' => $ce,
+                'klasifikasi_code' => '1',
+                'nilai' => $nilai,
+            ]);
+        }
+
+        app(Lm16Service::class)->generate($batch, $unit);
+
+        // Pengolahan (urut 26 Penerangan, 25 Air) hanya dari cost element STAS.
+        $this->assertEquals(5000.0, (float) $this->reportRow($batch, $unit, 26)->bi_jumlah);
+        $this->assertEquals(0.0, (float) $this->reportRow($batch, $unit, 25)->bi_jumlah);
+        // Overhead (urut 51 Penerangan, 52 Air) hanya dari cost center BT.
+        $this->assertEquals(273000.0, (float) $this->reportRow($batch, $unit, 51)->bi_jumlah);
+        $this->assertEquals(41000.0, (float) $this->reportRow($batch, $unit, 52)->bi_jumlah);
+        // Total tidak double-count: 5000 (pengolahan) + 273000 + 41000 (overhead) = 319000.
+        $this->assertEquals(319000.0, (float) $this->reportRow($batch, $unit, 56)->bi_jumlah);
+    }
+
     private function insertPagunProductionFixture(Batch $batch, string $plantCode): void
     {
         foreach ([
