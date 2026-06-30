@@ -338,7 +338,7 @@ class ReportController extends Controller
                 'direct_detail' => false,
                 'message' => $pivot === null
                     ? ($type === 'LM16'
-                        ? 'Sel ini tidak punya rincian sumber mentah (baris produksi/rendemen, capaian %, Rp/Kg, atau subtotal). Klik baris biaya rincian (mis. Premi, Biaya Bahan Kimia) atau kolom RKO/RKAP.'
+                        ? 'Sel masih belum punya rincian sumber data'
                         : 'Kolom ini tidak memiliki rincian sumber mentah (mis. anggaran/RKO/RKAP, capaian %, atau baris BTL/gaji staf tahun lalu yang menunggu data OHC).')
                     : null,
             ],
