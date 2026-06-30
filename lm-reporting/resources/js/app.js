@@ -381,10 +381,17 @@ function lm16Columns(meta) {
             ],
         },
         {
-            title: 'Harga Pokok',
+            title: `Harga Pokok ${monthLabel(meta)}`,
             columns: [
                 numberColumn('rp_kg_tbs', 'Rp/kg TBS'),
                 numberColumn('rp_kg_mi', 'Rp/kg M+I'),
+            ],
+        },
+        {
+            title: `Harga Pokok s.d ${monthLabel(meta)}`,
+            columns: [
+                numberColumn('rp_kg_tbs_sd', 'Rp/kg TBS'),
+                numberColumn('rp_kg_mi_sd', 'Rp/kg M+I'),
             ],
         },
     ];

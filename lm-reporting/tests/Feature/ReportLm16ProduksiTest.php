@@ -40,6 +40,12 @@ class ReportLm16ProduksiTest extends TestCase
             $mk('5F04', '5E03', ['tbs_diterima_sdhari' => 999, 'tbs_diterima_sdbulan' => 999, 'tbs_diolah_sdhari' => 999, 'tbs_diolah_sdbulan' => 999, 'sisa_akhir' => 999, 'ms_sdhari' => 999, 'ms_sdbulan' => 999, 'is_sdhari' => 999, 'is_sdbulan' => 999]),
         ]);
 
+        // Biaya Premi (urut 18) → uji Harga Pokok: bi=160 (period 5), sd=240 (period 4+5).
+        DB::table('pks_biaya')->insert([
+            ['batch_id' => $batch->id, 'plant_code' => '5F01', 'period' => 5, 'cost_center' => 'STAS', 'cost_element' => '51101048', 'klasifikasi_code' => '1', 'nilai' => 160],
+            ['batch_id' => $batch->id, 'plant_code' => '5F01', 'period' => 4, 'cost_center' => 'STAS', 'cost_element' => '51101048', 'klasifikasi_code' => '1', 'nilai' => 80],
+        ]);
+
         // Generate LM16 tanpa data pks_produksi → baris produksi awalnya 0; override dari produksi_pks.
         app(Lm16Service::class)->generate($batch, $unit);
 
@@ -74,5 +80,13 @@ class ReportLm16ProduksiTest extends TestCase
         $this->assertEqualsWithDelta(22.5, (float) $row(13)['bi_jumlah'], 0.001);
         // Rendemen s/d bulan MS = 160/800 = 20,00.
         $this->assertEqualsWithDelta(20.0, (float) $row(11)['sd_jumlah'], 0.001);
+
+        // Harga Pokok Premi (urut 18): bi=160, sd=240; TBS olah bi=80/sd=800, M+I bi=18/sd=180.
+        $this->assertEqualsWithDelta(160.0, (float) $row(18)['bi_jumlah'], 0.001);
+        $this->assertEqualsWithDelta(240.0, (float) $row(18)['sd_jumlah'], 0.001);
+        $this->assertEqualsWithDelta(2.0, (float) $row(18)['rp_kg_tbs'], 0.001);       // 160/80
+        $this->assertEqualsWithDelta(0.3, (float) $row(18)['rp_kg_tbs_sd'], 0.001);    // 240/800
+        $this->assertEqualsWithDelta(160 / 18, (float) $row(18)['rp_kg_mi'], 0.001);   // 160/(16+2)
+        $this->assertEqualsWithDelta(240 / 180, (float) $row(18)['rp_kg_mi_sd'], 0.001); // 240/(160+20)
     }
 }

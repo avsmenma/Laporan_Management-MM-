@@ -930,6 +930,24 @@ class ReportController extends Controller
             $r->sd_jumlah = $sd;
         }
 
+        // Harga Pokok (Rp/kg) dari produksi yang diinjeksi: bulan ini (s/d hari) & s.d
+        // bulan (s/d bulan). Pembagi: TBS Diolah & (Minyak+Inti). Hanya baris biaya
+        // (urutan >= 16). Penyebut 0 → 0 (IFERROR). Lapisan presentasi.
+        $tbsBi = $f($a->tdo_h);
+        $tbsSd = $f($a->tdo_b);
+        $miBi = $f($a->ms_h) + $f($a->is_h);
+        $miSd = $f($a->ms_b) + $f($a->is_b);
+        $div = fn (float $num, float $den): float => abs($den) < 0.00001 ? 0.0 : $num / $den;
+        foreach ($rows as $row) {
+            if ((int) $row->urutan < 16) {
+                continue;
+            }
+            $row->rp_kg_tbs = $div((float) $row->bi_jumlah, $tbsBi);
+            $row->rp_kg_mi = $div((float) $row->bi_jumlah, $miBi);
+            $row->rp_kg_tbs_sd = $div((float) $row->sd_jumlah, $tbsSd);
+            $row->rp_kg_mi_sd = $div((float) $row->sd_jumlah, $miSd);
+        }
+
         return $rows;
     }
 
@@ -1229,6 +1247,8 @@ class ReportController extends Controller
             'cap_sd_rkap' => (float) $row->cap_sd_rkap,
             'rp_kg_tbs' => (float) $row->rp_kg_tbs,
             'rp_kg_mi' => (float) $row->rp_kg_mi,
+            'rp_kg_tbs_sd' => (float) ($row->rp_kg_tbs_sd ?? 0),
+            'rp_kg_mi_sd' => (float) ($row->rp_kg_mi_sd ?? 0),
             // kode_baris = urutan (UNIK): banyak baris LM16 berbagi kode "603-604",
             // jadi pakai urutan agar drill-down mengenali baris yang tepat.
         ], (string) $row->urutan, [
@@ -1249,6 +1269,8 @@ class ReportController extends Controller
             'cap_sd_rkap',
             'rp_kg_tbs',
             'rp_kg_mi',
+            'rp_kg_tbs_sd',
+            'rp_kg_mi_sd',
         ]);
     }
 
@@ -1349,9 +1371,11 @@ class ReportController extends Controller
             ['key' => 'cap_bi_rkap', 'title' => 'BI/RKAP', 'group' => 'Capaian (%)'],
             ['key' => 'cap_bi_sd', 'title' => 'BI/SD', 'group' => 'Capaian (%)'],
             ['key' => 'cap_sd_rkap', 'title' => 'SD/RKAP', 'group' => 'Capaian (%)'],
-            // Harga Pokok
+            // Harga Pokok (bulan ini & s.d bulan ini)
             ['key' => 'rp_kg_tbs', 'title' => 'Rp/Kg TBS', 'group' => 'Harga Pokok'],
             ['key' => 'rp_kg_mi', 'title' => 'Rp/Kg M+I', 'group' => 'Harga Pokok'],
+            ['key' => 'rp_kg_tbs_sd', 'title' => 'Rp/Kg TBS', 'group' => 'Harga Pokok s.d'],
+            ['key' => 'rp_kg_mi_sd', 'title' => 'Rp/Kg M+I', 'group' => 'Harga Pokok s.d'],
         ];
     }
 
