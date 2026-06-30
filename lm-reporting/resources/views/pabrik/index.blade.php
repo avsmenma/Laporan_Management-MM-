@@ -168,15 +168,6 @@
                                     </tr>
                                 </tbody>
                             </template>
-                            <tfoot>
-                                <tr class="lm-dd-grandrow">
-                                    <td class="lm-dd-l" colspan="2">Grand Total</td>
-                                    <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
-                                        <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand[cat])"></td>
-                                    </template>
-                                    <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand_total)"></td>
-                                </tr>
-                            </tfoot>
                         </table>
                         </template>
                     </div>
