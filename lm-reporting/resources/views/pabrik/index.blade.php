@@ -135,12 +135,15 @@
                         <table class="lm-dd-table">
                             <thead>
                                 <tr>
-                                    <th class="lm-dd-l">Cost Center (Kode A)</th>
-                                    <th class="lm-dd-l">Cost Element (GL)</th>
+                                    <th class="lm-dd-l" rowspan="2">SUB REKENING</th>
+                                    <th class="lm-dd-l" rowspan="2">Kode B</th>
+                                    <th class="lm-dd-n lm-dd-grouphead" :colspan="(drill.pivot?.categories ?? []).length">KATEGORI BKU</th>
+                                    <th class="lm-dd-n" rowspan="2">Grand Total</th>
+                                </tr>
+                                <tr>
                                     <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
                                         <th class="lm-dd-n" x-text="cat"></th>
                                     </template>
-                                    <th class="lm-dd-n">Grand Total</th>
                                 </tr>
                             </thead>
                             <template x-for="(group, gi) in (drill.pivot?.groups ?? [])" :key="gi">
@@ -160,7 +163,7 @@
                                         </tr>
                                     </template>
                                     <tr class="lm-dd-subrow">
-                                        <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' — Subtotal'"></td>
+                                        <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' Total'"></td>
                                         <template x-for="cat in drill.pivot.categories" :key="cat">
                                             <td class="lm-dd-n" x-text="fmtNum(group.subtotal[cat])"></td>
                                         </template>
@@ -534,8 +537,8 @@ function pabrikApp() {
             this.drill.view = 'deep';
             this.drill.deep = {
                 loading: true, error: null, data: null, html: '',
-                pb7: pb7 || '(Tanpa Cost Center)',
-                pb712: pb712 || '(Tanpa GL)',
+                pb7: pb7 || '(Tanpa Sub Rekening)',
+                pb712: pb712 || '(Tanpa Kode B)',
                 klasifikasi: klasifikasi || '',
                 value: Number(value || 0),
             };

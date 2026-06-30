@@ -388,7 +388,7 @@ class ReportController extends Controller
         $klasifikasi = $request->filled('klasifikasi') ? (string) $request->klasifikasi : null;
 
         if ($type === 'LM16') {
-            $detail = $this->drilldownDeepLm16($batch, $unit, $template, (string) $request->column, $pb7, $pb712);
+            $detail = $this->drilldownDeepLm16($batch, $unit, $template, (string) $request->column, $pb7, $pb712, $klasifikasi);
         } else {
             $scope = $this->columnPeriodScope((string) $request->column);
             $rows = [];
@@ -1896,9 +1896,11 @@ class ReportController extends Controller
      * klasifikasi, dengan subtotal grup dan grand total (baris & kolom).
      *
      * @param  array<int, object>  $rows
+     * @param  array<int, string>|null  $categoryOrder  Urutan kolom kategori eksplisit (mis. LM16:
+     *                                                   Klasifikasi STAS alfabetis). Null = pakai KLASIFIKASI_ORDER kanonik.
      * @return array<string, mixed>
      */
-    private function buildPivot(array $rows): array
+    private function buildPivot(array $rows, ?array $categoryOrder = null): array
     {
         $blank = self::PIVOT_BLANK;
         $blankKlas = self::PIVOT_BLANK_KLAS;
@@ -1916,8 +1918,9 @@ class ReportController extends Controller
             $presentKlas[$klas] = true;
         }
 
-        // Urutkan kolom klasifikasi: kanonik dulu, sisanya menyusul.
-        $categories = array_values(array_filter(self::KLASIFIKASI_ORDER, fn ($k) => isset($presentKlas[$k])));
+        // Urutkan kolom klasifikasi: pakai urutan eksplisit bila diberikan, lalu kanonik, sisanya menyusul.
+        $order = $categoryOrder ?? self::KLASIFIKASI_ORDER;
+        $categories = array_values(array_filter($order, fn ($k) => isset($presentKlas[$k])));
         foreach (array_keys($presentKlas) as $k) {
             if (! in_array($k, $categories, true)) {
                 $categories[] = $k;
@@ -2037,17 +2040,60 @@ class ReportController extends Controller
             return null;
         }
 
+        // Dimensi pivot sesuai layout Excel acuan:
+        //   grup baris = "Klasifikasi 2" (SUB REKENING), baris = "Kode B",
+        //   kolom kategori = "Klasifikasi STAS" (KATEGORI BKU), nilai = Value (`nilai`).
+        // Ketiganya dibaca dari kolom `raw` (JSON file SAP); fallback ke Cost Center/Element bila kosong.
         $pivotRows = [];
+        $cats = [];
         foreach ($rows as $r) {
+            [$subRek, $kodeB, $kategori] = $this->lm16PivotDims($r);
+            $cats[$kategori] = true;
             $pivotRows[] = (object) [
-                'pb7' => trim((string) $r->cost_center) !== '' ? (string) $r->cost_center : self::PIVOT_BLANK,
-                'pb712' => trim((string) $r->cost_element) !== '' ? (string) $r->cost_element : self::PIVOT_BLANK,
-                'klasifikasi' => 'Nilai',
+                'pb7' => $subRek,
+                'pb712' => $kodeB,
+                'klasifikasi' => $kategori,
                 'total' => (float) $r->nilai,
             ];
         }
 
-        return $this->buildPivot($pivotRows);
+        // Urutkan KATEGORI BKU alfabetis (mengikuti prefiks a./b./c.… di Klasifikasi STAS).
+        $catOrder = array_keys($cats);
+        sort($catOrder);
+
+        return $this->buildPivot($pivotRows, $catOrder);
+    }
+
+    /**
+     * Dimensi pivot sumber LM16 dari satu baris pks_biaya: [SUB REKENING (Klasifikasi 2),
+     * Kode B, KATEGORI BKU (Klasifikasi STAS)]. Dibaca dari `raw`; fallback ke kolom kanonik.
+     *
+     * @return array{0:string,1:string,2:string}
+     */
+    private function lm16PivotDims(object $r): array
+    {
+        $raw = isset($r->raw) && $r->raw !== null ? json_decode((string) $r->raw, true) : null;
+        if (is_array($raw) && $raw !== []) {
+            $subRek = trim((string) ($raw['Klasifikasi 2'] ?? ''));
+            $kodeB = trim((string) ($raw['Kode B'] ?? ''));
+            $kategori = trim((string) ($raw['Klasifikasi STAS'] ?? ''));
+        } else {
+            $subRek = trim((string) $r->cost_center);
+            $kodeB = trim((string) $r->cost_element);
+            $kategori = 'Nilai';
+        }
+
+        if ($subRek === '' || strcasecmp($subRek, '#N/A') === 0) {
+            $subRek = self::PIVOT_BLANK;
+        }
+        if ($kodeB === '') {
+            $kodeB = self::PIVOT_BLANK;
+        }
+        if ($kategori === '' || strcasecmp($kategori, '#N/A') === 0) {
+            $kategori = self::PIVOT_BLANK_KLAS;
+        }
+
+        return [$subRek, $kodeB, $kategori];
     }
 
     /**
@@ -2056,7 +2102,7 @@ class ReportController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function drilldownDeepLm16(Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey, ?string $pb7, ?string $pb712): array
+    private function drilldownDeepLm16(Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey, ?string $pb7, ?string $pb712, ?string $klasifikasi = null): array
     {
         $empty = ['sections' => [], 'grand_total' => 0.0, 'row_count' => 0];
         if ($unit === null || ! $this->isLm16BiayaRow($template)) {
@@ -2069,12 +2115,13 @@ class ReportController extends Controller
 
         $rows = $this->matchingPksBiayaRows($batch, $unit, $template, $scope);
 
-        // Saring ke sel pivot yang diklik (cost_center × cost_element).
-        $filtered = array_values(array_filter($rows, function ($r) use ($pb7, $pb712): bool {
-            $cc = trim((string) $r->cost_center) !== '' ? (string) $r->cost_center : self::PIVOT_BLANK;
-            $ce = trim((string) $r->cost_element) !== '' ? (string) $r->cost_element : self::PIVOT_BLANK;
+        // Saring ke sel pivot yang diklik: SUB REKENING (pb7) × Kode B (pb712) × KATEGORI BKU (klasifikasi).
+        $filtered = array_values(array_filter($rows, function ($r) use ($pb7, $pb712, $klasifikasi): bool {
+            [$subRek, $kodeB, $kategori] = $this->lm16PivotDims($r);
 
-            return ($pb7 === null || $cc === $pb7) && ($pb712 === null || $ce === $pb712);
+            return ($pb7 === null || $subRek === $pb7)
+                && ($pb712 === null || $kodeB === $pb712)
+                && ($klasifikasi === null || $kategori === $klasifikasi);
         }));
 
         // Kolom mentah = semua kolom asli file. Ambil key dari baris pertama yg punya `raw`,

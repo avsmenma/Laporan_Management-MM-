@@ -214,16 +214,21 @@ class ApiReportTest extends TestCase
         $operator = User::query()->whereHas('role', fn ($query) => $query->where('name', Role::OPERATOR))->firstOrFail();
 
         // Premi (urut 18, pengolahan) ← cost element STAS; BT13 overhead TIDAK boleh bocor.
+        // Pivot popup: grup baris = "Klasifikasi 2" (SUB REKENING), baris = "Kode B",
+        // kolom = "Klasifikasi STAS" (KATEGORI BKU) — semuanya dari kolom `raw`.
         foreach ([
-            [5, 'STAS', '51101048', 100, 'DOC-100'],
-            [5, 'STAS', '90042085', 50, 'DOC-050'],
-            [4, 'STAS', '51101048', 30, 'DOC-030'],   // periode lain → masuk s.d, bukan bulan ini
-            [5, 'BT13', '0', 999, 'DOC-999'],         // overhead Penerangan → tak boleh masuk Premi
-        ] as [$period, $cc, $ce, $nilai, $doc]) {
+            [5, 'STAS', '51101048', 100, 'DOC-100', 'STAS01', 'a. Gaji'],
+            [5, 'STAS', '90042085', 50, 'DOC-050', 'STAS01', 'g. Premi/Lembur'],
+            [4, 'STAS', '51101048', 30, 'DOC-030', 'STAS01', 'a. Gaji'], // periode lain → masuk s.d, bukan bulan ini
+            [5, 'BT13', '0', 999, 'DOC-999', 'BT13', 'f. Lain-lain'],     // overhead Penerangan → tak boleh masuk Premi
+        ] as [$period, $cc, $ce, $nilai, $doc, $kodeB, $kategori]) {
             DB::table('pks_biaya')->insert([
                 'batch_id' => $batch->id, 'plant_code' => $unit->code, 'period' => $period,
                 'cost_center' => $cc, 'cost_element' => $ce, 'klasifikasi_code' => '1', 'nilai' => $nilai,
-                'raw' => json_encode(['Document Number' => $doc, 'Cost Element' => $ce, 'Value in Obj. Crcy' => $nilai]),
+                'raw' => json_encode([
+                    'Document Number' => $doc, 'Cost Element' => $ce, 'Value in Obj. Crcy' => $nilai,
+                    'Kode B' => $kodeB, 'Klasifikasi 2' => 'c. 603-604 - Premi', 'Klasifikasi STAS' => $kategori,
+                ]),
             ]);
         }
 
@@ -231,22 +236,26 @@ class ApiReportTest extends TestCase
         $base = ['type' => 'LM16', 'batch' => $batch->id, 'unit' => $unit->code, 'kode' => 18];
 
         // Level-1 pivot bulan ini: hanya STAS periode 5 → 100 + 50 = 150 (BT13 dibuang).
+        // Grup = Klasifikasi 2 "c. 603-604 - Premi"; kategori urut alfabetis → "a. Gaji" dulu.
         $pivot = $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($base + ['column' => 'bi_jumlah']));
         $pivot->assertOk()->assertJsonPath('success', true)
             ->assertJsonPath('pivot.grand_total', 150)
-            ->assertJsonPath('pivot.categories.0', 'Nilai')
-            ->assertJsonPath('pivot.groups.0.pb7', 'STAS');
+            ->assertJsonPath('pivot.categories.0', 'a. Gaji')
+            ->assertJsonPath('pivot.categories.1', 'g. Premi/Lembur')
+            ->assertJsonPath('pivot.groups.0.pb7', 'c. 603-604 - Premi')
+            ->assertJsonPath('pivot.groups.0.rows.0.pb712', 'STAS01');
 
-        // Level-2 deep untuk GL 51101048 (bulan ini) → 100.
-        $deep = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'bi_jumlah', 'pb7' => 'STAS', 'pb712' => '51101048']));
+        // Level-2 deep untuk sel SUB REKENING × Kode B × KATEGORI BKU "a. Gaji" (bulan ini) → 100.
+        $deepKey = ['pb7' => 'c. 603-604 - Premi', 'pb712' => 'STAS01', 'klasifikasi' => 'a. Gaji'];
+        $deep = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'bi_jumlah'] + $deepKey));
         $deep->assertOk()->assertJsonPath('detail.sections.0.table', 'pks_biaya')
             ->assertJsonPath('detail.grand_total', 100)
             // Data mentah apa adanya: kolom asli file (mis. "Document Number") tampil.
             ->assertJsonPath('detail.sections.0.columns.0.field', 'Document Number')
             ->assertJsonPath('detail.sections.0.rows.0.Document Number', 'DOC-100');
 
-        // s.d bulan ini = periode <=5 untuk 51101048 → 100 + 30 = 130.
-        $deepSd = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'sd_jumlah', 'pb7' => 'STAS', 'pb712' => '51101048']));
+        // s.d bulan ini = periode <=5 untuk kategori "a. Gaji" → 100 + 30 = 130.
+        $deepSd = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'sd_jumlah'] + $deepKey));
         $deepSd->assertOk()->assertJsonPath('detail.grand_total', 130);
 
         // Baris produksi (urut 3) tidak punya pivot sumber biaya.
