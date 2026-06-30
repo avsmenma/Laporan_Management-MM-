@@ -451,8 +451,10 @@ select.field-control { padding-right: 8px; }
 
 /* section band (e.g. "BIAYA TANAMAN") */
 .lm-report-table .tabulator-row.lm-row-header td,
-.lm-report-table .tabulator-row.lm-row-header .tabulator-cell {
-    background: #e9f1ec;
+.lm-report-table .tabulator-row.lm-row-header .tabulator-cell,
+.lm-report-table .tabulator-row.lm-row-header .tabulator-cell.tabulator-frozen,
+.lm-report-table .tabulator-row.lm-row-header.tabulator-row-even .tabulator-cell.tabulator-frozen {
+    background: #e9f1ec !important;
     font-weight: 700;
     color: var(--g-800);
     text-transform: uppercase;
