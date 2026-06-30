@@ -987,6 +987,9 @@ class SpreadsheetImportService
 
         $C = self::PKS_BIAYA_COLS;
         $month = (int) $batch->month;
+        // Label kolom asli file (untuk menyimpan baris mentah apa adanya ke kolom `raw`,
+        // dipakai drill-down LM16 level-2). Urutan & label = template pks_biaya.
+        $headers = ImportTemplateService::specs()['pks_biaya']['headers'];
         $records = [];
         $inserted = 0;
         $skippedPlant = [];
@@ -1023,6 +1026,13 @@ class SpreadsheetImportService
                 continue;
             }
 
+            // Simpan baris mentah apa adanya (semua kolom asli file) → kolom raw.
+            $raw = [];
+            foreach ($headers as $i => $label) {
+                $cell = $v[$i] ?? null;
+                $raw[$label] = (is_scalar($cell) || $cell === null) ? $cell : (string) $cell;
+            }
+
             $records[] = [
                 'batch_id' => $batch->id,
                 'plant_code' => $plant,
@@ -1031,6 +1041,7 @@ class SpreadsheetImportService
                 'cost_element' => $this->nullableText($v[$C['cost_element']] ?? null),
                 'klasifikasi_code' => null,
                 'nilai' => round($this->numericValue($v[$C['nilai']] ?? 0), 2),
+                'raw' => json_encode($raw, JSON_UNESCAPED_UNICODE),
             ];
             if (count($records) >= 500) {
                 $flush();

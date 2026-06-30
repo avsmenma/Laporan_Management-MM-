@@ -2052,13 +2052,67 @@ class ReportController extends Controller
             return ($pb7 === null || $cc === $pb7) && ($pb712 === null || $ce === $pb712);
         }));
 
+        // Kolom mentah = semua kolom asli file (urutan dari baris pertama yg punya `raw`).
+        $rawKeys = [];
+        foreach ($filtered as $r) {
+            $decoded = $r->raw !== null ? json_decode((string) $r->raw, true) : null;
+            if (is_array($decoded) && $decoded !== []) {
+                $rawKeys = array_keys($decoded);
+                break;
+            }
+        }
+
+        $subtotal = 0.0;
+        foreach ($filtered as $r) {
+            $subtotal += (float) $r->nilai;
+        }
+
+        if ($rawKeys !== []) {
+            // MODE MENTAH: tampilkan seluruh kolom file SAP apa adanya.
+            $valueField = '';
+            foreach ($rawKeys as $k) {
+                if (stripos($k, 'Value in Obj') !== false) {
+                    $valueField = $k;
+                    break;
+                }
+            }
+            $columns = [];
+            foreach ($rawKeys as $k) {
+                $columns[] = ['field' => $k, 'label' => $k, 'numeric' => (bool) preg_match('/value|quantity|^period$/i', $k)];
+            }
+            $items = [];
+            foreach ($filtered as $r) {
+                $decoded = $r->raw !== null ? json_decode((string) $r->raw, true) : [];
+                $row = [];
+                foreach ($rawKeys as $k) {
+                    $row[$k] = is_array($decoded) ? ($decoded[$k] ?? null) : null;
+                }
+                $items[] = $row;
+            }
+
+            return [
+                'sections' => [[
+                    'table' => 'pks_biaya',
+                    'label' => 'Biaya PKS — data mentah (ekspor SAP cost)',
+                    'value_field' => $valueField,
+                    'qty_field' => '',
+                    'columns' => $columns,
+                    'rows' => $items,
+                    'subtotal' => $subtotal,
+                    'qty_subtotal' => 0.0,
+                    'row_count' => count($items),
+                ]],
+                'grand_total' => $subtotal,
+                'row_count' => count($items),
+            ];
+        }
+
+        // FALLBACK (raw belum tersedia / data lama): kolom ringkas.
         $columns = [];
         foreach (self::PKS_BIAYA_RAW_LABELS as $field => $label) {
             $columns[] = ['field' => $field, 'label' => $label, 'numeric' => in_array($field, ['period', 'nilai'], true)];
         }
-
         $items = [];
-        $subtotal = 0.0;
         foreach ($filtered as $r) {
             $items[] = [
                 'period' => $r->period,
@@ -2067,7 +2121,6 @@ class ReportController extends Controller
                 'klasifikasi_code' => $r->klasifikasi_code,
                 'nilai' => $r->nilai,
             ];
-            $subtotal += (float) $r->nilai;
         }
 
         return [
@@ -2104,7 +2157,7 @@ class ReportController extends Controller
             ->where('plant_code', $unit->code);
         $this->applyPksBiayaScope($query, $batch, $scope);
         $rows = $query->orderBy('period')->orderBy('cost_center')->orderBy('cost_element')->orderBy('id')
-            ->get(['period', 'cost_center', 'cost_element', 'klasifikasi_code', 'nilai']);
+            ->get(['period', 'cost_center', 'cost_element', 'klasifikasi_code', 'nilai', 'raw']);
 
         $matched = [];
         foreach ($rows as $r) {

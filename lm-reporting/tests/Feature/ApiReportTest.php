@@ -215,14 +215,15 @@ class ApiReportTest extends TestCase
 
         // Premi (urut 18, pengolahan) ← cost element STAS; BT13 overhead TIDAK boleh bocor.
         foreach ([
-            [5, 'STAS', '51101048', 100],
-            [5, 'STAS', '90042085', 50],
-            [4, 'STAS', '51101048', 30],   // periode lain → masuk s.d, bukan bulan ini
-            [5, 'BT13', '0', 999],         // overhead Penerangan → tak boleh masuk Premi
-        ] as [$period, $cc, $ce, $nilai]) {
+            [5, 'STAS', '51101048', 100, 'DOC-100'],
+            [5, 'STAS', '90042085', 50, 'DOC-050'],
+            [4, 'STAS', '51101048', 30, 'DOC-030'],   // periode lain → masuk s.d, bukan bulan ini
+            [5, 'BT13', '0', 999, 'DOC-999'],         // overhead Penerangan → tak boleh masuk Premi
+        ] as [$period, $cc, $ce, $nilai, $doc]) {
             DB::table('pks_biaya')->insert([
                 'batch_id' => $batch->id, 'plant_code' => $unit->code, 'period' => $period,
                 'cost_center' => $cc, 'cost_element' => $ce, 'klasifikasi_code' => '1', 'nilai' => $nilai,
+                'raw' => json_encode(['Document Number' => $doc, 'Cost Element' => $ce, 'Value in Obj. Crcy' => $nilai]),
             ]);
         }
 
@@ -239,7 +240,10 @@ class ApiReportTest extends TestCase
         // Level-2 deep untuk GL 51101048 (bulan ini) → 100.
         $deep = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'bi_jumlah', 'pb7' => 'STAS', 'pb712' => '51101048']));
         $deep->assertOk()->assertJsonPath('detail.sections.0.table', 'pks_biaya')
-            ->assertJsonPath('detail.grand_total', 100);
+            ->assertJsonPath('detail.grand_total', 100)
+            // Data mentah apa adanya: kolom asli file (mis. "Document Number") tampil.
+            ->assertJsonPath('detail.sections.0.columns.0.field', 'Document Number')
+            ->assertJsonPath('detail.sections.0.rows.0.Document Number', 'DOC-100');
 
         // s.d bulan ini = periode <=5 untuk 51101048 → 100 + 30 = 130.
         $deepSd = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'sd_jumlah', 'pb7' => 'STAS', 'pb712' => '51101048']));
