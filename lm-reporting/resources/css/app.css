@@ -780,6 +780,9 @@ select.field-control { padding-right: 8px; }
 .lm-dd-pks .lm-dd-table tbody tr:hover td { background: rgba(13, 124, 95, .10); }
 .lm-dd-pks .lm-dd-pb7 { color: #34d399; font-weight: 600; }
 .lm-dd-pks .lm-dd-rowtot { color: #fff; }
+/* beri jarak agak lega antara kolom kategori terakhir dengan kolom Grand Total (tabel pivot saja) */
+.lm-dd-pks .lm-dd-table:not(.lm-dd-raw) thead th:last-child,
+.lm-dd-pks .lm-dd-table:not(.lm-dd-raw) tbody td:last-child { padding-left: 48px; }
 
 /* badge Kode B (mono) + titik penanda SUB REKENING */
 .lm-dd-pks .lm-dd-code {
