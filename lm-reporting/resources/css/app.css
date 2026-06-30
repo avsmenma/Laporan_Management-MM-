@@ -719,3 +719,99 @@ select.field-control { padding-right: 8px; }
 /* geser dengan tahan-klik (drag-to-pan) pada area rincian dalam */
 .lm-dd-drag { cursor: grab; }
 .lm-dd-drag.lm-dd-dragging { cursor: grabbing; user-select: none; }
+
+/* ============================================================================
+   Redesain popup pabrik (LM16) — lebar ADAPTIF mengikuti isi + tema gelap.
+   Hanya berlaku untuk popup di halaman /pabrik (di-scope `.lm-dd-pks`),
+   popup kebun (.lm-dd-overlay tanpa .lm-dd-pks) TIDAK terpengaruh.
+   Referensi: docs/popup_new_sumberdata.html.
+   ============================================================================ */
+.lm-dd-pks { background: rgba(8, 9, 14, .72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+
+/* MODAL: lebar menyesuaikan tabel (sedikit kolom → sempit, banyak kolom → melebar s.d 95vw),
+   tinggi menyesuaikan isi (data sedikit → pendek), discroll bila melebihi 90vh. */
+.lm-dd-pks .lm-dd-modal {
+    background: #181a22; color: #e8eaf0;
+    border: 1px solid rgba(255, 255, 255, .07); border-radius: 16px;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, .55), 0 0 1px rgba(255, 255, 255, .05);
+    width: max-content; max-width: 95vw; min-width: 460px;
+    height: auto; max-height: 90vh;
+}
+
+/* HEADER bergradien + accent bar emas-hijau di kiri */
+.lm-dd-pks .lm-dd-head {
+    position: relative; overflow: hidden;
+    background: linear-gradient(135deg, #0d7c5f 0%, #0a5e47 50%, #084d3a 100%);
+    padding: 22px 28px; flex: none;
+}
+.lm-dd-pks .lm-dd-head::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(180deg, #34d399, #f5b731);
+}
+.lm-dd-pks .lm-dd-title { font-size: 20px; color: #fff; }
+.lm-dd-pks .lm-dd-chip {
+    background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .14);
+    color: #a7f3d0; font-size: 11.5px; font-weight: 600; letter-spacing: .4px;
+    text-transform: uppercase; padding: 4px 12px; border-radius: 999px;
+}
+.lm-dd-pks .lm-dd-bc-sep { color: rgba(255, 255, 255, .5); }
+.lm-dd-pks .lm-dd-total {
+    background: rgba(255, 255, 255, .12); color: #fff;
+    border: 1px solid rgba(255, 255, 255, .18); font-size: 15px;
+}
+.lm-dd-pks .lm-dd-back, .lm-dd-pks .lm-dd-close {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .12);
+    transition: background .2s ease, transform .2s ease;
+}
+.lm-dd-pks .lm-dd-back:hover, .lm-dd-pks .lm-dd-close:hover { background: rgba(255, 255, 255, .16); }
+.lm-dd-pks .lm-dd-close:hover { transform: rotate(90deg); }
+
+/* HINT / STATE */
+.lm-dd-pks .lm-dd-hint { background: #14161d; color: #8b8fa3; border-bottom: 1px solid rgba(255, 255, 255, .06); }
+.lm-dd-pks .lm-dd-state { color: #8b8fa3; }
+.lm-dd-pks .lm-dd-err { color: #f87171; }
+
+/* TABLE gelap — lebar natural (nowrap) agar modal ikut menyempit/melebar */
+.lm-dd-pks .lm-dd-table { width: auto; min-width: 100%; font-size: 13px; }
+.lm-dd-pks .lm-dd-table thead th {
+    background: #1e2029; color: #8b8fa3; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .6px; border-bottom: 1px solid rgba(255, 255, 255, .07); padding: 12px 18px;
+}
+.lm-dd-pks .lm-dd-table thead tr:nth-child(2) th { top: 41px; }
+.lm-dd-pks .lm-dd-table thead th.lm-dd-grouphead {
+    background: #23262f; color: #34d399;
+    border-left: 1px solid rgba(255, 255, 255, .08); border-right: 1px solid rgba(255, 255, 255, .08);
+}
+.lm-dd-pks .lm-dd-table tbody td { padding: 12px 18px; border-bottom: 1px solid rgba(255, 255, 255, .05); color: #e8eaf0; }
+.lm-dd-pks .lm-dd-table tbody tr:nth-child(even) td { background: rgba(13, 124, 95, .04); }
+.lm-dd-pks .lm-dd-table tbody tr:hover td { background: rgba(13, 124, 95, .10); }
+.lm-dd-pks .lm-dd-pb7 { color: #34d399; font-weight: 600; }
+.lm-dd-pks .lm-dd-rowtot { color: #fff; }
+
+/* badge Kode B (mono) + titik penanda SUB REKENING */
+.lm-dd-pks .lm-dd-code {
+    display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 6px;
+    font-family: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 12px; font-weight: 600; letter-spacing: .3px;
+    background: rgba(16, 185, 129, .09); color: #34d399; border: 1px solid rgba(16, 185, 129, .16);
+}
+.lm-dd-pks .lm-dd-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; margin-right: 8px; vertical-align: middle; }
+
+/* baris subtotal & grand (gelap) */
+.lm-dd-pks .lm-dd-subrow td { background: #20232c !important; color: #c8cbd6; }
+.lm-dd-pks .lm-dd-grandrow td { background: #0d2f24 !important; color: #34d399; }
+
+/* sel angka yang bisa diklik */
+.lm-dd-pks .lm-dd-clickable:hover { background: rgba(16, 185, 129, .16) !important; color: #fff; }
+
+/* rincian dalam (data mentah) — tetap ringkas + gelap */
+.lm-dd-pks .lm-dd-grand { background: #0d2f24; color: #34d399; }
+.lm-dd-pks .lm-dd-section-head { background: #1e2029; border-bottom: 2px solid #0d7c5f; }
+.lm-dd-pks .lm-dd-section-name { color: #34d399; }
+.lm-dd-pks .lm-dd-section-meta { color: #8b8fa3; }
+.lm-dd-pks .lm-dd-raw thead th { padding: 9px 12px; font-size: 11px; }
+.lm-dd-pks .lm-dd-raw tbody td { padding: 7px 12px; }
+.lm-dd-pks .lm-dd-raw tfoot td { background: #20232c; color: #c8cbd6; }
+.lm-dd-pks .lm-dd-rownum { color: #5c6078; }
+.lm-dd-pks .lm-dd-dash { color: #3a3f4d; }

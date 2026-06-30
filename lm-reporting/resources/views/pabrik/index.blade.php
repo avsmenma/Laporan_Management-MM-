@@ -91,7 +91,7 @@
     </div>
 
     <!-- Popup rincian sumber (drill-down) saat angka tabel LM16 diklik -->
-    <div class="lm-dd-overlay" x-show="drill.open" x-cloak
+    <div class="lm-dd-overlay lm-dd-pks" x-show="drill.open" x-cloak
          @keydown.escape.window="drill.open && closeDrill()" @click.self="closeDrill()">
         <div class="lm-dd-modal">
             <div class="lm-dd-head">
@@ -150,8 +150,8 @@
                                 <tbody>
                                     <template x-for="(r, ri) in group.rows" :key="ri">
                                         <tr>
-                                            <td class="lm-dd-l lm-dd-pb7" x-text="ri === 0 ? group.pb7 : ''"></td>
-                                            <td class="lm-dd-l" x-text="r.pb712"></td>
+                                            <td class="lm-dd-l lm-dd-pb7"><span class="lm-dd-dot" x-show="ri === 0"></span><span x-text="ri === 0 ? group.pb7 : ''"></span></td>
+                                            <td class="lm-dd-l"><span class="lm-dd-code" x-text="r.pb712"></span></td>
                                             <template x-for="cat in drill.pivot.categories" :key="cat">
                                                 <td class="lm-dd-n" :class="{ 'lm-dd-clickable': r.values[cat] }"
                                                     @click="openDeep(group.pb7, r.pb712, cat, r.values[cat])"
