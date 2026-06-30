@@ -206,6 +206,50 @@ class ApiReportTest extends TestCase
         $this->assertEquals(1500, $response->json('detail.sections.0.subtotal'));
     }
 
+    public function test_lm16_drilldown_pivot_dan_deep_dari_pks_biaya(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'final', 'processed_at' => '2026-05-20 08:00:00']);
+        $unit = RefUnit::query()->where('code', '5F01')->firstOrFail();
+        $operator = User::query()->whereHas('role', fn ($query) => $query->where('name', Role::OPERATOR))->firstOrFail();
+
+        // Premi (urut 18, pengolahan) ← cost element STAS; BT13 overhead TIDAK boleh bocor.
+        foreach ([
+            [5, 'STAS', '51101048', 100],
+            [5, 'STAS', '90042085', 50],
+            [4, 'STAS', '51101048', 30],   // periode lain → masuk s.d, bukan bulan ini
+            [5, 'BT13', '0', 999],         // overhead Penerangan → tak boleh masuk Premi
+        ] as [$period, $cc, $ce, $nilai]) {
+            DB::table('pks_biaya')->insert([
+                'batch_id' => $batch->id, 'plant_code' => $unit->code, 'period' => $period,
+                'cost_center' => $cc, 'cost_element' => $ce, 'klasifikasi_code' => '1', 'nilai' => $nilai,
+            ]);
+        }
+
+        // Premi = urutan 18 (kode "603-604" tidak unik → drill pakai urutan).
+        $base = ['type' => 'LM16', 'batch' => $batch->id, 'unit' => $unit->code, 'kode' => 18];
+
+        // Level-1 pivot bulan ini: hanya STAS periode 5 → 100 + 50 = 150 (BT13 dibuang).
+        $pivot = $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($base + ['column' => 'bi_jumlah']));
+        $pivot->assertOk()->assertJsonPath('success', true)
+            ->assertJsonPath('pivot.grand_total', 150)
+            ->assertJsonPath('pivot.categories.0', 'Nilai')
+            ->assertJsonPath('pivot.groups.0.pb7', 'STAS');
+
+        // Level-2 deep untuk GL 51101048 (bulan ini) → 100.
+        $deep = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'bi_jumlah', 'pb7' => 'STAS', 'pb712' => '51101048']));
+        $deep->assertOk()->assertJsonPath('detail.sections.0.table', 'pks_biaya')
+            ->assertJsonPath('detail.grand_total', 100);
+
+        // s.d bulan ini = periode <=5 untuk 51101048 → 100 + 30 = 130.
+        $deepSd = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'sd_jumlah', 'pb7' => 'STAS', 'pb712' => '51101048']));
+        $deepSd->assertOk()->assertJsonPath('detail.grand_total', 130);
+
+        // Baris produksi (urut 3) tidak punya pivot sumber biaya.
+        $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query(['type' => 'LM16', 'batch' => $batch->id, 'unit' => $unit->code, 'kode' => 3, 'column' => 'bi_jumlah']))
+            ->assertOk()->assertJsonPath('pivot', null);
+    }
+
     private function insertLm14Source(Batch $batch, RefUnit $unit): void
     {
         DB::table('db_wbs_raw')->insert([

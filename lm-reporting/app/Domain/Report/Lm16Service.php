@@ -114,15 +114,7 @@ class Lm16Service
      */
     private function costData(Batch $batch, RefUnit $unit): array
     {
-        $maps = DB::table('lm16_account_map')->get();
-        $costCenterMap = $maps
-            ->where('match_type', 'cost_center')
-            ->mapWithKeys(fn ($map) => [$map->kode => $map->lm16_uraian])
-            ->all();
-        $costElementMap = $maps
-            ->where('match_type', 'cost_element')
-            ->mapWithKeys(fn ($map) => [$map->kode => $map->lm16_uraian])
-            ->all();
+        [$costCenterMap, $costElementMap] = self::accountMapArrays();
 
         // Dua ember terpisah supaya baris berlabel sama di dua grup tidak saling bocor:
         //  - 'pengolahan' (Biaya Langsung)   → hanya dari Cost Element (cost center STAS)
@@ -148,8 +140,8 @@ class Lm16Service
 
         foreach ($rows as $row) {
             $costCenter = trim((string) $row->cost_center);
-            $costElement = $this->normalizeCode($row->cost_element);
-            [$ember, $target] = $this->lm16CostTarget($costCenter, $costElement, $costCenterMap, $costElementMap);
+            $costElement = self::normalizeCode($row->cost_element);
+            [$ember, $target] = self::lm16CostTarget($costCenter, $costElement, $costCenterMap, $costElementMap);
             if ($ember === 'pengolahan') {
                 $pengolahan[$target] ??= $zero();
                 $ref = &$pengolahan[$target];
@@ -173,15 +165,28 @@ class Lm16Service
     }
 
     /**
-     * @param  array<string, string>  $costCenterMap
-     * @param  array<string, string>  $costElementMap
+     * Peta akun LM16 dari `lm16_account_map`: [costCenterMap, costElementMap]
+     * (kode → lm16_uraian). Dipakai bersama oleh mesin laporan & drill-down agar
+     * pemetaan baris identik.
+     *
+     * @return array{0: array<string, string>, 1: array<string, string>}
      */
+    public static function accountMapArrays(): array
+    {
+        $maps = DB::table('lm16_account_map')->get();
+
+        return [
+            $maps->where('match_type', 'cost_center')->mapWithKeys(fn ($m) => [$m->kode => $m->lm16_uraian])->all(),
+            $maps->where('match_type', 'cost_element')->mapWithKeys(fn ($m) => [$m->kode => $m->lm16_uraian])->all(),
+        ];
+    }
+
     /**
      * @param  array<string, string>  $costCenterMap
      * @param  array<string, string>  $costElementMap
      * @return array{0: string, 1: string}  [ember ('pengolahan'|'overhead'), uraian baris LM16]
      */
-    private function lm16CostTarget(string $costCenter, string $costElement, array $costCenterMap, array $costElementMap): array
+    public static function lm16CostTarget(string $costCenter, string $costElement, array $costCenterMap, array $costElementMap): array
     {
         if ($costCenter !== '' && isset($costCenterMap[$costCenter])) {
             return ['overhead', $costCenterMap[$costCenter]];
@@ -267,7 +272,7 @@ class Lm16Service
      */
     private function budgetValue(string $table, Batch $batch, RefUnit $unit, LmTemplateRow $template, bool $cumulative): float
     {
-        $codes = $this->budgetCodes($template);
+        $codes = self::budgetCodes($template);
 
         if ($codes === []) {
             return 0.0;
@@ -297,7 +302,7 @@ class Lm16Service
     /**
      * @return array<int, string>
      */
-    private function budgetCodes(LmTemplateRow $template): array
+    public static function budgetCodes(LmTemplateRow $template): array
     {
         $codes = array_filter([(string) $template->uraian, (string) $template->kode]);
 
@@ -488,7 +493,7 @@ class Lm16Service
         ];
     }
 
-    private function normalizeCode(mixed $value): string
+    public static function normalizeCode(mixed $value): string
     {
         if (is_float($value) || is_int($value)) {
             return (string) (int) $value;

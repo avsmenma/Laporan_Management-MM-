@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Concerns\AuthorizesReportRequests;
+use App\Domain\Report\Lm16Service;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\LmTemplateRow;
@@ -299,7 +300,8 @@ class ReportController extends Controller
 
         // Kolom RKO/RKAP (anggaran): tampilkan DETAIL SUMBER per-baris LANGSUNG (tanpa
         // pivot perantara) dari budget_source. RKO=RKAP; bulan-ini vs s.d difilter periode.
-        $budgetDetail = $this->budgetSourceDetail($type, $batch, $unit, $komoditi, $template, $columnKey);
+        $budgetDetail = $this->budgetSourceDetail($type, $batch, $unit, $komoditi, $template, $columnKey)
+            ?? $this->budgetSourceDetailLm16($type, $batch, $unit, $template, $columnKey);
         if ($budgetDetail !== null) {
             return response()->json([
                 'success' => true,
@@ -320,7 +322,8 @@ class ReportController extends Controller
             ]);
         }
 
-        $pivot = $this->drilldownPivot($type, $batch, $unit, $komoditi, $template, $columnKey);
+        $pivot = $this->drilldownPivot($type, $batch, $unit, $komoditi, $template, $columnKey)
+            ?? $this->drilldownPivotLm16($type, $batch, $unit, $template, $columnKey);
 
         return response()->json([
             'success' => true,
@@ -333,7 +336,9 @@ class ReportController extends Controller
                 'template' => $templateMeta,
                 'direct_detail' => false,
                 'message' => $pivot === null
-                    ? 'Kolom ini tidak memiliki rincian sumber mentah (mis. anggaran/RKO/RKAP, capaian %, atau baris BTL/gaji staf tahun lalu yang menunggu data OHC).'
+                    ? ($type === 'LM16'
+                        ? 'Sel ini tidak punya rincian sumber mentah (baris produksi/rendemen, capaian %, Rp/Kg, atau subtotal). Klik baris biaya rincian (mis. Premi, Biaya Bahan Kimia) atau kolom RKO/RKAP.'
+                        : 'Kolom ini tidak memiliki rincian sumber mentah (mis. anggaran/RKO/RKAP, capaian %, atau baris BTL/gaji staf tahun lalu yang menunggu data OHC).')
                     : null,
             ],
             'pivot' => $pivot,
@@ -349,7 +354,7 @@ class ReportController extends Controller
         $this->authenticateReportRequest($request);
 
         $request->validate([
-            'type' => 'required|in:LM14,lm14',
+            'type' => 'required|in:LM14,LM16,lm14,lm16',
             'batch' => 'required',
             'unit' => 'required',
             'kode' => 'required',
@@ -370,26 +375,30 @@ class ReportController extends Controller
 
         $template = LmTemplateRow::query()
             ->where('report_type', $type)
-            ->where('komoditi', $komoditi)
+            ->when($type !== 'LM16', fn ($query) => $query->where('komoditi', $komoditi))
             ->where(fn ($query) => $query
                 ->where('kode', $request->kode)
                 ->orWhere('urutan', is_numeric($request->kode) ? (int) $request->kode : 0))
             ->orderBy('urutan')
             ->first();
 
-        $scope = $this->columnPeriodScope((string) $request->column);
+        $pb7 = $request->filled('pb7') ? (string) $request->pb7 : null;
+        $pb712 = $request->filled('pb712') ? (string) $request->pb712 : null;
+        $klasifikasi = $request->filled('klasifikasi') ? (string) $request->klasifikasi : null;
 
-        $rows = [];
-        if ($template !== null && $scope !== null) {
-            $pb7 = $request->filled('pb7') ? (string) $request->pb7 : null;
-            $pb712 = $request->filled('pb712') ? (string) $request->pb712 : null;
-            $klasifikasi = $request->filled('klasifikasi') ? (string) $request->klasifikasi : null;
-
-            foreach ($this->contributingDetailTemplates($template, $type, $komoditi) as $detail) {
-                foreach ($this->rawDeepRows($detail, $batch, $unit, $komoditi, $scope, $pb7, $pb712, $klasifikasi) as $row) {
-                    $rows[] = $row;
+        if ($type === 'LM16') {
+            $detail = $this->drilldownDeepLm16($batch, $unit, $template, (string) $request->column, $pb7, $pb712);
+        } else {
+            $scope = $this->columnPeriodScope((string) $request->column);
+            $rows = [];
+            if ($template !== null && $scope !== null) {
+                foreach ($this->contributingDetailTemplates($template, $type, $komoditi) as $det) {
+                    foreach ($this->rawDeepRows($det, $batch, $unit, $komoditi, $scope, $pb7, $pb712, $klasifikasi) as $row) {
+                        $rows[] = $row;
+                    }
                 }
             }
+            $detail = $this->buildRawDetail($rows);
         }
 
         return response()->json([
@@ -400,7 +409,7 @@ class ReportController extends Controller
                 'klasifikasi' => $request->klasifikasi,
                 'column_label' => $this->columnLabel($type, (string) $request->column),
             ],
-            'detail' => $this->buildRawDetail($rows),
+            'detail' => $detail,
         ]);
     }
 
@@ -1219,7 +1228,9 @@ class ReportController extends Controller
             'cap_sd_rkap' => (float) $row->cap_sd_rkap,
             'rp_kg_tbs' => (float) $row->rp_kg_tbs,
             'rp_kg_mi' => (float) $row->rp_kg_mi,
-        ], $row->kode ?? (string) $row->urutan, [
+            // kode_baris = urutan (UNIK): banyak baris LM16 berbagi kode "603-604",
+            // jadi pakai urutan agar drill-down mengenali baris yang tepat.
+        ], (string) $row->urutan, [
             'real_bln_lalu',
             'bi_olah',
             'bi_kso',
@@ -1436,7 +1447,12 @@ class ReportController extends Controller
         $labels = [
             'bi_jumlah' => 'Real Bulan Ini',
             'sd_jumlah' => 'Real s.d Bulan Ini',
+            'bi_olah' => 'Real Bulan Ini (Olah)',
+            'bi_kso' => 'Real Bulan Ini (KSO)',
+            'sd_olah' => 'Real s.d Bulan Ini (Olah)',
+            'sd_kso' => 'Real s.d Bulan Ini (KSO)',
             'real_bulan_lalu' => 'Real Bulan Lalu',
+            'real_bln_lalu' => 'Real Bulan Lalu',
             'real_thn_lalu' => 'Real Tahun Lalu',
             'sd_real_thn_lalu' => 'Real s.d Tahun Lalu',
             'bi_rko' => 'RKO Bulan Ini',
@@ -1922,6 +1938,253 @@ class ReportController extends Controller
             'grand' => $grand,
             'grand_total' => $grandTotal,
             'row_count' => count($rows),
+        ];
+    }
+
+    // ===== Drill-down LM16 (pabrik) — sumber: pks_biaya + budget_rko/rkap =====
+
+    private const PKS_BIAYA_RAW_LABELS = [
+        'period' => 'Periode',
+        'cost_center' => 'Cost Center (Kode A)',
+        'cost_element' => 'Cost Element (GL)',
+        'klasifikasi_code' => 'Klasifikasi',
+        'nilai' => 'Nilai (Rp)',
+    ];
+
+    /**
+     * Lingkup periode pks_biaya untuk kolom LM16 realisasi. Olah/KSO/Jumlah berbagi
+     * nilai yang sama (dipecah hanya oleh splitOlahKso), jadi memetakan ke lingkup yang
+     * sama. Mengembalikan null untuk kolom non-sumber (anggaran/capaian/Rp-Kg).
+     */
+    private function lm16BiayaScope(string $columnKey): ?string
+    {
+        return match ($columnKey) {
+            'bi_olah', 'bi_kso', 'bi_jumlah' => 'bi',
+            'sd_olah', 'sd_kso', 'sd_jumlah' => 'sd',
+            'real_bln_lalu' => 'lalu',
+            default => null,
+        };
+    }
+
+    private function applyPksBiayaScope(\Illuminate\Database\Query\Builder $query, Batch $batch, string $scope): void
+    {
+        match ($scope) {
+            'bi' => $query->where('period', '=', $batch->month),
+            'sd' => $query->where('period', '<=', $batch->month),
+            'lalu' => $query->where('period', '=', $batch->month - 1),
+            default => $query->whereRaw('1 = 0'),
+        };
+    }
+
+    /**
+     * Apakah baris template LM16 adalah baris BIAYA (pengolahan 6xx / overhead 4xx / depresiasi 490)?
+     * Hanya baris detail biaya yang bisa di-drill ke pks_biaya.
+     */
+    private function isLm16BiayaRow(?LmTemplateRow $template): bool
+    {
+        if ($template === null || $template->row_type !== 'detail') {
+            return false;
+        }
+        $kode = (string) $template->kode;
+
+        return $kode !== '' && preg_match('/^[46]/', $kode) === 1;
+    }
+
+    /**
+     * Pivot sumber sel biaya LM16: baris pks_biaya penyusun sel dikelompokkan per
+     * Cost Center (pb7) × Cost Element (pb712), satu kolom kategori "Nilai". Grand total
+     * pivot = nilai sel laporan. Memakai aturan pemetaan yang sama dgn Lm16Service.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function drilldownPivotLm16(string $type, Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey): ?array
+    {
+        if ($type !== 'LM16' || $unit === null || ! $this->isLm16BiayaRow($template)) {
+            return null;
+        }
+        $scope = $this->lm16BiayaScope($columnKey);
+        if ($scope === null) {
+            return null;
+        }
+
+        $rows = $this->matchingPksBiayaRows($batch, $unit, $template, $scope);
+        if ($rows === []) {
+            return null;
+        }
+
+        $pivotRows = [];
+        foreach ($rows as $r) {
+            $pivotRows[] = (object) [
+                'pb7' => trim((string) $r->cost_center) !== '' ? (string) $r->cost_center : self::PIVOT_BLANK,
+                'pb712' => trim((string) $r->cost_element) !== '' ? (string) $r->cost_element : self::PIVOT_BLANK,
+                'klasifikasi' => 'Nilai',
+                'total' => (float) $r->nilai,
+            ];
+        }
+
+        return $this->buildPivot($pivotRows);
+    }
+
+    /**
+     * Rincian terdalam sel biaya LM16: baris pks_biaya individual untuk satu sel pivot
+     * (Cost Center pb7 × Cost Element pb712 tertentu).
+     *
+     * @return array<string, mixed>
+     */
+    private function drilldownDeepLm16(Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey, ?string $pb7, ?string $pb712): array
+    {
+        $empty = ['sections' => [], 'grand_total' => 0.0, 'row_count' => 0];
+        if ($unit === null || ! $this->isLm16BiayaRow($template)) {
+            return $empty;
+        }
+        $scope = $this->lm16BiayaScope($columnKey);
+        if ($scope === null) {
+            return $empty;
+        }
+
+        $rows = $this->matchingPksBiayaRows($batch, $unit, $template, $scope);
+
+        // Saring ke sel pivot yang diklik (cost_center × cost_element).
+        $filtered = array_values(array_filter($rows, function ($r) use ($pb7, $pb712): bool {
+            $cc = trim((string) $r->cost_center) !== '' ? (string) $r->cost_center : self::PIVOT_BLANK;
+            $ce = trim((string) $r->cost_element) !== '' ? (string) $r->cost_element : self::PIVOT_BLANK;
+
+            return ($pb7 === null || $cc === $pb7) && ($pb712 === null || $ce === $pb712);
+        }));
+
+        $columns = [];
+        foreach (self::PKS_BIAYA_RAW_LABELS as $field => $label) {
+            $columns[] = ['field' => $field, 'label' => $label, 'numeric' => in_array($field, ['period', 'nilai'], true)];
+        }
+
+        $items = [];
+        $subtotal = 0.0;
+        foreach ($filtered as $r) {
+            $items[] = [
+                'period' => $r->period,
+                'cost_center' => $r->cost_center,
+                'cost_element' => $r->cost_element,
+                'klasifikasi_code' => $r->klasifikasi_code,
+                'nilai' => $r->nilai,
+            ];
+            $subtotal += (float) $r->nilai;
+        }
+
+        return [
+            'sections' => [[
+                'table' => 'pks_biaya',
+                'label' => 'Biaya PKS (ekspor SAP cost)',
+                'value_field' => 'nilai',
+                'qty_field' => '',
+                'columns' => $columns,
+                'rows' => $items,
+                'subtotal' => $subtotal,
+                'qty_subtotal' => 0.0,
+                'row_count' => count($items),
+            ]],
+            'grand_total' => $subtotal,
+            'row_count' => count($items),
+        ];
+    }
+
+    /**
+     * Baris pks_biaya (scoped) yang dipetakan ke baris LM16 yang diklik, mengikuti
+     * aturan Lm16Service (ember pengolahan/overhead + uraian target).
+     *
+     * @return array<int, object>
+     */
+    private function matchingPksBiayaRows(Batch $batch, RefUnit $unit, LmTemplateRow $template, string $scope): array
+    {
+        $expectedEmber = str_starts_with((string) $template->kode, '6') ? 'pengolahan' : 'overhead';
+        $targetUraian = $template->urutan === 55 ? 'Penyusutan a/b Harga Pokok' : (string) $template->uraian;
+        [$ccMap, $ceMap] = Lm16Service::accountMapArrays();
+
+        $query = DB::table('pks_biaya')
+            ->where('batch_id', $batch->id)
+            ->where('plant_code', $unit->code);
+        $this->applyPksBiayaScope($query, $batch, $scope);
+        $rows = $query->orderBy('period')->orderBy('cost_center')->orderBy('cost_element')->orderBy('id')
+            ->get(['period', 'cost_center', 'cost_element', 'klasifikasi_code', 'nilai']);
+
+        $matched = [];
+        foreach ($rows as $r) {
+            [$ember, $target] = Lm16Service::lm16CostTarget(
+                trim((string) $r->cost_center),
+                Lm16Service::normalizeCode($r->cost_element),
+                $ccMap,
+                $ceMap,
+            );
+            if ($ember === $expectedEmber && $target === $targetUraian) {
+                $matched[] = $r;
+            }
+        }
+
+        return $matched;
+    }
+
+    /**
+     * Detail sumber RKO/RKAP LM16 (budget_rko/budget_rkap) untuk sel anggaran yang
+     * diklik — LANGSUNG (tanpa pivot), bentuk sama dgn buildBudgetDetail.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function budgetSourceDetailLm16(string $type, Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey): ?array
+    {
+        if ($type !== 'LM16' || $template === null || $unit === null || ! in_array($columnKey, self::BUDGET_COLUMNS, true)) {
+            return null;
+        }
+
+        $kind = str_contains($columnKey, 'rkap') ? 'rkap' : 'rko';
+        $table = $kind === 'rkap' ? 'budget_rkap' : 'budget_rko';
+        $codes = Lm16Service::budgetCodes($template);
+        if ($codes === []) {
+            return ['sections' => [], 'grand_total' => 0.0, 'row_count' => 0];
+        }
+
+        $cumulative = str_starts_with($columnKey, 'sd_');
+        $rows = DB::table($table)
+            ->where('year', $batch->year)
+            ->where('plant_code', $unit->code)
+            ->where('report_type', 'LM16')
+            ->whereIn('kode', $codes)
+            ->where(fn ($q) => $q->where('komoditi', $unit->komoditi)->orWhereNull('komoditi'))
+            ->where(function ($inner) use ($batch, $cumulative): void {
+                $inner->whereNull('period');
+                $cumulative
+                    ? $inner->orWhere('period', '<=', $batch->month)
+                    : $inner->orWhere('period', '=', $batch->month);
+            })
+            ->orderBy('kode')->orderBy('id')
+            ->get(['kode', 'period', 'source', 'nilai']);
+
+        $columns = [
+            ['field' => 'kode', 'label' => 'Kode', 'numeric' => false],
+            ['field' => 'source', 'label' => 'Sumber', 'numeric' => false],
+            ['field' => 'period', 'label' => 'Periode', 'numeric' => true],
+            ['field' => 'nilai', 'label' => 'Nilai (Rp)', 'numeric' => true],
+        ];
+
+        $items = [];
+        $subtotal = 0.0;
+        foreach ($rows as $r) {
+            $items[] = ['kode' => $r->kode, 'source' => $r->source, 'period' => $r->period, 'nilai' => $r->nilai];
+            $subtotal += (float) $r->nilai;
+        }
+
+        return [
+            'sections' => [[
+                'table' => $table,
+                'label' => strtoupper($kind).' — LM16 ('.($unit->code).')',
+                'value_field' => 'nilai',
+                'qty_field' => '',
+                'columns' => $columns,
+                'rows' => $items,
+                'subtotal' => $subtotal,
+                'qty_subtotal' => 0.0,
+                'row_count' => count($items),
+            ]],
+            'grand_total' => $subtotal,
+            'row_count' => count($items),
         ];
     }
 }
