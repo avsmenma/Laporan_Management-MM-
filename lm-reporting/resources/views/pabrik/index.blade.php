@@ -135,15 +135,12 @@
                         <table class="lm-dd-table">
                             <thead>
                                 <tr>
-                                    <th class="lm-dd-l" rowspan="2">SUB REKENING</th>
-                                    <th class="lm-dd-l" rowspan="2">Kode B</th>
-                                    <th class="lm-dd-n lm-dd-grouphead" :colspan="(drill.pivot?.categories ?? []).length">KATEGORI BKU</th>
-                                    <th class="lm-dd-n" rowspan="2">Grand Total</th>
-                                </tr>
-                                <tr>
+                                    <th class="lm-dd-l">SUB REKENING</th>
+                                    <th class="lm-dd-l">Kode B</th>
                                     <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
                                         <th class="lm-dd-n" x-text="cat"></th>
                                     </template>
+                                    <th class="lm-dd-n">Grand Total</th>
                                 </tr>
                             </thead>
                             <template x-for="(group, gi) in (drill.pivot?.groups ?? [])" :key="gi">

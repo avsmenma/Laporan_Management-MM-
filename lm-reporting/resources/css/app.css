@@ -667,9 +667,6 @@ select.field-control { padding-right: 8px; }
     padding: 13px 16px; white-space: nowrap; font-size: 12.5px; letter-spacing: .3px;
 }
 .lm-dd-table thead th.lm-dd-n { text-align: right; }
-/* header dua baris: baris grup (KATEGORI BKU) di atas, baris kategori menempel di bawahnya */
-.lm-dd-table thead tr:nth-child(2) th { top: 45px; }
-.lm-dd-table thead th.lm-dd-grouphead { text-align: center; border-left: 1px solid rgba(255,255,255,.18); border-right: 1px solid rgba(255,255,255,.18); }
 .lm-dd-table tbody td { padding: 11px 16px; border-bottom: 1px solid #e5e7eb; color: #1f2937; white-space: nowrap; }
 .lm-dd-table tbody tr:nth-child(even) td { background: #fafbfb; }
 .lm-dd-table tbody tr:hover td { background: #eef6f1; }
@@ -777,11 +774,6 @@ select.field-control { padding-right: 8px; }
 .lm-dd-pks .lm-dd-table thead th {
     background: #1e2029; color: #8b8fa3; font-size: 11px; text-transform: uppercase;
     letter-spacing: .6px; border-bottom: 1px solid rgba(255, 255, 255, .07); padding: 12px 18px;
-}
-.lm-dd-pks .lm-dd-table thead tr:nth-child(2) th { top: 41px; }
-.lm-dd-pks .lm-dd-table thead th.lm-dd-grouphead {
-    background: #23262f; color: #34d399;
-    border-left: 1px solid rgba(255, 255, 255, .08); border-right: 1px solid rgba(255, 255, 255, .08);
 }
 .lm-dd-pks .lm-dd-table tbody td { padding: 12px 18px; border-bottom: 1px solid rgba(255, 255, 255, .05); color: #e8eaf0; }
 .lm-dd-pks .lm-dd-table tbody tr:nth-child(even) td { background: rgba(13, 124, 95, .04); }
