@@ -100,7 +100,6 @@
                     <div class="lm-dd-title" x-text="drill.title"></div>
                     <div class="lm-dd-bc" x-show="drill.view==='pivot'">
                         <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
-                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.value)"></span></span>
                     </div>
                     <div class="lm-dd-bc" x-show="drill.view==='deep'">
                         <template x-if="!drill.direct">
@@ -113,7 +112,6 @@
                         <template x-if="drill.direct">
                             <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
                         </template>
-                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.deep.value)"></span></span>
                     </div>
                 </div>
                 <button type="button" class="lm-dd-close" @click="closeDrill()" aria-label="Tutup">&times;</button>
@@ -187,6 +185,18 @@
                          @mousemove.window="deepDragMove($event)"
                          @mouseup.window="deepDragEnd()"
                          x-html="drill.deep.html"></div>
+                </div>
+            </div>
+
+            <!-- FOOTER: jumlah baris + Grand Total (gaya referensi) -->
+            <div class="lm-dd-foot"
+                 x-show="(drill.view==='pivot' && drill.pivot && drill.pivot.row_count) || (drill.view==='deep' && drill.deep.data && drill.deep.data.row_count)">
+                <div class="lm-dd-foot-stat">
+                    <strong x-text="fmtInt(drill.view==='pivot' ? (drill.pivot?.row_count ?? 0) : (drill.deep.data?.row_count ?? 0))"></strong> baris data
+                </div>
+                <div class="lm-dd-foot-total">
+                    <span class="lm-dd-foot-label">Grand Total</span>
+                    <span class="lm-dd-foot-amount">Rp <span x-text="fmtNum(drill.view==='pivot' ? (drill.pivot?.grand_total ?? 0) : (drill.deep.value ?? 0))"></span></span>
                 </div>
             </div>
         </div>
