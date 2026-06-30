@@ -89,6 +89,117 @@
         <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
         <p style="color: #999; margin-top: 0.5rem;">Pilih Tahun, Bulan, dan Unit Pabrik</p>
     </div>
+
+    <!-- Popup rincian sumber (drill-down) saat angka tabel LM16 diklik -->
+    <div class="lm-dd-overlay" x-show="drill.open" x-cloak
+         @keydown.escape.window="drill.open && closeDrill()" @click.self="closeDrill()">
+        <div class="lm-dd-modal">
+            <div class="lm-dd-head">
+                <button type="button" class="lm-dd-back" x-show="drill.view==='deep' && !drill.direct" @click="backToPivot()" title="Kembali ke rincian">&larr;</button>
+                <div class="lm-dd-titles">
+                    <div class="lm-dd-title" x-text="drill.title"></div>
+                    <div class="lm-dd-bc" x-show="drill.view==='pivot'">
+                        <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
+                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.value)"></span></span>
+                    </div>
+                    <div class="lm-dd-bc" x-show="drill.view==='deep'">
+                        <template x-if="!drill.direct">
+                            <span style="display:flex;align-items:center;gap:10px">
+                                <span class="lm-dd-chip" x-text="drill.deep.pb7"></span>
+                                <span class="lm-dd-bc-sep">›</span>
+                                <span class="lm-dd-chip" x-text="drill.deep.pb712"></span>
+                            </span>
+                        </template>
+                        <template x-if="drill.direct">
+                            <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
+                        </template>
+                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.deep.value)"></span></span>
+                    </div>
+                </div>
+                <button type="button" class="lm-dd-close" @click="closeDrill()" aria-label="Tutup">&times;</button>
+            </div>
+
+            <div class="lm-dd-body">
+                <!-- VIEW: pivot rincian sumber (level 1) — per Cost Center × Cost Element -->
+                <div x-show="drill.view==='pivot'">
+                    <div x-show="drill.loading" class="lm-dd-state">Memuat rincian sumber…</div>
+                    <div x-show="!drill.loading && drill.error" class="lm-dd-state lm-dd-err" x-text="drill.error"></div>
+                    <div x-show="!drill.loading && !drill.error && (!drill.pivot || !drill.pivot.row_count)" class="lm-dd-state"
+                         x-text="drill.message || 'Tidak ada rincian sumber untuk sel ini.'"></div>
+
+                    <div class="lm-dd-hint" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
+                        Klik salah satu angka untuk melihat data sumber (posting biaya) per baris.
+                    </div>
+                    <div class="lm-dd-tablewrap" x-show="!drill.loading && !drill.error && drill.pivot && drill.pivot.row_count">
+                        <template x-if="drill.pivot && drill.pivot.row_count">
+                        <table class="lm-dd-table">
+                            <thead>
+                                <tr>
+                                    <th class="lm-dd-l">Cost Center (Kode A)</th>
+                                    <th class="lm-dd-l">Cost Element (GL)</th>
+                                    <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
+                                        <th class="lm-dd-n" x-text="cat"></th>
+                                    </template>
+                                    <th class="lm-dd-n">Grand Total</th>
+                                </tr>
+                            </thead>
+                            <template x-for="(group, gi) in (drill.pivot?.groups ?? [])" :key="gi">
+                                <tbody>
+                                    <template x-for="(r, ri) in group.rows" :key="ri">
+                                        <tr>
+                                            <td class="lm-dd-l lm-dd-pb7" x-text="ri === 0 ? group.pb7 : ''"></td>
+                                            <td class="lm-dd-l" x-text="r.pb712"></td>
+                                            <template x-for="cat in drill.pivot.categories" :key="cat">
+                                                <td class="lm-dd-n" :class="{ 'lm-dd-clickable': r.values[cat] }"
+                                                    @click="openDeep(group.pb7, r.pb712, cat, r.values[cat])"
+                                                    x-text="fmtNum(r.values[cat])"></td>
+                                            </template>
+                                            <td class="lm-dd-n lm-dd-rowtot lm-dd-clickable"
+                                                @click="openDeep(group.pb7, r.pb712, null, r.total)"
+                                                x-text="fmtNum(r.total)"></td>
+                                        </tr>
+                                    </template>
+                                    <tr class="lm-dd-subrow">
+                                        <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' — Subtotal'"></td>
+                                        <template x-for="cat in drill.pivot.categories" :key="cat">
+                                            <td class="lm-dd-n" x-text="fmtNum(group.subtotal[cat])"></td>
+                                        </template>
+                                        <td class="lm-dd-n" x-text="fmtNum(group.subtotal_total)"></td>
+                                    </tr>
+                                </tbody>
+                            </template>
+                            <tfoot>
+                                <tr class="lm-dd-grandrow">
+                                    <td class="lm-dd-l" colspan="2">Grand Total</td>
+                                    <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
+                                        <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand[cat])"></td>
+                                    </template>
+                                    <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand_total)"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- VIEW: rincian lebih dalam (level 2) -->
+                <div x-show="drill.view==='deep'">
+                    <div x-show="drill.deep.loading" class="lm-dd-state">Memuat rincian lebih dalam…</div>
+                    <div x-show="!drill.deep.loading && drill.deep.error" class="lm-dd-state lm-dd-err" x-text="drill.deep.error"></div>
+                    <div x-show="!drill.deep.loading && !drill.deep.error && (!drill.deep.data || !drill.deep.data.row_count)" class="lm-dd-state">
+                        Tidak ada rincian lebih dalam untuk sel ini.
+                    </div>
+                    <div class="lm-dd-tablewrap lm-dd-drag"
+                         x-show="!drill.deep.loading && !drill.deep.error && drill.deep.data && drill.deep.data.row_count"
+                         x-ref="deepScroll"
+                         @mousedown="deepDragStart($event)"
+                         @mousemove.window="deepDragMove($event)"
+                         @mouseup.window="deepDragEnd()"
+                         x-html="drill.deep.html"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @push('scripts')
@@ -111,7 +222,12 @@ function pabrikApp() {
         lm16Data: null,
         loadingLm16: false,
         lm16Table: null,
-        drilldownPreview: null,
+        drill: {
+            open: false, view: 'pivot', direct: false, loading: false, error: null,
+            title: '', columnLabel: '', value: 0, pivot: null, message: null,
+            ctx: { kode: '', column: '' },
+            deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
+        },
         errorMessage: null,
 
         async init() {
@@ -368,15 +484,181 @@ function pabrikApp() {
             return `Menampilkan ${rows} baris · ${columns} kolom`;
         },
 
-        handleCellClick(event) {
-            this.drilldownPreview = {
-                report_type: 'LM16',
-                unit: this.filters.unit,
-                batch: this.filters.batch,
-                komoditi: this.filters.komoditi,
-                kode_baris: event.detail.drilldown.kode_baris,
-                column_key: event.detail.drilldown.column_key,
+        async handleCellClick(event) {
+            const dd = event.detail.drilldown;
+            this.drill = {
+                open: true, view: 'pivot', direct: false, loading: true, error: null,
+                title: String(event.detail.row?.uraian ?? '').trim() || dd.kode_baris,
+                columnLabel: '', value: Number(event.detail.value ?? 0), pivot: null, message: null,
+                ctx: { kode: dd.kode_baris, column: dd.column_key },
+                deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
             };
+
+            try {
+                const params = new URLSearchParams({
+                    type: 'LM16',
+                    batch: this.filters.batch,
+                    unit: this.filters.unit,
+                    komoditi: this.filters.komoditi,
+                    kode: dd.kode_baris,
+                    column: dd.column_key,
+                });
+                const data = await this.fetchReport(`/report-data/drilldown?${params.toString()}`);
+                this.drill.columnLabel = data.context?.column_label ?? dd.column_key;
+                this.drill.message = data.context?.message ?? null;
+
+                // Kolom RKO/RKAP: server kirim detail langsung (tanpa pivot).
+                if (data.context?.direct_detail && data.detail) {
+                    this.drill.direct = true;
+                    this.drill.view = 'deep';
+                    this.drill.deep = {
+                        loading: false, error: null,
+                        data: data.detail, html: this.buildDeepHtml(data.detail),
+                        pb7: '', pb712: '', klasifikasi: '', value: this.drill.value,
+                    };
+                } else {
+                    this.drill.pivot = data.pivot;
+                }
+            } catch (error) {
+                this.drill.error = error.message;
+            } finally {
+                this.drill.loading = false;
+            }
+        },
+
+        // Rincian LEBIH DALAM: klik nilai di pivot → posting biaya per Cost Element.
+        async openDeep(pb7, pb712, klasifikasi, value) {
+            if (!value || Math.abs(Number(value)) < 0.5) {
+                return;
+            }
+            this.drill.view = 'deep';
+            this.drill.deep = {
+                loading: true, error: null, data: null, html: '',
+                pb7: pb7 || '(Tanpa Cost Center)',
+                pb712: pb712 || '(Tanpa GL)',
+                klasifikasi: klasifikasi || '',
+                value: Number(value || 0),
+            };
+
+            try {
+                const params = new URLSearchParams({
+                    type: 'LM16',
+                    batch: this.filters.batch,
+                    unit: this.filters.unit,
+                    komoditi: this.filters.komoditi,
+                    kode: this.drill.ctx.kode,
+                    column: this.drill.ctx.column,
+                });
+                if (pb7 != null) params.set('pb7', pb7);
+                if (pb712 != null) params.set('pb712', pb712);
+                if (klasifikasi != null) params.set('klasifikasi', klasifikasi);
+                const data = await this.fetchReport(`/report-data/drilldown-deep?${params.toString()}`);
+                this.drill.deep.data = data.detail;
+                this.drill.deep.html = this.buildDeepHtml(data.detail);
+            } catch (error) {
+                this.drill.deep.error = error.message;
+            } finally {
+                this.drill.deep.loading = false;
+            }
+        },
+
+        backToPivot() {
+            this.drill.view = 'pivot';
+        },
+
+        closeDrill() {
+            this.drill.open = false;
+        },
+
+        fmtNum(value) {
+            const n = Number(value ?? 0);
+            if (!Number.isFinite(n) || Math.abs(n) < 0.005) {
+                return '';
+            }
+            return n.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        },
+
+        fmtInt(value) {
+            const n = Number(value ?? 0);
+            return Number.isFinite(n) ? n.toLocaleString('id-ID') : '0';
+        },
+
+        buildDeepHtml(detail) {
+            if (!detail || !detail.row_count) return '';
+            const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const dash = '<span class="lm-dd-dash">–</span>';
+            let out = '';
+
+            for (const sec of (detail.sections ?? [])) {
+                const cols = sec.columns ?? [];
+                let head = '<tr><th class="lm-dd-n">#</th>';
+                for (const col of cols) {
+                    head += '<th class="' + (col.numeric ? 'lm-dd-n' : 'lm-dd-l') + '">' + esc(col.label) + '</th>';
+                }
+                head += '</tr>';
+
+                let body = '';
+                let i = 0;
+                for (const row of (sec.rows ?? [])) {
+                    i++;
+                    let tr = '<tr><td class="lm-dd-n lm-dd-rownum">' + i + '</td>';
+                    for (const col of cols) {
+                        const v = row[col.field];
+                        if (col.numeric) {
+                            const f = this.fmtNum(v);
+                            tr += '<td class="lm-dd-n">' + (f ? esc(f) : dash) + '</td>';
+                        } else {
+                            const has = v !== null && v !== undefined && v !== '';
+                            tr += '<td class="lm-dd-l">' + (has ? esc(v) : dash) + '</td>';
+                        }
+                    }
+                    body += tr + '</tr>';
+                }
+
+                let foot = '<tr class="lm-dd-subrow"><td class="lm-dd-n"></td>';
+                for (const col of cols) {
+                    let cell = '';
+                    if (col.field === sec.value_field) {
+                        cell = 'Subtotal: ' + this.fmtNum(sec.subtotal);
+                    } else if (col.field === sec.qty_field) {
+                        cell = 'Subtotal: ' + this.fmtNum(sec.qty_subtotal);
+                    }
+                    foot += '<td class="' + (col.numeric ? 'lm-dd-n' : 'lm-dd-l') + '">' + cell + '</td>';
+                }
+                foot += '</tr>';
+
+                out += '<div class="lm-dd-section">'
+                    + '<div class="lm-dd-section-head"><span class="lm-dd-section-name">' + esc(sec.label) + '</span>'
+                    + '<span class="lm-dd-section-meta">' + this.fmtInt(sec.row_count) + ' baris · Rp ' + this.fmtNum(sec.subtotal) + '</span></div>'
+                    + '<table class="lm-dd-table lm-dd-raw"><thead>' + head + '</thead><tbody>' + body + '</tbody>'
+                    + '<tfoot>' + foot + '</tfoot></table></div>';
+            }
+
+            return out;
+        },
+
+        deepDragStart(event) {
+            const el = this.$refs.deepScroll;
+            if (!el || event.button !== 0) return;
+            this._deepDrag = { active: true, startX: event.pageX, startY: event.pageY, left: el.scrollLeft, top: el.scrollTop };
+            el.classList.add('lm-dd-dragging');
+            event.preventDefault();
+        },
+
+        deepDragMove(event) {
+            const d = this._deepDrag;
+            if (!d || !d.active) return;
+            const el = this.$refs.deepScroll;
+            if (!el) return;
+            el.scrollLeft = d.left - (event.pageX - d.startX);
+            el.scrollTop = d.top - (event.pageY - d.startY);
+        },
+
+        deepDragEnd() {
+            if (!this._deepDrag || !this._deepDrag.active) return;
+            this._deepDrag.active = false;
+            const el = this.$refs.deepScroll;
+            if (el) el.classList.remove('lm-dd-dragging');
         }
     }
 }
