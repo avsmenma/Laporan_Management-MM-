@@ -519,7 +519,7 @@ function pabrikApp() {
                     };
                     this.drill.footCount = this.fmtInt(p.row_count) + ' kebun';
                     this.drill.footTotal = p.is_ratio
-                        ? this.fmtNum(p.grand) + ' %'
+                        ? this.fmtPct(p.grand) + ' %'
                         : this.fmtNum(p.grand) + ' Kg';
                 // Kolom RKO/RKAP: server kirim detail langsung (tanpa pivot).
                 } else if (data.context?.direct_detail && data.detail) {
@@ -609,6 +609,13 @@ function pabrikApp() {
             return Number.isFinite(n) ? n.toLocaleString('id-ID') : '0';
         },
 
+        // Persentase (mis. rendemen) selalu 2 angka di belakang koma, gaya id-ID (22,15).
+        fmtPct(value) {
+            const n = Number(value ?? 0);
+            if (!Number.isFinite(n)) return '0,00';
+            return n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+
         buildDeepHtml(detail) {
             if (!detail || !detail.row_count) return '';
             const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -679,12 +686,12 @@ function pabrikApp() {
                         + '<td class="lm-dd-l">' + code(r.kebun) + '</td><td class="lm-dd-l">' + esc(r.nama) + '</td>'
                         + '<td class="lm-dd-n">' + esc(this.fmtNum(r.comp)) + '</td>'
                         + '<td class="lm-dd-n">' + esc(this.fmtNum(r.olah)) + '</td>'
-                        + '<td class="lm-dd-n">' + esc(this.fmtNum(r.rendemen)) + ' %</td></tr>';
+                        + '<td class="lm-dd-n">' + esc(this.fmtPct(r.rendemen)) + ' %</td></tr>';
                 }
                 foot = '<tr class="lm-dd-subrow"><td class="lm-dd-n"></td><td class="lm-dd-l" colspan="2">Grand Total</td>'
                     + '<td class="lm-dd-n">' + esc(this.fmtNum(p.grand_comp)) + '</td>'
                     + '<td class="lm-dd-n">' + esc(this.fmtNum(p.grand_olah)) + '</td>'
-                    + '<td class="lm-dd-n">' + esc(this.fmtNum(p.grand)) + ' %</td></tr>';
+                    + '<td class="lm-dd-n">' + esc(this.fmtPct(p.grand)) + ' %</td></tr>';
             } else {
                 head = '<tr><th class="lm-dd-n">#</th><th class="lm-dd-l">Kebun</th><th class="lm-dd-l">Nama Kebun</th>'
                     + '<th class="lm-dd-n">' + esc(p.value_label) + ' (Kg)</th></tr>';
