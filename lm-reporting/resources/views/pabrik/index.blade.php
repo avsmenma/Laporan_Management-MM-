@@ -708,7 +708,7 @@ function pabrikApp() {
         deepDragStart(event) {
             const el = this.$refs.deepScroll;
             if (!el || event.button !== 0) return;
-            this._deepDrag = { active: true, startX: event.pageX, startY: event.pageY, left: el.scrollLeft, top: el.scrollTop };
+            this._deepDrag = { active: true, startX: event.pageX, left: el.scrollLeft };
             el.classList.add('lm-dd-dragging');
             event.preventDefault();
         },
@@ -718,8 +718,8 @@ function pabrikApp() {
             if (!d || !d.active) return;
             const el = this.$refs.deepScroll;
             if (!el) return;
+            // Drag-to-pan HORIZONTAL saja; scroll vertikal tetap via roda mouse / scrollbar.
             el.scrollLeft = d.left - (event.pageX - d.startX);
-            el.scrollTop = d.top - (event.pageY - d.startY);
         },
 
         deepDragEnd() {
