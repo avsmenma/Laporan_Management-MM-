@@ -227,6 +227,7 @@ class ApiReportTest extends TestCase
                 'cost_center' => $cc, 'cost_element' => $ce, 'klasifikasi_code' => '1', 'nilai' => $nilai,
                 'raw' => json_encode([
                     'Document Number' => $doc, 'Cost Element' => $ce, 'Value in Obj. Crcy' => $nilai,
+                    'CO Object Name' => 'Empty Bunch Hopper',
                     'Kode B' => $kodeB, 'Klasifikasi 2' => 'c. 603-604 - Premi', 'Klasifikasi STAS' => $kategori,
                 ]),
             ]);
@@ -243,15 +244,16 @@ class ApiReportTest extends TestCase
             ->assertJsonPath('pivot.categories.0', 'a. Gaji')
             ->assertJsonPath('pivot.categories.1', 'g. Premi/Lembur')
             ->assertJsonPath('pivot.groups.0.pb7', 'c. 603-604 - Premi')
-            ->assertJsonPath('pivot.groups.0.rows.0.pb712', 'STAS01');
+            ->assertJsonPath('pivot.groups.0.rows.0.pb712', 'STAS01')
+            ->assertJsonPath('pivot.groups.0.rows.0.obj', 'Empty Bunch Hopper');
 
         // Level-2 deep untuk sel SUB REKENING × Kode B × KATEGORI BKU "a. Gaji" (bulan ini) → 100.
         $deepKey = ['pb7' => 'c. 603-604 - Premi', 'pb712' => 'STAS01', 'klasifikasi' => 'a. Gaji'];
         $deep = $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'bi_jumlah'] + $deepKey));
         $deep->assertOk()->assertJsonPath('detail.sections.0.table', 'pks_biaya')
             ->assertJsonPath('detail.grand_total', 100)
-            // Data mentah apa adanya: kolom asli file (mis. "Document Number") tampil.
-            ->assertJsonPath('detail.sections.0.columns.0.field', 'Document Number')
+            // Data mentah apa adanya: kolom asli file, urut sesuai header file (CO Object Name kol ke-2 → tampil duluan).
+            ->assertJsonPath('detail.sections.0.columns.0.field', 'CO Object Name')
             ->assertJsonPath('detail.sections.0.rows.0.Document Number', 'DOC-100');
 
         // s.d bulan ini = periode <=5 untuk kategori "a. Gaji" → 100 + 30 = 130.

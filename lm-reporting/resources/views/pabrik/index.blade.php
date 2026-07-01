@@ -135,6 +135,7 @@
                                 <tr>
                                     <th class="lm-dd-l">SUB REKENING</th>
                                     <th class="lm-dd-l">Kode B</th>
+                                    <th class="lm-dd-l">Object Name</th>
                                     <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
                                         <th class="lm-dd-n" x-text="cat"></th>
                                     </template>
@@ -147,6 +148,7 @@
                                         <tr>
                                             <td class="lm-dd-l lm-dd-pb7"><span class="lm-dd-dot" x-show="ri === 0"></span><span x-text="ri === 0 ? group.pb7 : ''"></span></td>
                                             <td class="lm-dd-l"><span class="lm-dd-code" x-text="r.pb712"></span></td>
+                                            <td class="lm-dd-l lm-dd-objname" x-text="r.obj"></td>
                                             <template x-for="cat in drill.pivot.categories" :key="cat">
                                                 <td class="lm-dd-n" :class="{ 'lm-dd-clickable': r.values[cat] }"
                                                     @click="openDeep(group.pb7, r.pb712, cat, r.values[cat])"
@@ -158,7 +160,7 @@
                                         </tr>
                                     </template>
                                     <tr class="lm-dd-subrow">
-                                        <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' Total'"></td>
+                                        <td class="lm-dd-l" colspan="3" x-text="group.pb7 + ' Total'"></td>
                                         <template x-for="cat in drill.pivot.categories" :key="cat">
                                             <td class="lm-dd-n" x-text="fmtNum(group.subtotal[cat])"></td>
                                         </template>

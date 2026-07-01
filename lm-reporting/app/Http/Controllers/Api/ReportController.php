@@ -1929,7 +1929,9 @@ class ReportController extends Controller
         $blankKlas = self::PIVOT_BLANK_KLAS;
 
         // Agregasi ke map: pb7 -> pb712 -> klasifikasi -> total.
+        // $objMap menyimpan Object Name per (pb7, pb712) — dipakai kolom "Object Name" pivot LM16.
         $agg = [];
+        $objMap = [];
         $presentKlas = [];
         foreach ($rows as $row) {
             $pb7 = trim((string) $row->pb7) !== '' ? (string) $row->pb7 : $blank;
@@ -1939,6 +1941,11 @@ class ReportController extends Controller
 
             $agg[$pb7][$pb712][$klas] = ($agg[$pb7][$pb712][$klas] ?? 0) + $total;
             $presentKlas[$klas] = true;
+
+            $obj = isset($row->obj) ? trim((string) $row->obj) : '';
+            if (($objMap[$pb7][$pb712] ?? '') === '' && $obj !== '') {
+                $objMap[$pb7][$pb712] = $obj;
+            }
         }
 
         // Urutkan kolom klasifikasi: pakai urutan eksplisit bila diberikan, lalu kanonik, sisanya menyusul.
@@ -1972,7 +1979,7 @@ class ReportController extends Controller
                 }
                 $subtotalTotal += $rowTotal;
                 $grandTotal += $rowTotal;
-                $groupRows[] = ['pb712' => $pb712, 'values' => $values, 'total' => $rowTotal];
+                $groupRows[] = ['pb712' => $pb712, 'obj' => $objMap[$pb7][$pb712] ?? '', 'values' => $values, 'total' => $rowTotal];
             }
 
             $groups[] = [
@@ -2070,11 +2077,12 @@ class ReportController extends Controller
         $pivotRows = [];
         $cats = [];
         foreach ($rows as $r) {
-            [$subRek, $kodeB, $kategori] = $this->lm16PivotDims($r);
+            [$subRek, $kodeB, $kategori, $objName] = $this->lm16PivotDims($r);
             $cats[$kategori] = true;
             $pivotRows[] = (object) [
                 'pb7' => $subRek,
                 'pb712' => $kodeB,
+                'obj' => $objName,
                 'klasifikasi' => $kategori,
                 'total' => (float) $r->nilai,
             ];
@@ -2089,9 +2097,10 @@ class ReportController extends Controller
 
     /**
      * Dimensi pivot sumber LM16 dari satu baris pks_biaya: [SUB REKENING (Klasifikasi 2),
-     * Kode B, KATEGORI BKU (Klasifikasi STAS)]. Dibaca dari `raw`; fallback ke kolom kanonik.
+     * Kode B, KATEGORI BKU (Klasifikasi STAS), Object Name (CO Object Name)]. Dibaca dari
+     * `raw`; fallback ke kolom kanonik.
      *
-     * @return array{0:string,1:string,2:string}
+     * @return array{0:string,1:string,2:string,3:string}
      */
     private function lm16PivotDims(object $r): array
     {
@@ -2100,10 +2109,12 @@ class ReportController extends Controller
             $subRek = trim((string) ($raw['Klasifikasi 2'] ?? ''));
             $kodeB = trim((string) ($raw['Kode B'] ?? ''));
             $kategori = trim((string) ($raw['Klasifikasi STAS'] ?? ''));
+            $objName = trim((string) ($raw['CO Object Name'] ?? ''));
         } else {
             $subRek = trim((string) $r->cost_center);
             $kodeB = trim((string) $r->cost_element);
             $kategori = 'Nilai';
+            $objName = isset($r->co_object_name) ? trim((string) $r->co_object_name) : '';
         }
 
         if ($subRek === '' || strcasecmp($subRek, '#N/A') === 0) {
@@ -2115,8 +2126,11 @@ class ReportController extends Controller
         if ($kategori === '' || strcasecmp($kategori, '#N/A') === 0) {
             $kategori = self::PIVOT_BLANK_KLAS;
         }
+        if (strcasecmp($objName, '#N/A') === 0) {
+            $objName = '';
+        }
 
-        return [$subRek, $kodeB, $kategori];
+        return [$subRek, $kodeB, $kategori, $objName];
     }
 
     // ===== Drill-down PRODUKSI LM16 — sumber: produksi_pks (rincian per kebun) =====
