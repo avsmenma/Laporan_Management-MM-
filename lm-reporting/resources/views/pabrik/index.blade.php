@@ -256,6 +256,10 @@ function pabrikApp() {
         },
 
         emitTopbarUnit() {
+            if (this.filters.unit === 'ALL') {
+                window.dispatchEvent(new CustomEvent('lm-topbar-unit', { detail: { label: 'Semua Unit' } }));
+                return;
+            }
             const unit = this.units.find((item) => String(item.code) === String(this.filters.unit));
             window.dispatchEvent(new CustomEvent('lm-topbar-unit', {
                 detail: { label: unit ? `${unit.code} - ${unit.name}` : '' },
@@ -362,18 +366,14 @@ function pabrikApp() {
         },
 
         onUnitChange() {
-            if (this.filters.unit === 'ALL') {
-                this.resetReport();
-                this.errorMessage = 'Laporan konsolidasi "Semua Unit" belum tersedia. Silakan pilih satu unit pabrik.';
-                return;
-            }
             if (this.canLoadReport()) {
                 this.loadReport();
             }
         },
 
         canLoadReport() {
-            return this.filters.komoditi && this.filters.batch && this.filters.unit && this.filters.unit !== 'ALL';
+            // unit 'ALL' (Semua Unit / konsolidasi PKS) diizinkan — backend menjumlahkan semua unit.
+            return this.filters.komoditi && this.filters.batch && this.filters.unit;
         },
 
         resetReport() {

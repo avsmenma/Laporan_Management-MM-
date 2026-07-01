@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Domain\Report\Lm14Service;
 use App\Models\Batch;
+use App\Models\LmTemplateRow;
 use App\Models\RefUnit;
 use App\Models\Role;
 use App\Models\User;
@@ -309,6 +310,75 @@ class ApiReportTest extends TestCase
             ->assertJsonPath('produksi.grand_olah', 80)
             ->assertJsonPath('produksi.grand', 20)
             ->assertJsonPath('produksi.rows.0.rendemen', 20); // 10/50×100
+    }
+
+    public function test_lm16_semua_unit_konsolidasi(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'final', 'processed_at' => '2026-05-20 08:00:00']);
+        $operator = User::query()->whereHas('role', fn ($q) => $q->where('name', Role::OPERATOR))->firstOrFail();
+
+        $olah = RefUnit::query()->where('code', '5F01')->firstOrFail();  // Olah
+        $kso = RefUnit::query()->where('code', '5F14')->firstOrFail();   // Non Olah
+
+        // Template LM16: satu baris biaya (urut>=16) + baris produksi urut 3 & 11.
+        $biaya = LmTemplateRow::query()->where('report_type', 'LM16')->where('urutan', '>=', 16)->orderBy('urutan')->firstOrFail();
+        $tpl3 = LmTemplateRow::query()->where('report_type', 'LM16')->where('urutan', 3)->firstOrFail();
+        $tpl11 = LmTemplateRow::query()->where('report_type', 'LM16')->where('urutan', 11)->firstOrFail();
+
+        $r16 = fn (RefUnit $u, LmTemplateRow $t, array $v) => DB::table('report_lm16')->insert(array_merge([
+            'batch_id' => $batch->id, 'unit_id' => $u->id, 'template_id' => $t->id,
+            'real_bln_lalu' => 0, 'bi_olah' => 0, 'bi_kso' => 0, 'bi_jumlah' => 0, 'bi_rko' => 0, 'bi_rkap' => 0,
+            'sd_olah' => 0, 'sd_kso' => 0, 'sd_jumlah' => 0, 'sd_rko' => 0, 'sd_rkap' => 0,
+            'cap_bi_lalu' => 0, 'cap_bi_rkap' => 0, 'cap_bi_sd' => 0, 'cap_sd_rkap' => 0, 'rp_kg_tbs' => 0, 'rp_kg_mi' => 0,
+        ], $v));
+
+        // Biaya: unit Olah bi_jumlah=100 (kolom Olah), unit KSO bi_jumlah=50 (kolom KSO); rkap 200/100.
+        $r16($olah, $biaya, ['bi_olah' => 100, 'bi_jumlah' => 100, 'bi_rkap' => 200, 'sd_olah' => 100, 'sd_jumlah' => 100, 'sd_rkap' => 200]);
+        $r16($kso, $biaya, ['bi_kso' => 50, 'bi_jumlah' => 50, 'bi_rkap' => 100, 'sd_kso' => 50, 'sd_jumlah' => 50, 'sd_rkap' => 100]);
+        // Baris produksi (placeholder nol; diisi ulang applyProduksiToLm16 dari produksi_pks).
+        $r16($olah, $tpl3, []);
+        $r16($olah, $tpl11, []);
+
+        // Produksi: plant Olah 5F01 & plant Non Olah 5F14 (snapshot 31 Mei).
+        $mk = fn (string $plant, array $v) => array_merge([
+            'posting_date' => '2026-05-31', 'tidak_mengolah' => false, 'plant_code' => $plant, 'plant_desc' => 'PKS',
+            'group_pemilik' => 'Kebun Sendiri', 'kebun_code' => '5E01', 'nama_kebun' => 'KEBUN',
+            'tbs_diterima_sdhari' => 0, 'tbs_diterima_sdbulan' => 0, 'tbs_diolah_sdhari' => 0, 'tbs_diolah_sdbulan' => 0,
+            'sisa_akhir' => 0, 'ms_sdhari' => 0, 'ms_sdbulan' => 0, 'is_sdhari' => 0, 'is_sdbulan' => 0,
+        ], $v);
+        DB::table('produksi_pks')->insert([
+            $mk('5F01', ['tbs_diterima_sdhari' => 60, 'tbs_diolah_sdhari' => 50, 'ms_sdhari' => 10]),
+            $mk('5F14', ['tbs_diterima_sdhari' => 40, 'tbs_diolah_sdhari' => 30, 'ms_sdhari' => 6]),
+        ]);
+
+        $resp = $this->actingAs($operator)->getJson('/api/report/lm16?batch='.$batch->id.'&unit=ALL');
+        $resp->assertOk()->assertJsonPath('success', true)->assertJsonPath('meta.unit.name', 'Semua Unit');
+
+        // Kolom konsolidasi memakai judul "Olah" (bukan "Tidak Olah").
+        $cols = collect($resp->json('columns'));
+        $this->assertSame('Olah', $cols->firstWhere('key', 'bi_olah')['title']);
+
+        $rows = collect($resp->json('rows'));
+
+        // Biaya (aditif): Olah 100 + KSO 50 = Jumlah 150; capaian BI/RKAP = 150/300×100 = 50.
+        $rBiaya = $rows->firstWhere('urutan', (int) $biaya->urutan);
+        $this->assertEquals(100.0, $rBiaya['bi_olah']);
+        $this->assertEquals(50.0, $rBiaya['bi_kso']);
+        $this->assertEquals(150.0, $rBiaya['bi_jumlah']);
+        $this->assertEquals(50.0, $rBiaya['cap_bi_rkap']);
+
+        // Produksi TBS masuk (urut 3): plant Olah → kolom Olah (60), plant Non Olah → KSO (40), Jumlah 100.
+        $r3 = $rows->firstWhere('urutan', 3);
+        $this->assertEquals(60.0, $r3['bi_olah']);
+        $this->assertEquals(40.0, $r3['bi_kso']);
+        $this->assertEquals(100.0, $r3['bi_jumlah']);
+
+        // Rendemen MS (urut 11): Olah 10/50×100=20, KSO 6/30×100=20, Jumlah 16/80×100=20 (rasio total).
+        $r11 = $rows->firstWhere('urutan', 11);
+        $this->assertEquals(20.0, $r11['bi_olah']);
+        $this->assertEquals(20.0, $r11['bi_kso']);
+        $this->assertEquals(20.0, $r11['bi_jumlah']);
     }
 
     private function insertLm14Source(Batch $batch, RefUnit $unit): void

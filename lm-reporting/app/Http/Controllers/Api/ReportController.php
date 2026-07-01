@@ -216,24 +216,30 @@ class ReportController extends Controller
         ]);
 
         $batch = $this->findBatch($request->batch);
-        $unit = $this->findUnit($request->unit);
+        $isAll = $this->isAllUnits($request);
+        $unit = $isAll ? $this->allUnitsPlaceholder('PABRIK', 'KS') : $this->findUnit($request->unit);
 
         $this->checkBatchAccess($batch);
 
-        $rows = DB::table('report_lm16')
-            ->join('lm_template_row', 'report_lm16.template_id', '=', 'lm_template_row.id')
-            ->where('report_lm16.batch_id', $batch->id)
-            ->where('report_lm16.unit_id', $unit->id)
-            ->select(
-                'lm_template_row.urutan',
-                'lm_template_row.kode',
-                'lm_template_row.uraian',
-                'lm_template_row.row_type',
-                'lm_template_row.indent',
-                'report_lm16.*'
-            )
-            ->orderBy('lm_template_row.urutan')
-            ->get();
+        // "Semua Unit" = jumlahkan nilai seluruh unit PKS (Olah masuk kolom Olah,
+        // Non Olah masuk kolom KSO — split sudah dimaterialisasi per unit), capaian &
+        // Rp/Kg dihitung ulang dari nilai gabungan. Lapisan presentasi (tanpa regenerasi).
+        $rows = $isAll
+            ? $this->aggregateLm16Rows($batch)
+            : DB::table('report_lm16')
+                ->join('lm_template_row', 'report_lm16.template_id', '=', 'lm_template_row.id')
+                ->where('report_lm16.batch_id', $batch->id)
+                ->where('report_lm16.unit_id', $unit->id)
+                ->select(
+                    'lm_template_row.urutan',
+                    'lm_template_row.kode',
+                    'lm_template_row.uraian',
+                    'lm_template_row.row_type',
+                    'lm_template_row.indent',
+                    'report_lm16.*'
+                )
+                ->orderBy('lm_template_row.urutan')
+                ->get();
 
         if ($rows->isEmpty()) {
             return response()->json([
@@ -244,7 +250,7 @@ class ReportController extends Controller
 
         // Tarik nilai PRODUKSI TBS / M+I / Rendemen dari halaman Produksi (produksi_pks),
         // lapisan presentasi — tidak mengubah mesin hitung LM16.
-        $rows = $this->applyProduksiToLm16($rows, $batch, $unit);
+        $rows = $this->applyProduksiToLm16($rows, $batch, $unit, $isAll);
 
         return response()->json([
             'success' => true,
@@ -752,6 +758,58 @@ class ReportController extends Controller
     }
 
     /**
+     * Agregasi LM16 "Semua Unit": SUM tiap kolom nilai antar seluruh unit PKS (type
+     * PABRIK, komoditi KS) per baris template, lalu hitung ulang kolom Capaian (%) dari
+     * nilai gabungan. Kolom Olah/KSO tetap konsisten karena split sudah dimaterialisasi
+     * per unit di report_lm16 (Olah→bi_olah, Non Olah→bi_kso). Rp/Kg diisi ulang belakangan
+     * oleh applyProduksiToLm16 dari produksi gabungan. Bentuk baris menyerupai join
+     * report+template agar bisa langsung dilewatkan ke formatLm16Row().
+     */
+    private function aggregateLm16Rows(Batch $batch): \Illuminate\Support\Collection
+    {
+        $sumCols = [
+            'real_bln_lalu', 'bi_olah', 'bi_kso', 'bi_jumlah', 'bi_rko', 'bi_rkap',
+            'sd_olah', 'sd_kso', 'sd_jumlah', 'sd_rko', 'sd_rkap',
+        ];
+
+        $selects = [
+            'lm_template_row.urutan', 'lm_template_row.kode', 'lm_template_row.uraian',
+            'lm_template_row.row_type', 'lm_template_row.indent',
+        ];
+        foreach ($sumCols as $col) {
+            $selects[] = DB::raw('SUM(report_lm16.'.$col.') as '.$col);
+        }
+
+        $rows = DB::table('report_lm16')
+            ->join('lm_template_row', 'report_lm16.template_id', '=', 'lm_template_row.id')
+            ->join('ref_unit', 'report_lm16.unit_id', '=', 'ref_unit.id')
+            ->where('report_lm16.batch_id', $batch->id)
+            ->where('ref_unit.type', 'PABRIK')
+            ->where('ref_unit.komoditi', 'KS')
+            ->groupBy(
+                'lm_template_row.id', 'lm_template_row.urutan', 'lm_template_row.kode',
+                'lm_template_row.uraian', 'lm_template_row.row_type', 'lm_template_row.indent'
+            )
+            ->orderBy('lm_template_row.urutan')
+            ->select($selects)
+            ->get();
+
+        return $rows->map(function ($row) {
+            $row->cap_bi_lalu = $this->percent((float) $row->bi_jumlah, (float) $row->real_bln_lalu);
+            $row->cap_bi_rkap = $this->percent((float) $row->bi_jumlah, (float) $row->bi_rkap);
+            $row->cap_bi_sd = $this->percent((float) $row->bi_jumlah, (float) $row->sd_jumlah);
+            $row->cap_sd_rkap = $this->percent((float) $row->sd_jumlah, (float) $row->sd_rkap);
+            // Rp/Kg diisi ulang oleh applyProduksiToLm16 (butuh produksi gabungan).
+            $row->rp_kg_tbs = 0.0;
+            $row->rp_kg_mi = 0.0;
+            $row->rp_kg_tbs_sd = 0.0;
+            $row->rp_kg_mi_sd = 0.0;
+
+            return $row;
+        });
+    }
+
+    /**
      * Tarik nilai produksi LM13 (baris "- Kebun Inti" tiap grup + Saldo Akhir TBS) dari
      * data halaman Produksi (produksi_pks) untuk blok "Kebun Sendiri + Pihak III"
      * (OLAH_JUAL), lalu hitung ulang subtotal "Jumlah" dan baris HPP yang terdampak.
@@ -894,10 +952,15 @@ class ReportController extends Controller
      * Kolom Olah/KSO mengikuti ref_unit.olah_status (Jumlah = nilai). bi ← s/d hari,
      * sd ← s/d bulan. Lapisan presentasi (tidak menyentuh Lm16Service / regenerasi).
      *
+     * "Semua Unit" ($isAll): produksi seluruh PKS digabung — unit Olah → kolom Olah,
+     * unit Non Olah → kolom KSO, Jumlah = total; rendemen per kolom dihitung dari total
+     * bucket masing-masing (rasio, bukan penjumlahan). Untuk satu unit hasilnya identik
+     * dengan perilaku lama (satu bucket berisi, satunya nol).
+     *
      * @param  \Illuminate\Support\Collection<int, object>  $rows
      * @return \Illuminate\Support\Collection<int, object>
      */
-    private function applyProduksiToLm16(\Illuminate\Support\Collection $rows, Batch $batch, RefUnit $unit): \Illuminate\Support\Collection
+    private function applyProduksiToLm16(\Illuminate\Support\Collection $rows, Batch $batch, RefUnit $unit, bool $isAll = false): \Illuminate\Support\Collection
     {
         $date = DB::table('produksi_pks')
             ->whereYear('posting_date', $batch->year)
@@ -907,23 +970,57 @@ class ReportController extends Controller
             return $rows;
         }
 
-        $a = DB::table('produksi_pks')
-            ->whereDate('posting_date', $date)
-            ->where('plant_code', $unit->code)
-            ->selectRaw(
-                'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
-                'COALESCE(SUM(tbs_diolah_sdhari),0) tdo_h, COALESCE(SUM(tbs_diolah_sdbulan),0) tdo_b, '.
-                'COALESCE(SUM(sisa_akhir),0) akhir, '.
-                'COALESCE(SUM(ms_sdhari),0) ms_h, COALESCE(SUM(ms_sdbulan),0) ms_b, '.
-                'COALESCE(SUM(is_sdhari),0) is_h, COALESCE(SUM(is_sdbulan),0) is_b'
-            )->first();
+        $sums =
+            'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
+            'COALESCE(SUM(tbs_diolah_sdhari),0) tdo_h, COALESCE(SUM(tbs_diolah_sdbulan),0) tdo_b, '.
+            'COALESCE(SUM(sisa_akhir),0) akhir, '.
+            'COALESCE(SUM(ms_sdhari),0) ms_h, COALESCE(SUM(ms_sdbulan),0) ms_b, '.
+            'COALESCE(SUM(is_sdhari),0) is_h, COALESCE(SUM(is_sdbulan),0) is_b';
+        $metrics = ['tdi_h', 'tdi_b', 'tdo_h', 'tdo_b', 'akhir', 'ms_h', 'ms_b', 'is_h', 'is_b'];
+        $zero = (object) array_fill_keys($metrics, 0.0);
 
-        $isOlah = $unit->olah_status === 'Olah';
-        $pct = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d * 100, 2);
+        // Bucket produksi: $o = unit Olah, $k = unit Non Olah (KSO), $t = total (o+k).
+        if ($isAll) {
+            $byStatus = DB::table('produksi_pks as p')
+                ->join('ref_unit as u', 'u.code', '=', 'p.plant_code')
+                ->whereDate('p.posting_date', $date)
+                ->where('u.type', 'PABRIK')
+                ->where('u.komoditi', 'KS')
+                ->groupBy('u.olah_status')
+                ->selectRaw('u.olah_status as st, '.$sums)
+                ->get();
+            $o = clone $zero;
+            $k = clone $zero;
+            foreach ($byStatus as $b) {
+                $dst = ($b->st === 'Olah') ? $o : $k;
+                foreach ($metrics as $m) {
+                    $dst->$m = (float) $b->$m;
+                }
+            }
+        } else {
+            $a = DB::table('produksi_pks')
+                ->whereDate('posting_date', $date)
+                ->where('plant_code', $unit->code)
+                ->selectRaw($sums)->first() ?? clone $zero;
+            if ($unit->olah_status === 'Olah') {
+                $o = $a;
+                $k = clone $zero;
+            } else {
+                $o = clone $zero;
+                $k = $a;
+            }
+        }
+
         $f = fn ($v): float => (float) $v;
+        $t = (object) [];
+        foreach ($metrics as $m) {
+            $t->$m = $f($o->$m) + $f($k->$m);
+        }
 
-        // urutan => [nilai bi (s/d hari), nilai sd (s/d bulan)]
-        $vals = [
+        $pct = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d * 100, 2);
+
+        // Bangun peta nilai [bi (s/d hari), sd (s/d bulan)] per urutan untuk satu bucket.
+        $valsOf = fn (object $a): array => [
             2 => [$f($a->tdo_h) + $f($a->akhir) - $f($a->tdi_h), $f($a->tdo_b) + $f($a->akhir) - $f($a->tdi_b)],
             3 => [$f($a->tdi_h), $f($a->tdi_b)],
             4 => [$f($a->tdo_h), $f($a->tdo_b)],
@@ -935,31 +1032,34 @@ class ReportController extends Controller
             12 => [$pct($f($a->is_h), $f($a->tdo_h)), $pct($f($a->is_b), $f($a->tdo_b))],
             13 => [$pct($f($a->ms_h) + $f($a->is_h), $f($a->tdo_h)), $pct($f($a->ms_b) + $f($a->is_b), $f($a->tdo_b))],
         ];
+        $vO = $valsOf($o);
+        $vK = $valsOf($k);
+        $vT = $valsOf($t);
 
         $byU = [];
         foreach ($rows as $row) {
             $byU[(int) $row->urutan] = $row;
         }
-        foreach ($vals as $u => [$bi, $sd]) {
+        foreach ($vT as $u => $_) {
             if (! isset($byU[$u])) {
                 continue;
             }
             $r = $byU[$u];
-            $r->bi_olah = $isOlah ? $bi : 0.0;
-            $r->bi_kso = $isOlah ? 0.0 : $bi;
-            $r->bi_jumlah = $bi;
-            $r->sd_olah = $isOlah ? $sd : 0.0;
-            $r->sd_kso = $isOlah ? 0.0 : $sd;
-            $r->sd_jumlah = $sd;
+            $r->bi_olah = $vO[$u][0];
+            $r->bi_kso = $vK[$u][0];
+            $r->bi_jumlah = $vT[$u][0];
+            $r->sd_olah = $vO[$u][1];
+            $r->sd_kso = $vK[$u][1];
+            $r->sd_jumlah = $vT[$u][1];
         }
 
         // Harga Pokok (Rp/kg) dari produksi yang diinjeksi: bulan ini (s/d hari) & s.d
-        // bulan (s/d bulan). Pembagi: TBS Diolah & (Minyak+Inti). Hanya baris biaya
+        // bulan (s/d bulan). Pembagi: TBS Diolah & (Minyak+Inti) TOTAL. Hanya baris biaya
         // (urutan >= 16). Penyebut 0 → 0 (IFERROR). Lapisan presentasi.
-        $tbsBi = $f($a->tdo_h);
-        $tbsSd = $f($a->tdo_b);
-        $miBi = $f($a->ms_h) + $f($a->is_h);
-        $miSd = $f($a->ms_b) + $f($a->is_b);
+        $tbsBi = $f($t->tdo_h);
+        $tbsSd = $f($t->tdo_b);
+        $miBi = $f($t->ms_h) + $f($t->is_h);
+        $miSd = $f($t->ms_b) + $f($t->is_b);
         $div = fn (float $num, float $den): float => abs($den) < 0.00001 ? 0.0 : $num / $den;
         foreach ($rows as $row) {
             if ((int) $row->urutan < 16) {
@@ -1371,7 +1471,9 @@ class ReportController extends Controller
      */
     private function getLm16Columns(RefUnit $unit): array
     {
-        $isOlah = $unit->olah_status === 'Olah';
+        // "Semua Unit" (ALL) menggabungkan unit Olah & Non Olah → judul kolom "Olah"
+        // (kolom Olah = Σ unit Olah, KSO = Σ unit Non Olah).
+        $isOlah = $unit->code === 'ALL' ? true : ($unit->olah_status === 'Olah');
 
         return [
             ['key' => 'kode', 'title' => 'Kode', 'frozen' => true, 'group' => null],
