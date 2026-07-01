@@ -2151,6 +2151,36 @@ class ReportController extends Controller
     }
 
     /**
+     * Kode plant PKS (type PABRIK, komoditi KS) untuk drill-down konsolidasi "Semua Unit".
+     * $olahFilter: 'olah' → hanya unit Olah, 'kso' → hanya unit Non Olah, null → semua.
+     *
+     * @return array<int, string>
+     */
+    private function lm16PlantCodes(?string $olahFilter): array
+    {
+        return DB::table('ref_unit')
+            ->where('type', 'PABRIK')
+            ->where('komoditi', 'KS')
+            ->when($olahFilter === 'olah', fn ($q) => $q->where('olah_status', 'Olah'))
+            ->when($olahFilter === 'kso', fn ($q) => $q->where(fn ($w) => $w->whereNull('olah_status')->orWhere('olah_status', '!=', 'Olah')))
+            ->pluck('code')->all();
+    }
+
+    /**
+     * Filter Olah/KSO untuk drill-down konsolidasi berdasar kolom yang diklik:
+     * kolom Olah → 'olah', KSO → 'kso', Jumlah/lainnya → null (gabung semua unit).
+     * Untuk satu unit tak berpengaruh (plant sudah difilter ke unit itu).
+     */
+    private function lm16OlahFilter(string $columnKey): ?string
+    {
+        return match ($columnKey) {
+            'bi_olah', 'sd_olah' => 'olah',
+            'bi_kso', 'sd_kso' => 'kso',
+            default => null,
+        };
+    }
+
+    /**
      * Pivot sumber sel biaya LM16: baris pks_biaya penyusun sel dikelompokkan per
      * Cost Center (pb7) × Cost Element (pb712), satu kolom kategori "Nilai". Grand total
      * pivot = nilai sel laporan. Memakai aturan pemetaan yang sama dgn Lm16Service.
@@ -2159,7 +2189,7 @@ class ReportController extends Controller
      */
     private function drilldownPivotLm16(string $type, Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey): ?array
     {
-        if ($type !== 'LM16' || $unit === null || ! $this->isLm16BiayaRow($template)) {
+        if ($type !== 'LM16' || ! $this->isLm16BiayaRow($template)) {
             return null;
         }
         $scope = $this->lm16BiayaScope($columnKey);
@@ -2167,7 +2197,8 @@ class ReportController extends Controller
             return null;
         }
 
-        $rows = $this->matchingPksBiayaRows($batch, $unit, $template, $scope);
+        // Konsolidasi (unit null): kolom Olah→unit Olah, KSO→Non Olah, Jumlah→semua.
+        $rows = $this->matchingPksBiayaRows($batch, $unit, $template, $scope, $this->lm16OlahFilter($columnKey));
         if ($rows === []) {
             return null;
         }
@@ -2259,7 +2290,7 @@ class ReportController extends Controller
      */
     private function drilldownProduksiLm16(string $type, Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey): ?array
     {
-        if ($type !== 'LM16' || $unit === null || $template === null) {
+        if ($type !== 'LM16' || $template === null) {
             return null;
         }
         $urut = (int) $template->urutan;
@@ -2292,8 +2323,14 @@ class ReportController extends Controller
         }
 
         $g = DB::table('produksi_pks')
-            ->whereDate('posting_date', $date)
-            ->where('plant_code', $unit->code)
+            ->whereDate('posting_date', $date);
+        if ($unit !== null) {
+            $g->where('plant_code', $unit->code);
+        } else {
+            // Konsolidasi: kolom Olah→plant Olah, KSO→Non Olah, Jumlah→semua plant PKS KS.
+            $g->whereIn('plant_code', $this->lm16PlantCodes($this->lm16OlahFilter($columnKey)));
+        }
+        $g = $g
             ->selectRaw(
                 'kebun_code, MAX(nama_kebun) nama, '.
                 'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
@@ -2370,7 +2407,7 @@ class ReportController extends Controller
     private function drilldownDeepLm16(Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey, ?string $pb7, ?string $pb712, ?string $klasifikasi = null): array
     {
         $empty = ['sections' => [], 'grand_total' => 0.0, 'row_count' => 0];
-        if ($unit === null || ! $this->isLm16BiayaRow($template)) {
+        if (! $this->isLm16BiayaRow($template)) {
             return $empty;
         }
         $scope = $this->lm16BiayaScope($columnKey);
@@ -2378,7 +2415,7 @@ class ReportController extends Controller
             return $empty;
         }
 
-        $rows = $this->matchingPksBiayaRows($batch, $unit, $template, $scope);
+        $rows = $this->matchingPksBiayaRows($batch, $unit, $template, $scope, $this->lm16OlahFilter($columnKey));
 
         // Saring ke sel pivot yang diklik: SUB REKENING (pb7) × Kode B (pb712) × KATEGORI BKU (klasifikasi).
         $filtered = array_values(array_filter($rows, function ($r) use ($pb7, $pb712, $klasifikasi): bool {
@@ -2488,15 +2525,19 @@ class ReportController extends Controller
      *
      * @return array<int, object>
      */
-    private function matchingPksBiayaRows(Batch $batch, RefUnit $unit, LmTemplateRow $template, string $scope): array
+    private function matchingPksBiayaRows(Batch $batch, ?RefUnit $unit, LmTemplateRow $template, string $scope, ?string $olahFilter = null): array
     {
         $expectedEmber = str_starts_with((string) $template->kode, '6') ? 'pengolahan' : 'overhead';
         $targetUraian = $template->urutan === 55 ? 'Penyusutan a/b Harga Pokok' : (string) $template->uraian;
         [$ccMap, $ceMap] = Lm16Service::accountMapArrays();
 
-        $query = DB::table('pks_biaya')
-            ->where('batch_id', $batch->id)
-            ->where('plant_code', $unit->code);
+        $query = DB::table('pks_biaya')->where('batch_id', $batch->id);
+        if ($unit !== null) {
+            $query->where('plant_code', $unit->code);
+        } else {
+            // Konsolidasi "Semua Unit": batasi ke plant PKS KS (Olah/KSO/semua sesuai kolom).
+            $query->whereIn('plant_code', $this->lm16PlantCodes($olahFilter));
+        }
         $this->applyPksBiayaScope($query, $batch, $scope);
         $rows = $query->orderBy('period')->orderBy('cost_center')->orderBy('cost_element')->orderBy('id')
             ->get(['period', 'cost_center', 'cost_element', 'klasifikasi_code', 'nilai', 'raw']);
@@ -2525,7 +2566,7 @@ class ReportController extends Controller
      */
     private function budgetSourceDetailLm16(string $type, Batch $batch, ?RefUnit $unit, ?LmTemplateRow $template, string $columnKey): ?array
     {
-        if ($type !== 'LM16' || $template === null || $unit === null || ! in_array($columnKey, self::BUDGET_COLUMNS, true)) {
+        if ($type !== 'LM16' || $template === null || ! in_array($columnKey, self::BUDGET_COLUMNS, true)) {
             return null;
         }
 
@@ -2536,13 +2577,17 @@ class ReportController extends Controller
             return ['sections' => [], 'grand_total' => 0.0, 'row_count' => 0];
         }
 
+        // RKO/RKAP tanpa split Olah/KSO → konsolidasi = gabung seluruh plant PKS KS.
+        $komoditi = $unit->komoditi ?? 'KS';
         $cumulative = str_starts_with($columnKey, 'sd_');
         $rows = DB::table($table)
             ->where('year', $batch->year)
-            ->where('plant_code', $unit->code)
+            ->when($unit !== null,
+                fn ($q) => $q->where('plant_code', $unit->code),
+                fn ($q) => $q->whereIn('plant_code', $this->lm16PlantCodes(null)))
             ->where('report_type', 'LM16')
             ->whereIn('kode', $codes)
-            ->where(fn ($q) => $q->where('komoditi', $unit->komoditi)->orWhereNull('komoditi'))
+            ->where(fn ($q) => $q->where('komoditi', $komoditi)->orWhereNull('komoditi'))
             ->where(function ($inner) use ($batch, $cumulative): void {
                 $inner->whereNull('period');
                 $cumulative
@@ -2569,7 +2614,7 @@ class ReportController extends Controller
         return [
             'sections' => [[
                 'table' => $table,
-                'label' => strtoupper($kind).' — LM16 ('.($unit->code).')',
+                'label' => strtoupper($kind).' — LM16 ('.($unit->code ?? 'Semua Unit').')',
                 'value_field' => 'nilai',
                 'qty_field' => '',
                 'columns' => $columns,

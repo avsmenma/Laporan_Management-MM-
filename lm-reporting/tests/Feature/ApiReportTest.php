@@ -379,6 +379,49 @@ class ApiReportTest extends TestCase
         $this->assertEquals(20.0, $r11['bi_olah']);
         $this->assertEquals(20.0, $r11['bi_kso']);
         $this->assertEquals(20.0, $r11['bi_jumlah']);
+
+        // Drill-down PRODUKSI konsolidasi (kode 3 TBS masuk): Jumlah=100, Olah=60 (5F01), KSO=40 (5F14).
+        $dd = ['type' => 'LM16', 'batch' => $batch->id, 'unit' => 'ALL', 'kode' => 3];
+        $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($dd + ['column' => 'bi_jumlah']))
+            ->assertOk()->assertJsonPath('context.produksi_detail', true)->assertJsonPath('produksi.grand', 100);
+        $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($dd + ['column' => 'bi_olah']))
+            ->assertOk()->assertJsonPath('produksi.grand', 60);
+        $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($dd + ['column' => 'bi_kso']))
+            ->assertOk()->assertJsonPath('produksi.grand', 40);
+    }
+
+    public function test_lm16_semua_unit_drilldown_biaya_olah_kso(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'final', 'processed_at' => '2026-05-20 08:00:00']);
+        $operator = User::query()->whereHas('role', fn ($q) => $q->where('name', Role::OPERATOR))->firstOrFail();
+
+        // pks_biaya baris Premi (urut 18) — plant Olah 5F01 (100+50) & Non Olah 5F14 (40), periode 5.
+        $ins = fn (string $plant, string $ce, int $nilai) => DB::table('pks_biaya')->insert([
+            'batch_id' => $batch->id, 'plant_code' => $plant, 'period' => 5,
+            'cost_center' => 'STAS', 'cost_element' => $ce, 'klasifikasi_code' => '1', 'nilai' => $nilai,
+            'raw' => json_encode(['Kode B' => 'STAS01', 'Klasifikasi 2' => 'c. 603-604 - Premi', 'Klasifikasi STAS' => 'a. Gaji', 'Value in Obj. Crcy' => $nilai]),
+        ]);
+        $ins('5F01', '51101048', 100);
+        $ins('5F01', '90042085', 50);
+        $ins('5F14', '51101048', 40);
+
+        $base = ['type' => 'LM16', 'batch' => $batch->id, 'unit' => 'ALL', 'kode' => 18];
+
+        // Jumlah = seluruh plant PKS KS = 190.
+        $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($base + ['column' => 'bi_jumlah']))
+            ->assertOk()->assertJsonPath('pivot.grand_total', 190);
+        // Olah = hanya unit Olah (5F01) = 150.
+        $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($base + ['column' => 'bi_olah']))
+            ->assertOk()->assertJsonPath('pivot.grand_total', 150);
+        // KSO = hanya unit Non Olah (5F14) = 40.
+        $this->actingAs($operator)->getJson('/api/report/drilldown?'.http_build_query($base + ['column' => 'bi_kso']))
+            ->assertOk()->assertJsonPath('pivot.grand_total', 40);
+
+        // Level-2 (deep) konsolidasi kolom Olah → hanya 5F01 = 150 (data mentah pks_biaya).
+        $deepKey = ['pb7' => 'c. 603-604 - Premi', 'pb712' => 'STAS01', 'klasifikasi' => 'a. Gaji'];
+        $this->actingAs($operator)->getJson('/api/report/drilldown-deep?'.http_build_query($base + ['column' => 'bi_olah'] + $deepKey))
+            ->assertOk()->assertJsonPath('detail.grand_total', 150);
     }
 
     private function insertLm14Source(Batch $batch, RefUnit $unit): void
