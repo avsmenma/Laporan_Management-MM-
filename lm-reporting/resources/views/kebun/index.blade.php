@@ -113,8 +113,8 @@
         <p style="color: #999; margin-top: 0.5rem;">Pilih Komoditas, Tahun, Bulan, dan Unit Kebun</p>
     </div>
 
-    <!-- Popup rincian sumber (drill-down) saat angka tabel diklik -->
-    <div class="lm-dd-overlay" x-show="drill.open" x-cloak
+    <!-- Popup rincian sumber (drill-down) saat angka tabel diklik — gaya sama dgn /pabrik (lm-dd-pks) -->
+    <div class="lm-dd-overlay lm-dd-pks" x-show="drill.open" x-cloak
          @keydown.escape.window="drill.open && closeDrill()" @click.self="closeDrill()">
         <div class="lm-dd-modal">
             <div class="lm-dd-head">
@@ -123,7 +123,6 @@
                     <div class="lm-dd-title" x-text="drill.title"></div>
                     <div class="lm-dd-bc" x-show="drill.view==='pivot'">
                         <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
-                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.value)"></span></span>
                     </div>
                     <div class="lm-dd-bc" x-show="drill.view==='deep'">
                         <template x-if="!drill.direct">
@@ -139,7 +138,6 @@
                         <template x-if="drill.direct">
                             <span class="lm-dd-chip" x-text="drill.columnLabel"></span>
                         </template>
-                        <span class="lm-dd-total">Rp <span x-text="fmtNum(drill.deep.value)"></span></span>
                     </div>
                 </div>
                 <button type="button" class="lm-dd-close" @click="closeDrill()" aria-label="Tutup">&times;</button>
@@ -173,8 +171,8 @@
                                 <tbody>
                                     <template x-for="(r, ri) in group.rows" :key="ri">
                                         <tr>
-                                            <td class="lm-dd-l lm-dd-pb7" x-text="ri === 0 ? group.pb7 : ''"></td>
-                                            <td class="lm-dd-l" x-text="r.pb712"></td>
+                                            <td class="lm-dd-l lm-dd-pb7"><span class="lm-dd-dot" x-show="ri === 0"></span><span x-text="ri === 0 ? group.pb7 : ''"></span></td>
+                                            <td class="lm-dd-l"><span class="lm-dd-code" x-text="r.pb712"></span></td>
                                             <template x-for="cat in drill.pivot.categories" :key="cat">
                                                 <td class="lm-dd-n" :class="{ 'lm-dd-clickable': r.values[cat] }"
                                                     @click="openDeep(group.pb7, r.pb712, cat, r.values[cat])"
@@ -186,7 +184,7 @@
                                         </tr>
                                     </template>
                                     <tr class="lm-dd-subrow">
-                                        <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' — Subtotal'"></td>
+                                        <td class="lm-dd-l" colspan="2" x-text="group.pb7 + ' Total'"></td>
                                         <template x-for="cat in drill.pivot.categories" :key="cat">
                                             <td class="lm-dd-n" x-text="fmtNum(group.subtotal[cat])"></td>
                                         </template>
@@ -194,15 +192,6 @@
                                     </tr>
                                 </tbody>
                             </template>
-                            <tfoot>
-                                <tr class="lm-dd-grandrow">
-                                    <td class="lm-dd-l" colspan="2">Grand Total</td>
-                                    <template x-for="cat in (drill.pivot?.categories ?? [])" :key="cat">
-                                        <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand[cat])"></td>
-                                    </template>
-                                    <td class="lm-dd-n" x-text="fmtNum(drill.pivot.grand_total)"></td>
-                                </tr>
-                            </tfoot>
                         </table>
                         </template>
                     </div>
@@ -224,6 +213,15 @@
                          @mousemove.window="deepDragMove($event)"
                          @mouseup.window="deepDragEnd()"
                          x-html="drill.deep.html"></div>
+                </div>
+            </div>
+
+            <!-- FOOTER: jumlah baris + Grand Total (gaya sama dgn /pabrik) -->
+            <div class="lm-dd-foot" x-show="drill.footTotal">
+                <div class="lm-dd-foot-stat"><strong x-text="drill.footCount"></strong></div>
+                <div class="lm-dd-foot-total">
+                    <span class="lm-dd-foot-label">Grand Total</span>
+                    <span class="lm-dd-foot-amount" x-text="drill.footTotal"></span>
                 </div>
             </div>
         </div>
@@ -257,6 +255,7 @@ function kebunApp() {
         drill: {
             open: false, view: 'pivot', direct: false, loading: false, error: null,
             title: '', columnLabel: '', value: 0, pivot: null, message: null,
+            footCount: '', footTotal: '',
             ctx: { kode: '', column: '' },
             deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
         },
@@ -602,6 +601,7 @@ function kebunApp() {
                 value: Number(event.detail.value ?? 0),
                 pivot: null,
                 message: null,
+                footCount: '', footTotal: '',
                 ctx: { kode: dd.kode_baris, column: dd.column_key },
                 deep: { loading: false, error: null, data: null, html: '', pb7: '', pb712: '', klasifikasi: '', value: 0 },
             };
@@ -629,8 +629,14 @@ function kebunApp() {
                         data: data.detail, html: this.buildDeepHtml(data.detail),
                         pb7: '', pb712: '', klasifikasi: '', value: this.drill.value,
                     };
+                    this.drill.footCount = this.fmtInt(data.detail.row_count) + ' baris data';
+                    this.drill.footTotal = 'Rp ' + this.fmtNum(this.drill.value);
                 } else {
                     this.drill.pivot = data.pivot;
+                    if (data.pivot && data.pivot.row_count) {
+                        this.drill.footCount = this.fmtInt(data.pivot.row_count) + ' baris data';
+                        this.drill.footTotal = 'Rp ' + this.fmtNum(data.pivot.grand_total);
+                    }
                 }
             } catch (error) {
                 this.drill.error = error.message;
@@ -669,6 +675,8 @@ function kebunApp() {
                 const data = await this.fetchReport(`/report-data/drilldown-deep?${params.toString()}`);
                 this.drill.deep.data = data.detail;
                 this.drill.deep.html = this.buildDeepHtml(data.detail);
+                this.drill.footCount = this.fmtInt(data.detail?.row_count ?? 0) + ' baris data';
+                this.drill.footTotal = 'Rp ' + this.fmtNum(value);
             } catch (error) {
                 this.drill.deep.error = error.message;
             } finally {
@@ -678,6 +686,10 @@ function kebunApp() {
 
         backToPivot() {
             this.drill.view = 'pivot';
+            if (this.drill.pivot && this.drill.pivot.row_count) {
+                this.drill.footCount = this.fmtInt(this.drill.pivot.row_count) + ' baris data';
+                this.drill.footTotal = 'Rp ' + this.fmtNum(this.drill.pivot.grand_total);
+            }
         },
 
         closeDrill() {
