@@ -24,10 +24,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
         return view('kebun.index');
     })->name('kebun');
 
-    Route::view('/kebun/investasi', 'coming-soon', [
-        'judul' => 'LM Investasi — Kebun',
-        'subjudul' => 'Laporan LM Investasi Kebun sedang disiapkan dan akan segera tersedia.',
-    ])->name('kebun.investasi');
+    Route::get('/kebun/investasi', fn () => view('kebun.investasi'))->name('kebun.investasi');
 
     Route::get('/pabrik', function () {
         return view('pabrik.index');
@@ -51,6 +48,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
         Route::get('/lm14', [ReportController::class, 'lm14']);
         Route::get('/lm13', [ReportController::class, 'lm13']);
         Route::get('/lm16', [ReportController::class, 'lm16']);
+        Route::get('/lm-investasi', [ReportController::class, 'investasi']);
         Route::get('/drilldown', [ReportController::class, 'drilldown']);
         Route::get('/drilldown-deep', [ReportController::class, 'drilldownDeep']);
     });
@@ -60,6 +58,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/lm14', [ReportController::class, 'lm14']);
     Route::get('/lm13', [ReportController::class, 'lm13']);
     Route::get('/lm16', [ReportController::class, 'lm16']);
+    Route::get('/lm-investasi', [ReportController::class, 'investasi']);
     Route::get('/drilldown', [ReportController::class, 'drilldown']);
     Route::get('/drilldown-deep', [ReportController::class, 'drilldownDeep']);
     Route::get('/areal', [\App\Http\Controllers\Api\ArealController::class, 'index']);

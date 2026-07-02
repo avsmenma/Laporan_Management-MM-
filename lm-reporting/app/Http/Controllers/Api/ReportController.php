@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Concerns\AuthorizesReportRequests;
 use App\Domain\Import\ImportTemplateService;
+use App\Domain\Report\InvestasiService;
 use App\Domain\Report\Lm16Service;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
@@ -257,6 +258,83 @@ class ReportController extends Controller
             'meta' => $this->buildMeta($batch, $unit, 'LM16'),
             'columns' => $this->getLm16Columns($unit),
             'rows' => $rows->map(fn ($row) => $this->formatLm16Row($row)),
+        ]);
+    }
+
+    /**
+     * GET /report-data/lm-investasi?view=rekap&batch=1&unit=ALL&komoditi=KS
+     *
+     * Laporan /kebun/investasi (biaya investasi TBM). Dua tampilan:
+     *   view=rekap  → InvestasiService::buildRekap  (27 kolom)
+     *   view=rekap2 → InvestasiService::buildRekap2 (36 kolom)
+     * Baris kosong (data investasi belum diimpor) tetap 200 agar template kolom
+     * tetap tampil; hanya batch tidak ditemukan yang 404.
+     */
+    public function investasi(Request $request): JsonResponse
+    {
+        $this->authenticateReportRequest($request);
+
+        $request->validate([
+            'view' => 'nullable|in:rekap,rekap2',
+            'batch' => 'required',
+            'unit' => 'nullable|string',
+            'komoditi' => 'nullable|string',
+        ]);
+
+        $view = $request->input('view', 'rekap');
+        $komoditi = strtoupper((string) $request->input('komoditi', 'KS'));
+
+        // Batch: 404 bila tidak ditemukan (findBatch melempar ModelNotFound).
+        try {
+            $batch = $this->findBatch((string) $request->batch);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Batch tidak ditemukan.',
+            ], 404);
+        }
+
+        // Otorisasi: Viewer hanya boleh lihat batch final/locked.
+        $this->checkBatchAccess($batch);
+
+        // Unit: null/'ALL' → konsolidasi seluruh kebun; kode spesifik → satu kebun.
+        $unitInput = $request->filled('unit') ? (string) $request->input('unit') : null;
+        $unit = ($unitInput !== null && strtoupper($unitInput) !== 'ALL') ? $unitInput : null;
+
+        $service = app(InvestasiService::class);
+        $result = $view === 'rekap2'
+            ? $service->buildRekap2($batch, $unit, $komoditi)
+            : $service->buildRekap($batch, $unit, $komoditi);
+
+        $unitName = 'Semua Unit';
+        if ($unit !== null) {
+            $found = RefUnit::query()->where('code', $unit)->first();
+            $unitName = $found?->name ?? $unit;
+        }
+
+        $meta = [
+            'report_type' => $view === 'rekap2' ? 'INVESTASI_REKAP2' : 'INVESTASI_REKAP',
+            'view' => $view,
+            'batch' => [
+                'id' => $batch->id,
+                'code' => $batch->code,
+                'year' => $batch->year,
+                'month' => $batch->month,
+                'period' => $batch->month,
+                'status' => $batch->status,
+                'processed_at' => $batch->processed_at?->format('Y-m-d H:i:s'),
+            ],
+            'unit' => [
+                'code' => $unit ?? 'ALL',
+                'name' => $unitName,
+            ],
+        ];
+
+        return response()->json([
+            'success' => true,
+            'meta' => $meta,
+            'columns' => $result['columns'],
+            'rows' => $result['rows'],
         ]);
     }
 
