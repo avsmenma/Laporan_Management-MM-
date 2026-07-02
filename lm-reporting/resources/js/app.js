@@ -436,8 +436,11 @@ function investasiTextColumn(col) {
             if (value === null || value === undefined || value === '') {
                 return '';
             }
-            const title = String(value).replace(/"/g, '&quot;');
-            return `<span title="${title}">${value}</span>`;
+            // HTML-encode (nilai berasal dari data impor Excel) — cegah XSS.
+            const safe = String(value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            return `<span title="${safe}">${safe}</span>`;
         },
     };
 }
