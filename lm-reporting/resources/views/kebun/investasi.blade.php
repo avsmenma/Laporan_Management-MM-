@@ -4,13 +4,22 @@
 @section('unit-label', 'Unit Kebun: ')
 
 @section('content')
-<div x-data="kebunInvestasiApp()" x-init="init()">
+<div x-data="kebunInvestasiApp()" x-init="init()" class="investasi-page">
     <div class="filter-bar">
         <div class="filter-grid">
             <div class="filter-group">
-                <label class="filter-label">Komoditas</label>
-                <select class="filter-select" x-model="filters.komoditi" disabled>
-                    <option value="KS">Kelapa Sawit</option>
+                <label class="filter-label">Pencarian</label>
+                <input type="text" class="filter-select" x-model="searchTerm" @input="applySearch()"
+                       placeholder="Cari plant / kebun / fase…">
+            </div>
+
+            <div class="filter-group">
+                <label class="filter-label">Periode (Bulan)</label>
+                <select class="filter-select" x-model="filters.period" @change="onPeriodChange()">
+                    <option value="">- Pilih Bulan -</option>
+                    <template x-for="m in availableMonths()" :key="m">
+                        <option :value="m" x-text="monthName(m)"></option>
+                    </template>
                 </select>
             </div>
 
@@ -20,16 +29,6 @@
                     <option value="">- Pilih Tahun -</option>
                     <template x-for="y in availableYears()" :key="y">
                         <option :value="y" x-text="y"></option>
-                    </template>
-                </select>
-            </div>
-
-            <div class="filter-group">
-                <label class="filter-label">Periode (Bulan)</label>
-                <select class="filter-select" x-model="filters.period" @change="onPeriodChange()">
-                    <option value="">- Pilih Bulan -</option>
-                    <template x-for="m in availableMonths()" :key="m">
-                        <option :value="m" x-text="monthName(m)"></option>
                     </template>
                 </select>
             </div>
@@ -46,13 +45,9 @@
         </div>
     </div>
 
-    <!-- Kontrol laporan diteleport ke top header: dropdown view (Rekap/Rekap-2) + dropdown aksi -->
+    <!-- Aksi (export/cetak/layar penuh) tetap diteleport ke top header. -->
     <template x-teleport="#lm-header-controls">
         <div class="lm-hc" x-show="reportData" x-cloak>
-            <select class="lm-hc-select" x-model="activeView" @change="switchView()" title="Pilih tampilan">
-                <option value="rekap">Rekap</option>
-                <option value="rekap2">Rekap-2</option>
-            </select>
             <div class="lm-menu" x-data="{ open: false }" @click.outside="open = false">
                 <button type="button" class="lm-hc-btn" @click="open = !open" :aria-expanded="open">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
@@ -71,26 +66,54 @@
         </div>
     </template>
 
-    <div class="report-card" x-show="reportData">
-        <div class="tab-content active">
-            <div x-show="loading" style="padding: 2rem; text-align: center; color: #666;">Loading...</div>
-            <div x-show="!loading && investasiData" id="table-investasi" class="lm-report-table"></div>
+    {{-- Tab-bar Rekap / Rekap-2 (gaya sama seperti halaman /areal). --}}
+    <div class="investasi-frame">
+        <div class="tabs investasi-tabs">
+            <template x-for="t in tabs" :key="t.key">
+                <span class="tab" :class="{ active: activeView === t.key }"
+                      @click="setView(t.key)" x-text="t.title"></span>
+            </template>
         </div>
 
-        <div class="lm-report-footer" x-show="investasiTable">
-            <span x-text="footerText()"></span>
-            <span>Nilai dalam Rupiah · Report final · terkunci</span>
+        <div class="report-card" x-show="reportData" x-cloak>
+            <div class="tab-content active">
+                <div x-show="loading" style="padding: 2rem; text-align: center; color: #666;">Loading...</div>
+                <div x-show="!loading && investasiData" id="table-investasi" class="lm-report-table"></div>
+            </div>
+
+            <div class="lm-report-footer" x-show="investasiTable">
+                <span x-text="footerText()"></span>
+                <span>Nilai dalam Rupiah · Report final · terkunci</span>
+            </div>
+        </div>
+
+        <div x-show="!reportData" x-cloak class="investasi-empty">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
+            <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
+            <p style="color: #999; margin-top: 0.5rem;">Pilih Bulan, Tahun, dan Unit Kebun</p>
         </div>
     </div>
 
-    <div x-show="errorMessage" class="lm-error-panel" x-text="errorMessage"></div>
-
-    <div x-show="!reportData" style="background: white; padding: 4rem; text-align: center; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">LM</div>
-        <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
-        <p style="color: #999; margin-top: 0.5rem;">Pilih Tahun, Bulan, dan Unit Kebun</p>
-    </div>
+    <div x-show="errorMessage" x-cloak class="lm-error-panel" x-text="errorMessage"></div>
 </div>
+
+<style>
+    .investasi-frame .investasi-tabs { padding-left: 4px; flex-wrap: wrap; }
+    .investasi-frame .investasi-tabs .tab { cursor: pointer; height: 38px; letter-spacing: .01em; }
+    .investasi-frame .investasi-tabs .tab:not(.active) { background: #eaf0ec; border-color: var(--line); }
+    .investasi-frame .investasi-tabs .tab:not(.active):hover { background: #dfe8e2; }
+    .investasi-frame .investasi-tabs .tab.active { font-weight: 700; }
+    .investasi-frame .report-card { border-top-left-radius: 0; }
+    .investasi-frame .lm-report-table { border-top: 0; }
+    .investasi-empty {
+        background: #fff;
+        padding: 4rem 2rem;
+        text-align: center;
+        border: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0 8px 8px 8px;
+    }
+</style>
 
 @push('scripts')
 <script>
@@ -108,6 +131,11 @@ function kebunInvestasiApp() {
         units: [],
         selectedBatch: null,
         activeView: 'rekap',
+        tabs: [
+            { key: 'rekap', title: 'Rekap' },
+            { key: 'rekap2', title: 'Rekap-2' },
+        ],
+        searchTerm: '',
         reportData: null,
         investasiData: null,
         loading: false,
@@ -138,6 +166,9 @@ function kebunInvestasiApp() {
         rerenderActive() {
             if (this.investasiData) {
                 this.investasiTable = window.LmReportTables.renderInvestasi(document.getElementById('table-investasi'), this.investasiData);
+                if (this.searchTerm) {
+                    this.applySearch();
+                }
             }
         },
 
@@ -264,10 +295,30 @@ function kebunInvestasiApp() {
             }
         },
 
-        switchView() {
+        setView(key) {
+            if (this.activeView === key) {
+                return;
+            }
+            this.activeView = key;
             if (this.canLoadReport()) {
                 this.loadReport();
             }
+        },
+
+        // Pencarian: saring baris tabel investasi berdasarkan kolom identitas
+        // (plant/kebun/fase/tahun tanam). Kosong → tampilkan semua.
+        applySearch() {
+            const table = this.investasiTable;
+            if (!table) {
+                return;
+            }
+            const term = (this.searchTerm || '').trim().toLowerCase();
+            if (term === '') {
+                table.clearFilter(true);
+                return;
+            }
+            table.setFilter((row) => ['plant', 'kebun', 'fase', 'fase_sap', 'tahun_tanam']
+                .some((k) => String(row[k] ?? '').toLowerCase().includes(term)));
         },
 
         canLoadReport() {
@@ -296,6 +347,9 @@ function kebunInvestasiApp() {
                 this.investasiData = data;
                 this.$nextTick(() => {
                     this.investasiTable = window.LmReportTables.renderInvestasi(document.getElementById('table-investasi'), data);
+                    if (this.searchTerm) {
+                        this.applySearch();
+                    }
                 });
             } catch (error) {
                 this.reportData = null;
