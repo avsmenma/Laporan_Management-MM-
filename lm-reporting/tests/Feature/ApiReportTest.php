@@ -440,4 +440,30 @@ class ApiReportTest extends TestCase
             'qty' => null,
         ]);
     }
+
+    public function test_lm16_kumulatif_dan_bulan_lalu_lintas_batch(): void
+    {
+        $this->seed();
+        $jan = Batch::query()->create(['code' => 'Batch #2026-01', 'year' => 2026, 'month' => 1, 'status' => 'final', 'processed_at' => '2026-01-20 08:00:00']);
+        $feb = Batch::query()->create(['code' => 'Batch #2026-02', 'year' => 2026, 'month' => 2, 'status' => 'final', 'processed_at' => '2026-02-20 08:00:00']);
+        $unit = RefUnit::query()->where('code', '5F01')->firstOrFail();
+
+        // Satu cost element (Premi) di DUA batch bulan berbeda, tahun sama.
+        $ins = fn (Batch $b, int $period, int $nilai) => DB::table('pks_biaya')->insert([
+            'batch_id' => $b->id, 'plant_code' => $unit->code, 'period' => $period,
+            'cost_center' => 'STAS', 'cost_element' => '51101048', 'klasifikasi_code' => '1', 'nilai' => $nilai,
+        ]);
+        $ins($jan, 1, 100);   // Januari (batch lain)
+        $ins($feb, 2, 50);    // Februari (batch berjalan)
+
+        // Generate LM16 Februari: bulan-lalu & kumulatif WAJIB lintas-batch (pola LM14).
+        app(\App\Domain\Report\Lm16Service::class)->generate($feb, $unit);
+
+        $tpl = LmTemplateRow::query()->where('report_type', 'LM16')->where('uraian', 'Premi')->firstOrFail();
+        $row = DB::table('report_lm16')->where('batch_id', $feb->id)->where('unit_id', $unit->id)->where('template_id', $tpl->id)->first();
+
+        $this->assertEqualsWithDelta(50.0, (float) $row->bi_jumlah, 0.01);       // bulan ini = Februari
+        $this->assertEqualsWithDelta(100.0, (float) $row->real_bln_lalu, 0.01);  // bulan lalu = Januari (batch lain)
+        $this->assertEqualsWithDelta(150.0, (float) $row->sd_jumlah, 0.01);      // s.d Februari = Jan + Feb
+    }
 }

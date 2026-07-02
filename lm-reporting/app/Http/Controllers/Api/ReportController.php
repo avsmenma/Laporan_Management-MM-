@@ -2207,9 +2207,9 @@ class ReportController extends Controller
     private function applyPksBiayaScope(\Illuminate\Database\Query\Builder $query, Batch $batch, string $scope): void
     {
         match ($scope) {
-            'bi' => $query->where('period', '=', $batch->month),
-            'sd' => $query->where('period', '<=', $batch->month),
-            'lalu' => $query->where('period', '=', $batch->month - 1),
+            'bi' => $query->where('pks_biaya.period', '=', $batch->month),
+            'sd' => $query->where('pks_biaya.period', '<=', $batch->month),
+            'lalu' => $query->where('pks_biaya.period', '=', $batch->month - 1),
             default => $query->whereRaw('1 = 0'),
         };
     }
@@ -2609,16 +2609,27 @@ class ReportController extends Controller
         $targetUraian = $template->urutan === 55 ? 'Penyusutan a/b Harga Pokok' : (string) $template->uraian;
         [$ccMap, $ceMap] = Lm16Service::accountMapArrays();
 
-        $query = DB::table('pks_biaya')->where('batch_id', $batch->id);
+        // Lintas-batch (tahun sama) agar konsisten dgn Lm16Service::costData —
+        // sel s.d/bulan-lalu menjumlah period dari batch bulan lain.
+        $query = DB::table('pks_biaya')
+            ->join('batch', 'pks_biaya.batch_id', '=', 'batch.id')
+            ->where('batch.year', $batch->year);
         if ($unit !== null) {
-            $query->where('plant_code', $unit->code);
+            $query->where('pks_biaya.plant_code', $unit->code);
         } else {
             // Konsolidasi "Semua Unit": batasi ke plant PKS KS (Olah/KSO/semua sesuai kolom).
-            $query->whereIn('plant_code', $this->lm16PlantCodes($olahFilter));
+            $query->whereIn('pks_biaya.plant_code', $this->lm16PlantCodes($olahFilter));
         }
         $this->applyPksBiayaScope($query, $batch, $scope);
-        $rows = $query->orderBy('period')->orderBy('cost_center')->orderBy('cost_element')->orderBy('id')
-            ->get(['period', 'cost_center', 'cost_element', 'klasifikasi_code', 'nilai', 'raw']);
+        $rows = $query->orderBy('pks_biaya.period')->orderBy('pks_biaya.cost_center')->orderBy('pks_biaya.cost_element')->orderBy('pks_biaya.id')
+            ->get([
+                'pks_biaya.period as period',
+                'pks_biaya.cost_center as cost_center',
+                'pks_biaya.cost_element as cost_element',
+                'pks_biaya.klasifikasi_code as klasifikasi_code',
+                'pks_biaya.nilai as nilai',
+                'pks_biaya.raw as raw',
+            ]);
 
         $matched = [];
         foreach ($rows as $r) {

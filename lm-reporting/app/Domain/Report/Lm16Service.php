@@ -132,11 +132,15 @@ class Lm16Service
         }
         $overhead['Pengeluaran Lainnya'] ??= $zero();
 
+        // Kumulatif & bulan-lalu LINTAS-BATCH (satu impor pabrik = satu bulan). Ambil
+        // seluruh batch di tahun yang sama, saring per period — pola sama LM14
+        // (Lm14Service::sumSourceBeforeMonth): s.d = Σ period ≤ bulan; lalu = period bulan-1.
         $rows = DB::table('pks_biaya')
-            ->where('batch_id', $batch->id)
-            ->where('plant_code', $unit->code)
-            ->where('period', '<=', $batch->month)
-            ->get(['period', 'cost_center', 'cost_element', 'nilai']);
+            ->join('batch', 'pks_biaya.batch_id', '=', 'batch.id')
+            ->where('batch.year', $batch->year)
+            ->where('pks_biaya.plant_code', $unit->code)
+            ->where('pks_biaya.period', '<=', $batch->month)
+            ->get(['pks_biaya.period', 'pks_biaya.cost_center', 'pks_biaya.cost_element', 'pks_biaya.nilai']);
 
         foreach ($rows as $row) {
             $costCenter = trim((string) $row->cost_center);
