@@ -397,6 +397,114 @@ function lm16Columns(meta) {
     ];
 }
 
+// =====================================================================
+// LM Investasi (/kebun/investasi) — tabel dinamis dari kontrak API.
+// Kolom dibangun langsung dari reportData.columns (bukan hardcode):
+//  - kolom identitas (group === null, frozen) → teks kiri, dibekukan;
+//  - kolom nilai (punya `group`) → angka kanan, digabung ke grouped header
+//    per `group` yang berurutan.
+// Desimal: key diawali `cap_` atau memuat `_rp_` → 2 desimal; selain itu 0.
+// =====================================================================
+function investasiDecimals(key) {
+    const k = String(key ?? '');
+    return (k.startsWith('cap_') || k.includes('_rp_')) ? 2 : 0;
+}
+
+function formatInvestasiNumber(value, decimals) {
+    const number = Number(value ?? 0);
+    if (!Number.isFinite(number) || Math.abs(number) < 0.000001) {
+        return '-';
+    }
+    return number.toLocaleString('id-ID', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    });
+}
+
+function investasiTextColumn(col) {
+    const center = col.key === 'tahun_tanam';
+    return {
+        title: col.title,
+        field: col.key,
+        minWidth: col.key === 'kebun' ? cw(160, 120) : cw(84, 64),
+        frozen: !!col.frozen,
+        headerSort: false,
+        hozAlign: center ? 'center' : 'left',
+        headerHozAlign: center ? 'center' : 'left',
+        formatter(cell) {
+            const value = cell.getValue();
+            if (value === null || value === undefined || value === '') {
+                return '';
+            }
+            const title = String(value).replace(/"/g, '&quot;');
+            return `<span title="${title}">${value}</span>`;
+        },
+    };
+}
+
+function investasiNumberColumn(col) {
+    const decimals = investasiDecimals(col.key);
+    return {
+        title: col.title,
+        field: col.key,
+        minWidth: cw(110, 80),
+        hozAlign: 'right',
+        headerHozAlign: 'center',
+        headerSort: false,
+        cssClass: 'lm-number-cell lm-number-static',
+        formatter(cell) {
+            const row = cell.getRow().getData();
+            if (row.row_type === 'header' || row.row_type === 'subheader') {
+                return '';
+            }
+            return formatInvestasiNumber(cell.getValue(), decimals);
+        },
+    };
+}
+
+// Gabungkan kolom nilai yang berurutan dengan `group` sama menjadi satu
+// grouped header Tabulator; kolom identitas (group null) tetap top-level.
+function buildInvestasiColumns(columns) {
+    const out = [];
+    let i = 0;
+    while (i < columns.length) {
+        const col = columns[i];
+        if (col.group === null || col.group === undefined) {
+            out.push(investasiTextColumn(col));
+            i += 1;
+            continue;
+        }
+        const group = col.group;
+        const children = [];
+        while (i < columns.length && columns[i].group === group) {
+            children.push(investasiNumberColumn(columns[i]));
+            i += 1;
+        }
+        out.push({ title: group, columns: children });
+    }
+    return out;
+}
+
+function renderInvestasi(element, reportData) {
+    const payload = reportData ?? { rows: [], columns: [], meta: {} };
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const columns = Array.isArray(payload.columns) ? payload.columns : [];
+    // Deteksi mode fokus saat render: kolom compact + tinggi penuh layar.
+    COMPACT = document.body.classList.contains('lm-focus');
+    element.innerHTML = '';
+
+    return new Tabulator(element, {
+        data: rows,
+        columns: buildInvestasiColumns(columns),
+        height: COMPACT ? focusHeight(element) : '65vh',
+        layout: 'fitData',
+        columnHeaderVertAlign: 'bottom',
+        movableColumns: false,
+        rowFormatter,
+        placeholder: 'Tidak ada baris laporan',
+    });
+}
+
 function tableRows(reportType, rows, meta) {
     return reportType === 'LM13' ? pivotLm13Rows(rows, meta) : normalizeRows(rows);
 }
@@ -530,6 +638,7 @@ function downloadBlob(content, filename, type) {
 
 window.LmReportTables = {
     renderTable,
+    renderInvestasi,
     applySearch,
     exportCsv,
     exportExcel,
