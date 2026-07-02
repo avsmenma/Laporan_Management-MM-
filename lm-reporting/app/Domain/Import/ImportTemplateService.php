@@ -158,6 +158,24 @@ class ImportTemplateService
                     'Berat Timbang 1', 'Berat Timbang 2', 'Weight netto',
                 ],
             ],
+            'investasi_wbs' => [
+                'sheet' => 'DB',
+                'note' => 'Biaya investasi TBM (sheet harus bernama "DB"). Baca posisional; data mulai baris pertama yang kolom A berkode kebun (5Exx).',
+                'headers' => [
+                    'Fase/No.Aset', 'Desc.', 'Project', 'Fase', 'Tahun Tanam', 'No.Asset', 'Aktifitas',
+                    'WBS Desc.', 'Klasifikasi', 'Cost Element', 'Cost Element Desc', 'Period', 'Nilai',
+                ],
+            ],
+            'investasi_asset' => [
+                'sheet' => 'WS',
+                'note' => 'Mutasi aset TBM (sheet harus bernama "WS"). Header di baris ke-2; data mulai baris yang kolom A berkode kebun (5Exx). Sebagian kolom impairment tanpa judul.',
+                'headers' => [
+                    'Unit Kerja', 'Kebun', 'Tahun Tanam', 'Fase', 'Klasifikasi', 'Asset', 'Description', 'Project',
+                    'Luas Areal (Ha)', 'Tegakan (Pokok)', 'APC FY start', 'Acquisition', 'Retirement', 'Transfer',
+                    'Current APC', 'Impairment', '(kol Q)', 'Reklas Debet (R)', '(kol S)', '(kol T)', 'Impair Awal (U)',
+                    '(kol V)', '(kol W)', 'Impair Pengurangan (X)', 'Curr.bk.val Af Impairment', 'D/K',
+                ],
+            ],
         ];
     }
 

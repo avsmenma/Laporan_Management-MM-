@@ -70,6 +70,32 @@ class SpreadsheetImportService
         16 => 'gis_id', 17 => 'unit_kerja', 18 => 'komoditi',
     ];
 
+    /** Indeks kolom 0-based sheet DB investasi (biaya TBM → investasi_wbs). */
+    private const INVESTASI_WBS_COLUMNS = [
+        0 => 'plant_code', 1 => 'kebun_name', 2 => 'project', 3 => 'fase',
+        4 => 'tahun_tanam', 5 => 'no_asset', 6 => 'aktifitas', 7 => 'wbs_desc',
+        8 => 'klasifikasi', 9 => 'cost_element', 10 => 'cost_element_desc',
+        11 => 'period', 12 => 'nilai',
+    ];
+
+    /**
+     * Indeks kolom 0-based sheet WS investasi (mutasi aset TBM → investasi_asset).
+     * Indeks 16, 18, 19, 21, 22 adalah sub-kolom impairment tanpa judul → dilewati.
+     */
+    private const INVESTASI_ASSET_COLUMNS = [
+        0 => 'plant_code', 1 => 'kebun_name', 2 => 'tahun_tanam', 3 => 'fase',
+        4 => 'klasifikasi', 5 => 'asset', 6 => 'description', 7 => 'project',
+        8 => 'luas_ha', 9 => 'pokok', 10 => 'apc_start', 11 => 'acquisition',
+        12 => 'retirement', 13 => 'transfer', 14 => 'current_apc', 15 => 'impairment',
+        17 => 'reklas_debet', 20 => 'impair_awal', 23 => 'impair_pengurangan',
+        24 => 'curr_bk_val', 25 => 'dk_flag',
+    ];
+
+    /** Batas panjang kolom teks investasi yang lebih pendek dari 255 (cegah error strict-mode). */
+    private const INVESTASI_TEXT_LEN = [
+        'fase' => 40, 'aktifitas' => 20, 'cost_element' => 20, 'klasifikasi' => 60,
+    ];
+
     /**
      * @return array<string, string>
      */
@@ -89,6 +115,8 @@ class SpreadsheetImportService
             'produksi' => 'Produksi',
             'produksi_kebun' => 'Produksi Kebun',
             'pks_biaya' => 'Biaya PKS (LM16)',
+            'investasi_wbs' => 'Investasi — Biaya (DB)',
+            'investasi_asset' => 'Investasi — Aset (WS)',
         ];
     }
 
@@ -193,6 +221,8 @@ class SpreadsheetImportService
             'gc' => $this->importRaw($batch, 'db_gc', self::GC_COLUMNS, $this->dataRows($path), 'gcohc', $onProgress),
             'areal' => $this->importAreal($batch, $this->dataRowsSheet($path, 'DB'), $onProgress),
             'pks_biaya' => $this->importPksBiayaFlat($batch, $this->dataRows($path), $onProgress),
+            'investasi_wbs' => $this->importInvestasiWbs($batch, $this->dataRowsSheet($path, 'DB'), $onProgress),
+            'investasi_asset' => $this->importInvestasiAsset($batch, $this->dataRowsSheet($path, 'WS'), $onProgress),
         });
 
         ImportUploadLog::query()->create([
@@ -748,6 +778,175 @@ class SpreadsheetImportService
         $t = trim((string) ($v ?? ''));
 
         return $t === '' ? null : mb_substr($t, 0, 250);
+    }
+
+    /**
+     * Impor sheet DB investasi → investasi_wbs (idempoten per batch). Baca posisional
+     * (indeks tetap, tanpa cocok teks header). Awal data dideteksi dari kolom A berkode
+     * kebun (5Exx); baris judul/subtotal/kosong dilewati.
+     *
+     * @param  iterable<int, array<int, mixed>>  $rows
+     */
+    private function importInvestasiWbs(Batch $batch, iterable $rows, ?callable $onProgress = null): ImportResult
+    {
+        DB::table('investasi_wbs')->where('batch_id', $batch->id)->delete();
+
+        $headers = ImportTemplateService::specs()['investasi_wbs']['headers'];
+        $records = [];
+        $inserted = 0;
+        $flush = function () use (&$records, &$inserted, $onProgress): void {
+            if ($records === []) {
+                return;
+            }
+            DB::table('investasi_wbs')->insert($records);
+            $inserted += count($records);
+            $records = [];
+            if ($onProgress !== null) {
+                $onProgress($inserted);
+            }
+        };
+
+        foreach ($rows as $values) {
+            if ($this->isEmptyRow($values)) {
+                continue;
+            }
+            // Deteksi awal data: hanya baris berkode kebun (5Exx di kolom A). Ini melewati
+            // baris judul/kosong di atas serta baris subtotal/label secara defensif.
+            if (! $this->isInvestasiPlant($values[0] ?? null)) {
+                continue;
+            }
+            $rec = ['batch_id' => $batch->id, 'komoditi' => 'KS'];
+            foreach (self::INVESTASI_WBS_COLUMNS as $idx => $col) {
+                $rec[$col] = $this->investasiCell($values[$idx] ?? null, $col);
+            }
+            $rec['raw'] = $this->investasiRaw($headers, $values);
+            $records[] = $rec;
+            if (count($records) >= 500) {
+                $flush();
+            }
+        }
+        $flush();
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /**
+     * Impor sheet WS investasi → investasi_asset (idempoten per batch). Baca posisional
+     * (indeks tetap; sebagian sub-kolom impairment dilewati). Awal data dideteksi dari
+     * kolom A berkode kebun (5Exx) — menangani header di baris ke-2 + baris junk 3–5.
+     * `period` diisi dari bulan batch (register aset bersifat tahunan).
+     *
+     * @param  iterable<int, array<int, mixed>>  $rows
+     */
+    private function importInvestasiAsset(Batch $batch, iterable $rows, ?callable $onProgress = null): ImportResult
+    {
+        DB::table('investasi_asset')->where('batch_id', $batch->id)->delete();
+
+        $headers = ImportTemplateService::specs()['investasi_asset']['headers'];
+        $period = (int) $batch->month;
+        $records = [];
+        $inserted = 0;
+        $flush = function () use (&$records, &$inserted, $onProgress): void {
+            if ($records === []) {
+                return;
+            }
+            DB::table('investasi_asset')->insert($records);
+            $inserted += count($records);
+            $records = [];
+            if ($onProgress !== null) {
+                $onProgress($inserted);
+            }
+        };
+
+        foreach ($rows as $values) {
+            if ($this->isEmptyRow($values)) {
+                continue;
+            }
+            if (! $this->isInvestasiPlant($values[0] ?? null)) {
+                continue;
+            }
+            $rec = ['batch_id' => $batch->id, 'komoditi' => 'KS'];
+            foreach (self::INVESTASI_ASSET_COLUMNS as $idx => $col) {
+                $rec[$col] = $this->investasiCell($values[$idx] ?? null, $col);
+            }
+            $rec['period'] = $period;
+            $rec['raw'] = $this->investasiRaw($headers, $values);
+            $records[] = $rec;
+            if (count($records) >= 500) {
+                $flush();
+            }
+        }
+        $flush();
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /** True bila kolom A berupa kode kebun (5Exx). Penanda baris data investasi. */
+    private function isInvestasiPlant(mixed $v): bool
+    {
+        return (bool) preg_match('/^5E\d/', strtoupper(trim((string) ($v ?? ''))));
+    }
+
+    /**
+     * Konversi satu sel investasi sesuai nama kolom tujuan: nilai → float (blank/#N/A → 0),
+     * tahun_tanam/period → int (blank → null), dk_flag → 'D'/'K', selain itu teks (dipangkas).
+     */
+    private function investasiCell(mixed $v, string $col): mixed
+    {
+        $floatCols = [
+            'nilai', 'luas_ha', 'pokok', 'apc_start', 'acquisition', 'retirement',
+            'transfer', 'current_apc', 'impairment', 'reklas_debet', 'impair_awal',
+            'impair_pengurangan', 'curr_bk_val',
+        ];
+        if (in_array($col, $floatCols, true)) {
+            return round($this->numericValue($v), 2);
+        }
+        if ($col === 'tahun_tanam') {
+            return $this->investasiYear($v);
+        }
+        if ($col === 'period') {
+            return is_numeric($v) ? (int) $v : null;
+        }
+        if ($col === 'plant_code') {
+            $t = strtoupper(trim((string) ($v ?? '')));
+
+            return $t === '' ? null : mb_substr($t, 0, 10);
+        }
+        if ($col === 'dk_flag') {
+            $t = strtoupper(trim((string) ($v ?? '')));
+
+            return $t === '' ? null : mb_substr($t, 0, 1);
+        }
+        $t = trim((string) ($v ?? ''));
+
+        return $t === '' ? null : mb_substr($t, 0, self::INVESTASI_TEXT_LEN[$col] ?? 250);
+    }
+
+    /** Tahun tanam sebagai int; '2026.0' → 2026, blank/non-numerik → null. */
+    private function investasiYear(mixed $v): ?int
+    {
+        if ($v === null || trim((string) $v) === '') {
+            return null;
+        }
+
+        return is_numeric($v) ? (int) (float) $v : null;
+    }
+
+    /**
+     * Bangun JSON `raw` = {header spec => sel} berpasangan posisional, mirip importPksBiayaFlat.
+     *
+     * @param  array<int, string>  $headers
+     * @param  array<int, mixed>  $values
+     */
+    private function investasiRaw(array $headers, array $values): string
+    {
+        $raw = [];
+        foreach ($headers as $i => $label) {
+            $cell = $values[$i] ?? null;
+            $raw[$label] = (is_scalar($cell) || $cell === null) ? $cell : (string) $cell;
+        }
+
+        return json_encode($raw, JSON_UNESCAPED_UNICODE);
     }
 
     /** Indeks kolom 0-based sheet ZPTPNHLPP039 yang dipakai. */
