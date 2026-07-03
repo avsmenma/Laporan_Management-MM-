@@ -299,13 +299,21 @@ function pabrikApp() {
             return [...new Set(list.map(b => Number(b.period)))].sort((a, b) => a - b);
         },
 
-        onYearChange() {
-            this.filters.period = '';
+        async onYearChange() {
+            // Pertahankan unit & periode bila masih valid di tahun yang baru
+            // (jangan reset pilihan pengguna saat hanya ganti tahun).
+            const prevPeriod = this.filters.period;
             this.filters.batch = '';
-            this.filters.unit = '';
             this.selectedBatch = null;
-            this.units = [];
             this.resetReport();
+            this.filters.period = (prevPeriod && this.availableMonths().includes(Number(prevPeriod)))
+                ? prevPeriod
+                : '';
+            if (this.filters.year && this.filters.period) {
+                this.resolveBatch();
+            }
+            await this.loadUnits();
+            this.reloadIfReady();
         },
 
         // Batch ditentukan otomatis dari Tahun + Bulan (unik per year+month),
@@ -347,25 +355,36 @@ function pabrikApp() {
             }
         },
 
-        onKomoditiChange() {
-            this.filters.unit = '';
-            this.units = [];
+        async onKomoditiChange() {
+            // Unit dipertahankan; daftar dimuat ulang lalu divalidasi terhadap komoditi baru.
             this.resetReport();
-            this.loadUnits();
+            await this.loadUnits();
+            this.reloadIfReady();
         },
 
-        onPeriodChange() {
-            this.filters.unit = '';
-            this.units = [];
+        async onPeriodChange() {
             this.resetReport();
             if (this.filters.year && this.filters.period && !this.resolveBatch()) {
                 this.errorMessage = 'Belum ada data untuk periode tersebut.';
                 return;
             }
-            this.loadUnits();
+            await this.loadUnits();
+            this.reloadIfReady();
         },
 
         onUnitChange() {
+            if (this.canLoadReport()) {
+                this.loadReport();
+            }
+        },
+
+        // Pertahankan pilihan unit saat filter lain berubah. Unit hanya dibuang bila
+        // benar-benar tak tersedia di daftar baru. Bila masih valid, laporan dimuat ulang.
+        reloadIfReady() {
+            if (this.filters.unit && this.filters.unit !== 'ALL'
+                && !this.units.some(u => String(u.code) === String(this.filters.unit))) {
+                this.filters.unit = '';
+            }
             if (this.canLoadReport()) {
                 this.loadReport();
             }
