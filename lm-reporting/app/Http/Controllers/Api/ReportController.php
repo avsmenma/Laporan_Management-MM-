@@ -1114,6 +1114,35 @@ class ReportController extends Controller
         $vK = $valsOf($k);
         $vT = $valsOf($t);
 
+        // Realisasi Bln Lalu (kolom tunggal, tanpa split Olah/KSO): total (Olah+KSO)
+        // realisasi BULAN SEBELUMNYA dalam tahun sama, snapshot pada posting_date
+        // terbaru bulan itu. Sejalan pola biaya LM16 (bln-lalu = realisasi satu bulan
+        // sebelumnya, bukan kumulatif), memakai metrik "s/d hari" = total bulan itu.
+        // Januari (atau tanpa data bulan lalu) → 0. Lapisan presentasi, lintas-batch.
+        $vPrev = null;
+        if ((int) $batch->month > 1) {
+            $prevDate = DB::table('produksi_pks')
+                ->whereYear('posting_date', $batch->year)
+                ->whereMonth('posting_date', (int) $batch->month - 1)
+                ->max('posting_date');
+            if ($prevDate !== null) {
+                if ($isAll) {
+                    $tPrev = DB::table('produksi_pks as p')
+                        ->join('ref_unit as u', 'u.code', '=', 'p.plant_code')
+                        ->whereDate('p.posting_date', $prevDate)
+                        ->where('u.type', 'PABRIK')
+                        ->where('u.komoditi', 'KS')
+                        ->selectRaw($sums)->first() ?? clone $zero;
+                } else {
+                    $tPrev = DB::table('produksi_pks')
+                        ->whereDate('posting_date', $prevDate)
+                        ->where('plant_code', $unit->code)
+                        ->selectRaw($sums)->first() ?? clone $zero;
+                }
+                $vPrev = $valsOf($tPrev);
+            }
+        }
+
         $byU = [];
         foreach ($rows as $row) {
             $byU[(int) $row->urutan] = $row;
@@ -1123,6 +1152,7 @@ class ReportController extends Controller
                 continue;
             }
             $r = $byU[$u];
+            $r->real_bln_lalu = $vPrev !== null ? $vPrev[$u][0] : 0.0;
             $r->bi_olah = $vO[$u][0];
             $r->bi_kso = $vK[$u][0];
             $r->bi_jumlah = $vT[$u][0];
