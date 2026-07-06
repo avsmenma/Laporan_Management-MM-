@@ -67,6 +67,24 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="db-field" x-show="filters.has_batch" x-cloak>
+                    <label>Tahun</label>
+                    <select x-model="year" @change="onFilterChange()">
+                        <option value="">Semua Tahun</option>
+                        <template x-for="y in filters.years" :key="y">
+                            <option :value="y" x-text="y"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="db-field" x-show="filters.has_batch" x-cloak>
+                    <label>Bulan</label>
+                    <select x-model="month" @change="onFilterChange()">
+                        <option value="">Semua Bulan</option>
+                        <template x-for="m in filters.months" :key="m.value">
+                            <option :value="m.value" x-text="m.label"></option>
+                        </template>
+                    </select>
+                </div>
                 <div class="db-field" style="margin-left:auto">
                     <label>Baris / halaman</label>
                     <select x-model.number="perPage" @change="changePerPage()">
@@ -142,13 +160,17 @@ function databaseViewer() {
         perPage: 50,
         pageInput: 1,
         pagination: { total: 0, per_page: 50, page: 1, last_page: 1, from: 0, to: 0 },
+        year: '',
+        month: '',
+        filters: { has_batch: false, years: [], months: [], selected_year: null, selected_month: null },
 
         init() {
             if (this.table) this.load(1, true);
         },
-        // Ganti tabel/ukuran halaman → hitung ulang total (count=1).
-        onTableChange() { this.load(1, true); },
+        // Ganti tabel/ukuran halaman/filter → hitung ulang total (count=1).
+        onTableChange() { this.year = ''; this.month = ''; this.load(1, true); },
         changePerPage() { this.load(1, true); },
+        onFilterChange() { this.load(1, true); },
         // Navigasi antar-halaman → tidak menghitung COUNT lagi (cepat).
         goto(page) {
             page = Number(page) || 1;
@@ -166,6 +188,9 @@ function databaseViewer() {
                     per_page: this.perPage,
                     count: withCount ? 1 : 0,
                 });
+                if (this.year) params.set('year', this.year);
+                if (this.month) params.set('month', this.month);
+
                 const res = await fetch(`{{ route('database.data') }}?${params.toString()}`, {
                     headers: { 'Accept': 'application/json' },
                 });
@@ -176,6 +201,7 @@ function databaseViewer() {
                 const data = await res.json();
                 this.columns = data.columns;
                 this.rows = data.rows;
+                this.filters = data.filters || this.filters;
                 const p = data.pagination;
                 // Saat count dilewati, pertahankan total & last_page yang sudah diketahui.
                 if (p.total === null) {
