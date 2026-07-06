@@ -838,10 +838,9 @@ class ReportController extends Controller
     /**
      * Agregasi LM16 "Semua Unit": SUM tiap kolom nilai antar seluruh unit PKS (type
      * PABRIK, komoditi KS) per baris template, lalu hitung ulang kolom Capaian (%) dari
-     * nilai gabungan. Kolom Olah/KSO tetap konsisten karena split sudah dimaterialisasi
-     * per unit di report_lm16 (Olah→bi_olah, Non Olah→bi_kso). Rp/Kg diisi ulang belakangan
-     * oleh applyProduksiToLm16 dari produksi gabungan. Bentuk baris menyerupai join
-     * report+template agar bisa langsung dilewatkan ke formatLm16Row().
+     * nilai gabungan. Semua nilai masuk ke kolom Olah (bi_olah, sd_olah).
+     * Rp/Kg diisi ulang belakangan oleh applyProduksiToLm16 dari produksi gabungan.
+     * Bentuk baris menyerupai join report+template agar bisa langsung dilewatkan ke formatLm16Row().
      */
     private function aggregateLm16Rows(Batch $batch): \Illuminate\Support\Collection
     {
