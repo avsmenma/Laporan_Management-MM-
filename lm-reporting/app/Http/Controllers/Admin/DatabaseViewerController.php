@@ -32,6 +32,8 @@ class DatabaseViewerController extends Controller
         'produksi_kebun_wb',
         'produksi_pks',
         'alokasi_produksi',
+        'areal_blok',
+        'alokasi_areal',
         'report_lm13',
         'report_lm14',
         'report_lm16',
