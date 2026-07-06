@@ -21,8 +21,21 @@ class DatabaseViewerController extends Controller
 
     private const DEFAULT_PER_PAGE = 50;
 
-    /** Hanya tabel sumber mentah yang boleh dijelajahi. */
-    private const ALLOWED_TABLES = ['db_wbs_raw', 'db_ohc', 'db_gc'];
+    /** Hanya tabel sumber dan report yang boleh dijelajahi. */
+    private const ALLOWED_TABLES = [
+        'db_wbs_raw',
+        'db_wbs_tahun_lalu',
+        'db_ohc',
+        'db_gc',
+        'pks_biaya',
+        'pks_produksi',
+        'produksi_kebun_wb',
+        'produksi_pks',
+        'alokasi_produksi',
+        'report_lm13',
+        'report_lm14',
+        'report_lm16',
+    ];
 
     /** Batas panjang teks sel yang dikirim ke frontend (jaga DOM tetap ringan). */
     private const MAX_CELL_LEN = 300;
@@ -53,8 +66,23 @@ class DatabaseViewerController extends Controller
 
         $perPage = $this->clampPerPage((int) $request->query('per_page', self::DEFAULT_PER_PAGE));
         $page = max(1, (int) $request->query('page', 1));
+        $year = $request->query('year');
+        $month = $request->query('month');
 
         $query = DB::table($table);
+
+        // Filter berdasarkan year dan month jika tabel memiliki batch_id
+        if (in_array('batch_id', $columns, true) && ($year || $month)) {
+            $query->join('batch', $table.'.batch_id', '=', 'batch.id');
+            if ($year) {
+                $query->where('batch.year', '=', (int) $year);
+            }
+            if ($month) {
+                $query->where('batch.month', '=', (int) $month);
+            }
+            // Select hanya kolom dari tabel asli, bukan kolom dari batch
+            $query->select($table.'.*');
+        }
 
         // COUNT(*) pada tabel besar (ratusan ribu baris) berat, jadi hanya dihitung
         // saat tabel/filter berubah (count=1). Navigasi antar-halaman memakai count=0
@@ -80,6 +108,11 @@ class DatabaseViewerController extends Controller
         $count = count($rows);
         $from = $count === 0 ? 0 : (($page - 1) * $perPage) + 1;
 
+        // List tahun dan bulan yang tersedia (jika tabel punya batch_id)
+        $hasBatch = in_array('batch_id', $columns, true);
+        $years = $hasBatch ? $this->availableYears() : [];
+        $months = $hasBatch ? $this->availableMonths() : [];
+
         return response()->json([
             'success' => true,
             'table' => $table,
@@ -92,6 +125,13 @@ class DatabaseViewerController extends Controller
                 'last_page' => $lastPage,
                 'from' => $from,
                 'to' => $count === 0 ? 0 : $from + $count - 1,
+            ],
+            'filters' => [
+                'has_batch' => $hasBatch,
+                'years' => $years,
+                'months' => $months,
+                'selected_year' => $year,
+                'selected_month' => $month,
             ],
         ]);
     }
@@ -162,5 +202,40 @@ class DatabaseViewerController extends Controller
         }
 
         return min($perPage, self::MAX_PER_PAGE);
+    }
+
+    /**
+     * Daftar tahun yang tersedia di tabel batch.
+     *
+     * @return array<int, int>
+     */
+    private function availableYears(): array
+    {
+        return DB::table('batch')
+            ->distinct()
+            ->orderBy('year')
+            ->pluck('year')
+            ->all();
+    }
+
+    /**
+     * Daftar bulan yang tersedia di tabel batch.
+     *
+     * @return array<int, array{value: int, label: string}>
+     */
+    private function availableMonths(): array
+    {
+        $monthNames = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+        ];
+
+        return DB::table('batch')
+            ->distinct()
+            ->orderBy('month')
+            ->pluck('month')
+            ->map(fn ($m) => ['value' => $m, 'label' => $monthNames[$m] ?? "Bulan $m"])
+            ->all();
     }
 }
