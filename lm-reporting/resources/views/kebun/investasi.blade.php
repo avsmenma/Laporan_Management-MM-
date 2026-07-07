@@ -33,16 +33,8 @@
                 </select>
             </div>
 
-            {{-- Rekap-2 selalu konsolidasi semua unit → dropdown Unit Kebun disembunyikan. --}}
-            <div class="filter-group" x-show="activeView !== 'rekap2'">
-                <label class="filter-label">Unit Kebun</label>
-                <select class="filter-select" x-model="filters.unit" @change="onUnitChange()">
-                    <option value="ALL">Semua Unit</option>
-                    <template x-for="unit in units" :key="unit.code">
-                        <option :value="unit.code" x-text="`${unit.code} - ${unit.name}`"></option>
-                    </template>
-                </select>
-            </div>
+            {{-- Dropdown Unit Kebun dihapus: laporan investasi selalu tampil konsolidasi
+                 semua unit (filters.unit tetap 'ALL') untuk tab Rekap maupun Rekap-2. --}}
         </div>
     </div>
 
@@ -301,11 +293,6 @@ function kebunInvestasiApp() {
                 return;
             }
             this.activeView = key;
-            // Rekap-2 tampil konsolidasi semua unit; dropdown Unit Kebun disembunyikan
-            // sehingga filter unit dipaksa ke 'ALL' agar tetap konsisten.
-            if (key === 'rekap2') {
-                this.filters.unit = 'ALL';
-            }
             if (this.canLoadReport()) {
                 this.loadReport();
             }
