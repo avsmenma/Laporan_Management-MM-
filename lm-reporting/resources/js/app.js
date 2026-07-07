@@ -447,10 +447,13 @@ function investasiTextColumn(col) {
 
 function investasiNumberColumn(col) {
     const decimals = investasiDecimals(col.key);
+    // Hormati minWidth per-kolom dari kontrak API (mis. 'Borrowing Cost' butuh 120px
+    // agar judul muat satu baris & sejajar dengan header lain); default 110/80.
+    const min = Number.isFinite(Number(col.minWidth)) ? Number(col.minWidth) : cw(110, 80);
     return {
         title: col.title,
         field: col.key,
-        minWidth: cw(110, 80),
+        minWidth: min,
         hozAlign: 'right',
         headerHozAlign: 'center',
         headerSort: false,
