@@ -33,7 +33,8 @@
                 </select>
             </div>
 
-            <div class="filter-group">
+            {{-- Rekap-2 selalu konsolidasi semua unit → dropdown Unit Kebun disembunyikan. --}}
+            <div class="filter-group" x-show="activeView !== 'rekap2'">
                 <label class="filter-label">Unit Kebun</label>
                 <select class="filter-select" x-model="filters.unit" @change="onUnitChange()">
                     <option value="ALL">Semua Unit</option>
@@ -300,6 +301,11 @@ function kebunInvestasiApp() {
                 return;
             }
             this.activeView = key;
+            // Rekap-2 tampil konsolidasi semua unit; dropdown Unit Kebun disembunyikan
+            // sehingga filter unit dipaksa ke 'ALL' agar tetap konsisten.
+            if (key === 'rekap2') {
+                this.filters.unit = 'ALL';
+            }
             if (this.canLoadReport()) {
                 this.loadReport();
             }
