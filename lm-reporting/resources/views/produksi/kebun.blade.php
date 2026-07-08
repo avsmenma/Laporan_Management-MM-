@@ -126,7 +126,18 @@ function produksiKebunApp() {
         },
 
         async init() {
-            await this.load(true);
+            // Muat daftar periode untuk mengisi opsi dropdown, TAPI jangan auto-pilih
+            // bulan/tahun — biarkan kosong sampai user memilih sendiri.
+            try {
+                const resp = await fetch('/report-data/produksi/kebun');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    this.periods = data.periods || [];
+                }
+            } catch (e) { /* biarkan; dropdown akan kosong bila gagal */ }
+            this.year = '';
+            this.month = '';
+            this.hasData = false;
         },
 
         async load(adopt = false) {
