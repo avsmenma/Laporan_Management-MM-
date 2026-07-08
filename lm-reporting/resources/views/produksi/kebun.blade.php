@@ -108,7 +108,7 @@ function produksiKebunApp() {
             return this.periods
                 .filter(p => String(p.year) === String(this.year))
                 .map(p => Number(p.month))
-                .sort((a, b) => b - a);
+                .sort((a, b) => a - b);
         },
         onYearChange() {
             const ms = this.months();
