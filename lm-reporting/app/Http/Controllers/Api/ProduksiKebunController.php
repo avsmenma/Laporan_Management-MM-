@@ -68,16 +68,25 @@ class ProduksiKebunController extends Controller
             }
         }
 
-        $base = fn () => DB::table($table)->whereYear('posting_date', $year)->whereMonth('posting_date', $month);
+        // Blok "Bulan Ini" = bulan terpilih saja.
+        $baseBI = fn () => DB::table($table)
+            ->whereYear('posting_date', $year)
+            ->whereMonth('posting_date', $month);
+        // Blok "s.d Bulan Ini" = kumulatif bulan terpilih + seluruh bulan sebelumnya (tahun sama).
+        $baseSD = fn () => DB::table($table)
+            ->whereYear('posting_date', $year)
+            ->whereMonth('posting_date', '<=', $month);
 
+        // Sub-kolom (Afdeling / Short Plant) & daftar baris diambil dari cakupan s.d
+        // (superset dari bulan ini) agar kedua blok memakai kolom & baris identik.
         return response()->json([
             'periods' => $periods,
             'year' => $year,
             'month' => $month,
-            'afdeling' => $this->afdelingColumns($base),
-            'short_plant' => $this->shortPlantColumns($base),
-            'kebun_sendiri' => $this->kebunSendiri($base),
-            'pembelian' => $this->pembelian($base),
+            'afdeling' => $this->afdelingColumns($baseSD),
+            'short_plant' => $this->shortPlantColumns($baseSD),
+            'kebun_sendiri' => $this->kebunSendiri($baseBI, $baseSD),
+            'pembelian' => $this->pembelian($baseBI, $baseSD),
         ]);
     }
 
@@ -101,8 +110,43 @@ class ProduksiKebunController extends Controller
         return array_values($sps);
     }
 
-    /** Pivot Kebun Sendiri: baris per kebun + baris Grand Total. */
-    private function kebunSendiri(callable $base): array
+    /**
+     * Pivot Kebun Sendiri gabungan 2 blok (Bulan Ini + s.d), baris per kebun + Grand Total.
+     * Tiap baris membawa nilai `bi` (bulan ini) & `sd` (kumulatif) untuk Afdeling & Grand Total.
+     */
+    private function kebunSendiri(callable $baseBI, callable $baseSD): array
+    {
+        $bi = $this->pivotKebunSendiri($baseBI);
+        $sd = $this->pivotKebunSendiri($baseSD);
+
+        // Union kode kebun (s.d umumnya superset; union tetap dipakai utk aman).
+        $codes = array_keys($sd['rows'] + $bi['rows']);
+        sort($codes);
+
+        $rows = [];
+        foreach ($codes as $code) {
+            $code = (string) $code;
+            $b = $bi['rows'][$code] ?? null;
+            $s = $sd['rows'][$code] ?? null;
+            $rows[] = [
+                'goods_recipient' => $code,
+                'unit_kerja' => (string) ($s['unit_kerja'] ?? $b['unit_kerja'] ?? ''),
+                'bi' => ['afd' => $b['afd'] ?? [], 'grand_total' => $b['grand_total'] ?? 0.0],
+                'sd' => ['afd' => $s['afd'] ?? [], 'grand_total' => $s['grand_total'] ?? 0.0],
+            ];
+        }
+
+        return [
+            'rows' => $rows,
+            'grand' => [
+                'bi' => ['afd' => $bi['grandAfd'], 'grand_total' => $bi['grandTotal']],
+                'sd' => ['afd' => $sd['grandAfd'], 'grand_total' => $sd['grandTotal']],
+            ],
+        ];
+    }
+
+    /** Hitung pivot kebun sendiri utk satu cakupan → keyed by goods_recipient. */
+    private function pivotKebunSendiri(callable $base): array
     {
         $grouped = $base()->where('supply', 'Kebun Sendiri')
             ->select('goods_recipient', 'desc_plant_kebun', 'afdeling', DB::raw('SUM(weight_netto) AS total'))
@@ -116,7 +160,6 @@ class ProduksiKebunController extends Controller
             $code = (string) $r->goods_recipient;
             if (! isset($rows[$code])) {
                 $rows[$code] = [
-                    'goods_recipient' => $code,
                     'unit_kerja' => (string) ($r->desc_plant_kebun ?? ''),
                     'afd' => [],
                     'grand_total' => 0.0,
@@ -132,23 +175,88 @@ class ProduksiKebunController extends Controller
             $grandTotal += $val;
         }
 
-        ksort($rows);
+        return ['rows' => $rows, 'grandAfd' => $grandAfd, 'grandTotal' => $grandTotal];
+    }
+
+    /**
+     * Pivot Pembelian gabungan 2 blok (Bulan Ini + s.d), dikelompokkan per kategori
+     * (subtotal) + Grand Total. Tiap baris/subtotal/grand membawa nilai `bi` & `sd`.
+     */
+    private function pembelian(callable $baseBI, callable $baseSD): array
+    {
+        $bi = $this->pivotPembelian($baseBI);
+        $sd = $this->pivotPembelian($baseSD);
+
+        // Union kategori, urut sesuai VIEW2 (Pihak 3 dulu), tak dikenal di akhir.
+        $katKeys = array_keys($sd['byKat'] + $bi['byKat']);
+        usort($katKeys, function ($a, $b) {
+            $ia = array_search($a, self::KATEGORI_ORDER, true);
+            $ib = array_search($b, self::KATEGORI_ORDER, true);
+            $ia = $ia === false ? 99 : $ia;
+            $ib = $ib === false ? 99 : $ib;
+
+            return ($ia <=> $ib) ?: strcmp($a, $b);
+        });
+
+        $groups = [];
+        foreach ($katKeys as $kat) {
+            $sdSup = $sd['byKat'][$kat] ?? [];
+            $biSup = $bi['byKat'][$kat] ?? [];
+            $codes = array_keys($sdSup + $biSup);
+            sort($codes); // urut kode supplier ascending
+
+            $rows = [];
+            $subBiSp = [];
+            $subBiTot = 0.0;
+            $subSdSp = [];
+            $subSdTot = 0.0;
+            foreach ($codes as $code) {
+                $code = (string) $code;
+                $b = $biSup[$code] ?? null;
+                $s = $sdSup[$code] ?? null;
+                $rows[] = [
+                    'supplier_code' => $code,
+                    'supplier_name' => (string) ($s['supplier_name'] ?? $b['supplier_name'] ?? ''),
+                    'bi' => ['sp' => $b['sp'] ?? [], 'grand_total' => $b['grand_total'] ?? 0.0],
+                    'sd' => ['sp' => $s['sp'] ?? [], 'grand_total' => $s['grand_total'] ?? 0.0],
+                ];
+                foreach (($b['sp'] ?? []) as $sp => $v) {
+                    $subBiSp[$sp] = ($subBiSp[$sp] ?? 0) + $v;
+                }
+                foreach (($s['sp'] ?? []) as $sp => $v) {
+                    $subSdSp[$sp] = ($subSdSp[$sp] ?? 0) + $v;
+                }
+                $subBiTot += $b['grand_total'] ?? 0.0;
+                $subSdTot += $s['grand_total'] ?? 0.0;
+            }
+
+            $groups[] = [
+                'kategori' => $kat,
+                'rows' => $rows,
+                'subtotal' => [
+                    'bi' => ['sp' => $subBiSp, 'grand_total' => $subBiTot],
+                    'sd' => ['sp' => $subSdSp, 'grand_total' => $subSdTot],
+                ],
+            ];
+        }
 
         return [
-            'rows' => array_values($rows),
-            'grand' => ['afd' => $grandAfd, 'grand_total' => $grandTotal],
+            'groups' => $groups,
+            'grand' => [
+                'bi' => ['sp' => $bi['grandSp'], 'grand_total' => $bi['grandTotal']],
+                'sd' => ['sp' => $sd['grandSp'], 'grand_total' => $sd['grandTotal']],
+            ],
         ];
     }
 
-    /** Pivot Pembelian: dikelompokkan per kategori (subtotal) + Grand Total. */
-    private function pembelian(callable $base): array
+    /** Hitung pivot pembelian utk satu cakupan → byKat[kategori][supplier_code]. */
+    private function pivotPembelian(callable $base): array
     {
         $grouped = $base()->where('supply', 'Pembelian')
             ->select('kategori_pembelian', 'supplier_code', 'supplier_name', 'short_plant', DB::raw('SUM(weight_netto) AS total'))
             ->groupBy('kategori_pembelian', 'supplier_code', 'supplier_name', 'short_plant')
             ->get();
 
-        // kategori => supplier_code => row
         $byKat = [];
         $grandSp = [];
         $grandTotal = 0.0;
@@ -158,7 +266,6 @@ class ProduksiKebunController extends Controller
             $byKat[$kat] ??= [];
             if (! isset($byKat[$kat][$code])) {
                 $byKat[$kat][$code] = [
-                    'supplier_code' => $code,
                     'supplier_name' => (string) ($r->supplier_name ?? ''),
                     'sp' => [],
                     'grand_total' => 0.0,
@@ -174,39 +281,6 @@ class ProduksiKebunController extends Controller
             $grandTotal += $val;
         }
 
-        // Urutkan kategori sesuai VIEW2 (Pihak 3 dulu), kategori tak dikenal di akhir.
-        $katKeys = array_keys($byKat);
-        usort($katKeys, function ($a, $b) {
-            $ia = array_search($a, self::KATEGORI_ORDER, true);
-            $ib = array_search($b, self::KATEGORI_ORDER, true);
-            $ia = $ia === false ? 99 : $ia;
-            $ib = $ib === false ? 99 : $ib;
-
-            return ($ia <=> $ib) ?: strcmp($a, $b);
-        });
-
-        $groups = [];
-        foreach ($katKeys as $kat) {
-            $suppliers = $byKat[$kat];
-            ksort($suppliers); // urut kode supplier ascending
-            $subSp = [];
-            $subTotal = 0.0;
-            foreach ($suppliers as $row) {
-                foreach ($row['sp'] as $sp => $v) {
-                    $subSp[$sp] = ($subSp[$sp] ?? 0) + $v;
-                }
-                $subTotal += $row['grand_total'];
-            }
-            $groups[] = [
-                'kategori' => $kat,
-                'rows' => array_values($suppliers),
-                'subtotal' => ['sp' => $subSp, 'grand_total' => $subTotal],
-            ];
-        }
-
-        return [
-            'groups' => $groups,
-            'grand' => ['sp' => $grandSp, 'grand_total' => $grandTotal],
-        ];
+        return ['byKat' => $byKat, 'grandSp' => $grandSp, 'grandTotal' => $grandTotal];
     }
 }

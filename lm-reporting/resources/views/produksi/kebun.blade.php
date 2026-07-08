@@ -90,8 +90,12 @@ function produksiKebunApp() {
             return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
         },
 
-        // Label periode kumulatif untuk header blok angka — meniru halaman /kebun
-        // (mis. "s.d Bulan Mei"). Angka produksi TBS bersifat s.d bulan terpilih.
+        // Label header blok angka — meniru halaman /kebun: blok "Bulan {bulan}"
+        // (nilai bulan terpilih) & blok "s.d Bulan {bulan}" (kumulatif).
+        biLabel() {
+            const nm = this.bulanNama(this.month);
+            return nm ? ('Bulan ' + nm) : 'Bulan Ini';
+        },
         sdLabel() {
             const nm = this.bulanNama(this.month);
             return nm ? ('s.d Bulan ' + nm) : 's.d Bulan';
@@ -162,17 +166,18 @@ function produksiKebunApp() {
         // ---- Kebun Sendiri: UNIT KERJA + kolom Afdeling + Grand Total (Goods Recipient disembunyikan) ----
         sendiriColumns() {
             const fmt = this.qtyFmt.bind(this);
-            // Kolom angka (afdeling + Grand Total) dikelompokkan di bawah header
-            // "s.d Bulan {bulan}" agar sejajar dengan gaya halaman /kebun.
-            const valueCols = [];
-            (this.payload?.afdeling || []).forEach(a => {
-                valueCols.push({ title: a, field: 'afd_' + a, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 95 });
-            });
-            valueCols.push({ title: 'Grand Total', field: 'grand_total', hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 120 });
+            const afds = this.payload?.afdeling || [];
+            // Dua blok kolom angka (Afdeling + Grand Total): "Bulan {bulan}" & "s.d Bulan {bulan}".
+            const block = (prefix) => {
+                const cols = afds.map(a => ({ title: a, field: prefix + '_afd_' + a, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 95 }));
+                cols.push({ title: 'Grand Total', field: prefix + '_grand_total', hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 120 });
+                return cols;
+            };
             return [
                 { title: 'UNIT KERJA', field: 'unit_kerja', frozen: true, minWidth: 220,
                   formatter: (c) => { const d = c.getRow().getData(); return d._type === 'grand' ? 'Grand Total' : (d.unit_kerja ?? ''); } },
-                { title: this.sdLabel(), headerHozAlign: 'center', columns: valueCols },
+                { title: this.biLabel(), headerHozAlign: 'center', columns: block('bi') },
+                { title: this.sdLabel(), headerHozAlign: 'center', columns: block('sd') },
             ];
         },
         sendiriRows() {
@@ -180,37 +185,50 @@ function produksiKebunApp() {
             const afds = this.payload?.afdeling || [];
             if (!ks) return [];
             const mk = (src, type, unit) => {
-                const o = { unit_kerja: unit, grand_total: src.grand_total ?? 0, _type: type };
-                afds.forEach(a => { o['afd_' + a] = (src.afd && src.afd[a]) ? src.afd[a] : 0; });
+                const o = { unit_kerja: unit, _type: type };
+                ['bi', 'sd'].forEach(p => {
+                    const blk = src[p] || { afd: {}, grand_total: 0 };
+                    o[p + '_grand_total'] = blk.grand_total ?? 0;
+                    afds.forEach(a => { o[p + '_afd_' + a] = (blk.afd && blk.afd[a]) ? blk.afd[a] : 0; });
+                });
                 return o;
             };
             const rows = (ks.rows || []).map(r => mk(r, 'detail', r.unit_kerja || r.goods_recipient));
-            rows.push(mk(ks.grand || { afd: {}, grand_total: 0 }, 'grand', 'Grand Total'));
+            const zero = { bi: { afd: {}, grand_total: 0 }, sd: { afd: {}, grand_total: 0 } };
+            rows.push(mk(ks.grand || zero, 'grand', 'Grand Total'));
             return rows;
         },
 
         // ---- Pembelian: PEMBELIAN + KODE SUPLIER + NAMA SUPPLIER + kolom Short Plant + Grand Total ----
         pembelianColumns() {
             const fmt = this.qtyFmt.bind(this);
-            // Kolom angka (Short Plant + Grand Total) dikelompokkan di bawah header
-            // "s.d Bulan {bulan}" agar sejajar dengan gaya halaman /kebun.
-            const valueCols = [];
-            (this.payload?.short_plant || []).forEach(sp => {
-                valueCols.push({ title: sp, field: 'sp_' + sp, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 95 });
-            });
-            valueCols.push({ title: 'Grand Total', field: 'grand_total', hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 120 });
+            const sps = this.payload?.short_plant || [];
+            // Dua blok kolom angka (Short Plant + Grand Total): "Bulan {bulan}" & "s.d Bulan {bulan}".
+            const block = (prefix) => {
+                const cols = sps.map(sp => ({ title: sp, field: prefix + '_sp_' + sp, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 95 }));
+                cols.push({ title: 'Grand Total', field: prefix + '_grand_total', hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 120 });
+                return cols;
+            };
             return [
                 { title: 'PEMBELIAN', field: 'kategori', frozen: true, minWidth: 150 },
                 { title: 'KODE SUPLIER', field: 'supplier_code', frozen: true, minWidth: 120 },
                 { title: 'NAMA SUPPLIER', field: 'supplier_name', frozen: true, minWidth: 240 },
-                { title: this.sdLabel(), headerHozAlign: 'center', columns: valueCols },
+                { title: this.biLabel(), headerHozAlign: 'center', columns: block('bi') },
+                { title: this.sdLabel(), headerHozAlign: 'center', columns: block('sd') },
             ];
         },
         pembelianRows() {
             const pb = this.payload?.pembelian;
             const sps = this.payload?.short_plant || [];
             if (!pb) return [];
-            const fill = (o, src) => { sps.forEach(sp => { o['sp_' + sp] = (src.sp && src.sp[sp]) ? src.sp[sp] : 0; }); return o; };
+            const fill = (o, src) => {
+                ['bi', 'sd'].forEach(p => {
+                    const blk = (src && src[p]) || { sp: {}, grand_total: 0 };
+                    o[p + '_grand_total'] = blk.grand_total ?? 0;
+                    sps.forEach(sp => { o[p + '_sp_' + sp] = (blk.sp && blk.sp[sp]) ? blk.sp[sp] : 0; });
+                });
+                return o;
+            };
             const rows = [];
             (pb.groups || []).forEach(g => {
                 (g.rows || []).forEach((r, i) => {
@@ -218,19 +236,18 @@ function produksiKebunApp() {
                         kategori: i === 0 ? g.kategori : '',
                         supplier_code: r.supplier_code,
                         supplier_name: r.supplier_name,
-                        grand_total: r.grand_total ?? 0,
                         _type: 'detail',
                     }, r));
                 });
                 rows.push(fill({
                     kategori: g.kategori + ' Total', supplier_code: '', supplier_name: '',
-                    grand_total: g.subtotal?.grand_total ?? 0, _type: 'subtotal',
-                }, g.subtotal || { sp: {} }));
+                    _type: 'subtotal',
+                }, g.subtotal || {}));
             });
             rows.push(fill({
                 kategori: 'Grand Total', supplier_code: '', supplier_name: '',
-                grand_total: pb.grand?.grand_total ?? 0, _type: 'grand',
-            }, pb.grand || { sp: {} }));
+                _type: 'grand',
+            }, pb.grand || {}));
             return rows;
         },
 
