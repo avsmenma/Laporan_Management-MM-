@@ -331,11 +331,13 @@ class Lm16Service
 
         return [
             'real_bln_lalu' => $values['real_bln_lalu'],
-            'bi_olah' => $values['bi'],
+            'bi_olah' => $isOlah ? $values['bi'] : 0.0,
+            'bi_kso' => $isOlah ? 0.0 : $values['bi'],
             'bi_jumlah' => $values['bi'],
             'bi_rko' => 0.0,
             'bi_rkap' => 0.0,
-            'sd_olah' => $values['sd'],
+            'sd_olah' => $isOlah ? $values['sd'] : 0.0,
+            'sd_kso' => $isOlah ? 0.0 : $values['sd'],
             'sd_jumlah' => $values['sd'],
             'sd_rko' => 0.0,
             'sd_rkap' => 0.0,
@@ -477,10 +479,12 @@ class Lm16Service
         return [
             'real_bln_lalu' => 0.0,
             'bi_olah' => 0.0,
+            'bi_kso' => 0.0,
             'bi_jumlah' => 0.0,
             'bi_rko' => 0.0,
             'bi_rkap' => 0.0,
             'sd_olah' => 0.0,
+            'sd_kso' => 0.0,
             'sd_jumlah' => 0.0,
             'sd_rko' => 0.0,
             'sd_rkap' => 0.0,

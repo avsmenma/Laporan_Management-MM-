@@ -838,15 +838,16 @@ class ReportController extends Controller
     /**
      * Agregasi LM16 "Semua Unit": SUM tiap kolom nilai antar seluruh unit PKS (type
      * PABRIK, komoditi KS) per baris template, lalu hitung ulang kolom Capaian (%) dari
-     * nilai gabungan. Semua nilai masuk ke kolom Olah (bi_olah, sd_olah).
-     * Rp/Kg diisi ulang belakangan oleh applyProduksiToLm16 dari produksi gabungan.
-     * Bentuk baris menyerupai join report+template agar bisa langsung dilewatkan ke formatLm16Row().
+     * nilai gabungan. Kolom Olah/KSO tetap konsisten karena split sudah dimaterialisasi
+     * per unit di report_lm16 (Olah→bi_olah, Non Olah→bi_kso). Rp/Kg diisi ulang belakangan
+     * oleh applyProduksiToLm16 dari produksi gabungan. Bentuk baris menyerupai join
+     * report+template agar bisa langsung dilewatkan ke formatLm16Row().
      */
     private function aggregateLm16Rows(Batch $batch): \Illuminate\Support\Collection
     {
         $sumCols = [
-            'real_bln_lalu', 'bi_olah', 'bi_jumlah', 'bi_rko', 'bi_rkap',
-            'sd_olah', 'sd_jumlah', 'sd_rko', 'sd_rkap',
+            'real_bln_lalu', 'bi_olah', 'bi_kso', 'bi_jumlah', 'bi_rko', 'bi_rkap',
+            'sd_olah', 'sd_kso', 'sd_jumlah', 'sd_rko', 'sd_rkap',
         ];
 
         $selects = [
@@ -1150,8 +1151,10 @@ class ReportController extends Controller
             $r = $byU[$u];
             $r->real_bln_lalu = $vPrev !== null ? $vPrev[$u][0] : 0.0;
             $r->bi_olah = $vO[$u][0];
+            $r->bi_kso = $vK[$u][0];
             $r->bi_jumlah = $vT[$u][0];
             $r->sd_olah = $vO[$u][1];
+            $r->sd_kso = $vK[$u][1];
             $r->sd_jumlah = $vT[$u][1];
         }
 
@@ -1457,10 +1460,12 @@ class ReportController extends Controller
             'indent' => $row->indent ?? 0,
             'real_bln_lalu' => (float) $row->real_bln_lalu,
             'bi_olah' => (float) $row->bi_olah,
+            'bi_kso' => (float) $row->bi_kso,
             'bi_jumlah' => (float) $row->bi_jumlah,
             'bi_rko' => (float) $row->bi_rko,
             'bi_rkap' => (float) $row->bi_rkap,
             'sd_olah' => (float) $row->sd_olah,
+            'sd_kso' => (float) $row->sd_kso,
             'sd_jumlah' => (float) $row->sd_jumlah,
             'sd_rko' => (float) $row->sd_rko,
             'sd_rkap' => (float) $row->sd_rkap,
@@ -1480,10 +1485,12 @@ class ReportController extends Controller
         ], (string) $row->urutan, [
             'real_bln_lalu',
             'bi_olah',
+            'bi_kso',
             'bi_jumlah',
             'bi_rko',
             'bi_rkap',
             'sd_olah',
+            'sd_kso',
             'sd_jumlah',
             'sd_rko',
             'sd_rkap',
@@ -1583,11 +1590,13 @@ class ReportController extends Controller
             ['key' => 'real_bln_lalu', 'title' => 'Real Bln Lalu', 'group' => null],
             // Bulan Ini
             ['key' => 'bi_olah', 'title' => $isOlah ? 'Olah' : 'Tidak Olah', 'group' => 'Bulan Ini'],
+            ['key' => 'bi_kso', 'title' => 'KSO', 'group' => 'Bulan Ini'],
             ['key' => 'bi_jumlah', 'title' => 'Jumlah', 'group' => 'Bulan Ini'],
             ['key' => 'bi_rko', 'title' => 'RKO', 'group' => 'Bulan Ini'],
             ['key' => 'bi_rkap', 'title' => 'RKAP', 'group' => 'Bulan Ini'],
             // s.d Bulan Ini
             ['key' => 'sd_olah', 'title' => $isOlah ? 'Olah' : 'Tidak Olah', 'group' => 's.d Bulan Ini'],
+            ['key' => 'sd_kso', 'title' => 'KSO', 'group' => 's.d Bulan Ini'],
             ['key' => 'sd_jumlah', 'title' => 'Jumlah', 'group' => 's.d Bulan Ini'],
             ['key' => 'sd_rko', 'title' => 'RKO', 'group' => 's.d Bulan Ini'],
             ['key' => 'sd_rkap', 'title' => 'RKAP', 'group' => 's.d Bulan Ini'],
@@ -1699,7 +1708,9 @@ class ReportController extends Controller
             'bi_jumlah' => 'Real Bulan Ini',
             'sd_jumlah' => 'Real s.d Bulan Ini',
             'bi_olah' => 'Real Bulan Ini (Olah)',
+            'bi_kso' => 'Real Bulan Ini (KSO)',
             'sd_olah' => 'Real s.d Bulan Ini (Olah)',
+            'sd_kso' => 'Real s.d Bulan Ini (KSO)',
             'real_bulan_lalu' => 'Real Bulan Lalu',
             'real_bln_lalu' => 'Real Bulan Lalu',
             'real_thn_lalu' => 'Real Tahun Lalu',
@@ -2218,8 +2229,8 @@ class ReportController extends Controller
     private function lm16BiayaScope(string $columnKey): ?string
     {
         return match ($columnKey) {
-            'bi_olah', 'bi_jumlah' => 'bi',
-            'sd_olah', 'sd_jumlah' => 'sd',
+            'bi_olah', 'bi_kso', 'bi_jumlah' => 'bi',
+            'sd_olah', 'sd_kso', 'sd_jumlah' => 'sd',
             'real_bln_lalu' => 'lalu',
             default => null,
         };
@@ -2274,6 +2285,7 @@ class ReportController extends Controller
     {
         return match ($columnKey) {
             'bi_olah', 'sd_olah' => 'olah',
+            'bi_kso', 'sd_kso' => 'kso',
             default => null,
         };
     }
@@ -2370,8 +2382,8 @@ class ReportController extends Controller
     private function lm16ProduksiScope(string $columnKey): ?string
     {
         return match ($columnKey) {
-            'bi_olah', 'bi_jumlah' => 'bi',
-            'sd_olah', 'sd_jumlah' => 'sd',
+            'bi_olah', 'bi_kso', 'bi_jumlah' => 'bi',
+            'sd_olah', 'sd_kso', 'sd_jumlah' => 'sd',
             default => null,
         };
     }
