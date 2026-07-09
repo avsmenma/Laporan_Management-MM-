@@ -29,7 +29,6 @@ const valueColumns = new Set([
     'cap_sd_lalu',
     'cap_sd_rko',
     'cap_sd_rkap',
-    'cap_bi_sd',
     'rp_kg_tbs',
     'rp_kg_mi',
 ]);
@@ -375,9 +374,10 @@ function lm16Columns(meta) {
             title: 'Capaian (%)',
             columns: [
                 numberColumn('cap_bi_lalu', 'BI/Lalu'),
+                numberColumn('cap_bi_rko', 'BI/RKO'),
                 numberColumn('cap_bi_rkap', 'BI/RKAP'),
-                numberColumn('cap_bi_sd', 'BI/s.d'),
-                numberColumn('cap_sd_rkap', 's.d/RKAP'),
+                numberColumn('cap_sd_rko', 'S.D BI/RKO'),
+                numberColumn('cap_sd_rkap', 'S.D BI/RKAP'),
             ],
         },
         {

@@ -872,10 +872,7 @@ class ReportController extends Controller
             ->get();
 
         return $rows->map(function ($row) {
-            $row->cap_bi_lalu = $this->percent((float) $row->bi_jumlah, (float) $row->real_bln_lalu);
-            $row->cap_bi_rkap = $this->percent((float) $row->bi_jumlah, (float) $row->bi_rkap);
-            $row->cap_bi_sd = $this->percent((float) $row->bi_jumlah, (float) $row->sd_jumlah);
-            $row->cap_sd_rkap = $this->percent((float) $row->sd_jumlah, (float) $row->sd_rkap);
+            // Capaian (%) dihitung di formatLm16Row dari nilai gabungan.
             // Rp/Kg diisi ulang oleh applyProduksiToLm16 (butuh produksi gabungan).
             $row->rp_kg_tbs = 0.0;
             $row->rp_kg_mi = 0.0;
@@ -1467,10 +1464,13 @@ class ReportController extends Controller
             'sd_jumlah' => (float) $row->sd_jumlah,
             'sd_rko' => (float) $row->sd_rko,
             'sd_rkap' => (float) $row->sd_rkap,
-            'cap_bi_lalu' => (float) $row->cap_bi_lalu,
-            'cap_bi_rkap' => (float) $row->cap_bi_rkap,
-            'cap_bi_sd' => (float) $row->cap_bi_sd,
-            'cap_sd_rkap' => (float) $row->cap_sd_rkap,
+            // Capaian dihitung dari nilai final baris (termasuk hasil injeksi
+            // produksi/konsolidasi) — bukan dari nilai tersimpan agar tak basi.
+            'cap_bi_lalu' => $this->percent((float) $row->bi_jumlah, (float) $row->real_bln_lalu),
+            'cap_bi_rko' => $this->percent((float) $row->bi_jumlah, (float) $row->bi_rko),
+            'cap_bi_rkap' => $this->percent((float) $row->bi_jumlah, (float) $row->bi_rkap),
+            'cap_sd_rko' => $this->percent((float) $row->sd_jumlah, (float) $row->sd_rko),
+            'cap_sd_rkap' => $this->percent((float) $row->sd_jumlah, (float) $row->sd_rkap),
             'rp_kg_tbs' => (float) $row->rp_kg_tbs,
             'rp_kg_mi' => (float) $row->rp_kg_mi,
             'rp_kg_tbs_sd' => (float) ($row->rp_kg_tbs_sd ?? 0),
@@ -1488,8 +1488,9 @@ class ReportController extends Controller
             'sd_rko',
             'sd_rkap',
             'cap_bi_lalu',
+            'cap_bi_rko',
             'cap_bi_rkap',
-            'cap_bi_sd',
+            'cap_sd_rko',
             'cap_sd_rkap',
             'rp_kg_tbs',
             'rp_kg_mi',
@@ -1592,9 +1593,10 @@ class ReportController extends Controller
             ['key' => 'sd_rkap', 'title' => 'RKAP', 'group' => 's.d Bulan Ini'],
             // Capaian
             ['key' => 'cap_bi_lalu', 'title' => 'BI/Lalu', 'group' => 'Capaian (%)'],
+            ['key' => 'cap_bi_rko', 'title' => 'BI/RKO', 'group' => 'Capaian (%)'],
             ['key' => 'cap_bi_rkap', 'title' => 'BI/RKAP', 'group' => 'Capaian (%)'],
-            ['key' => 'cap_bi_sd', 'title' => 'BI/SD', 'group' => 'Capaian (%)'],
-            ['key' => 'cap_sd_rkap', 'title' => 'SD/RKAP', 'group' => 'Capaian (%)'],
+            ['key' => 'cap_sd_rko', 'title' => 'S.D BI/RKO', 'group' => 'Capaian (%)'],
+            ['key' => 'cap_sd_rkap', 'title' => 'S.D BI/RKAP', 'group' => 'Capaian (%)'],
             // Harga Pokok (bulan ini & s.d bulan ini)
             ['key' => 'rp_kg_tbs', 'title' => 'Rp/Kg TBS', 'group' => 'Harga Pokok'],
             ['key' => 'rp_kg_mi', 'title' => 'Rp/Kg M+I', 'group' => 'Harga Pokok'],
