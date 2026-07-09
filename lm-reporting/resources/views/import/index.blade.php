@@ -32,34 +32,22 @@
             @php
                 // Pulihkan pilihan setelah pratinjau dari type backend (wbs/rko_bku/areal/...).
                 // Tanpa pratinjau, SEMUA dropdown default kosong (user wajib memilih).
+                // Kategori memakai kunci seragam utk 3 jenis: areal/wbs/ohc/gc/
+                // produksi_kebun/pks_biaya/produksi. Utk RKO/RKAP, sumber BKU = padanan WBS.
                 $pType = $pending['type'] ?? '';
-                $pIsBudget = $pType !== '' && \App\Domain\Import\SpreadsheetImportService::isBudget($pType);
+                $bkuToKategori = ['bku' => 'wbs', 'ohc' => 'ohc', 'gc' => 'gc'];
                 if ($pType === '') {
                     $pJenis = '';
                     $pKategori = '';
-                } elseif ($pType === 'areal') {
-                    $pJenis = 'areal';
-                    $pKategori = '';
-                } elseif ($pType === 'produksi') {
-                    $pJenis = 'produksi';
-                    $pKategori = '';
-                } elseif ($pType === 'produksi_kebun') {
-                    $pJenis = 'produksi_kebun';
-                    $pKategori = '';
-                } elseif ($pType === 'pks_biaya') {
-                    $pJenis = 'pabrik';
-                    $pKategori = '';
-                } elseif ($pIsBudget) {
-                    if (str_starts_with($pType, 'rkap_')) {
-                        $pJenis = 'rkap';
-                        $pKategori = substr($pType, 5); // bku/ohc/gc
-                    } else {
-                        $pJenis = 'rko';
-                        $pKategori = substr($pType, 4); // bku/ohc/gc
-                    }
+                } elseif (str_starts_with($pType, 'rkap_')) {
+                    $pJenis = 'rkap';
+                    $pKategori = $bkuToKategori[substr($pType, 5)] ?? '';
+                } elseif (str_starts_with($pType, 'rko_')) {
+                    $pJenis = 'rko';
+                    $pKategori = $bkuToKategori[substr($pType, 4)] ?? '';
                 } else {
                     $pJenis = 'aktual';
-                    $pKategori = $pType; // wbs/ohc/gc
+                    $pKategori = $pType; // wbs/ohc/gc/areal/produksi_kebun/pks_biaya/produksi
                 }
             @endphp
             <form method="POST" action="{{ route('import.store') }}" enctype="multipart/form-data"
@@ -72,28 +60,36 @@
                       month: '{{ $pending['month'] ?? '' }}',
                       fileName: '',
                       isBudgetType() { return this.jenis === 'rko' || this.jenis === 'rkap'; },
-                      isBudget() { return this.isBudgetType(); },
-                      isAreal() { return this.jenis === 'areal'; },
-                      isProduksi() { return this.jenis === 'produksi'; },
-                      isProduksiKebun() { return this.jenis === 'produksi_kebun'; },
-                      isPabrik() { return this.jenis === 'pabrik'; },
-                      noKategori() { return this.isAreal() || this.isProduksi() || this.isProduksiKebun() || this.isPabrik(); },
-                      needKategori() { return this.jenis !== '' && !this.noKategori(); },
+                      // Kategori sama untuk ketiga jenis import; data disimpan sesuai
+                      // jenisnya (ACTUAL → tabel realisasi, RKO/RKAP → tabel anggaran).
+                      // budget:false = jalur impor anggaran utk kategori itu belum ada
+                      // → pilihan dinonaktifkan saat jenis RKO/RKAP.
                       kategoriOptions() {
-                          return this.isBudgetType()
-                              ? [{ v: 'bku', t: 'BKU' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }]
-                              : [{ v: 'wbs', t: 'WBS' }, { v: 'ohc', t: 'OHC' }, { v: 'gc', t: 'GC' }];
+                          const semua = [
+                              { v: 'areal', t: '[KEBUN] AREAL STEATMENT', budget: false },
+                              { v: 'wbs', t: '[KEBUN] BIAYA WBS', budget: true },
+                              { v: 'ohc', t: '[KEBUN] BIAYA OHC', budget: true },
+                              { v: 'gc', t: '[KEBUN] BIAYA GC', budget: true },
+                              { v: 'produksi_kebun', t: '[KEBUN] PRODUKSI KEBUN', budget: false },
+                              { v: 'pks_biaya', t: '[PABRIK] BIAYA PKS ALL', budget: false },
+                              { v: 'produksi', t: '[PABRIK] PRODUKSI PKS', budget: false },
+                          ];
+                          if (!this.isBudgetType()) return semua.map(o => ({ ...o, disabled: false }));
+                          return semua.map(o => ({
+                              ...o,
+                              disabled: !o.budget,
+                              t: o.budget ? o.t : o.t + ' — belum tersedia',
+                          }));
                       },
+                      needKategori() { return this.jenis !== ''; },
                       backendType() {
-                          if (this.jenis === '') return '';
-                          if (this.needKategori() && this.kategori === '') return '';
+                          if (this.jenis === '' || this.kategori === '') return '';
                           if (this.jenis === 'aktual') return this.kategori;
-                          if (this.jenis === 'areal') return 'areal';
-                          if (this.jenis === 'produksi') return 'produksi';
-                          if (this.jenis === 'produksi_kebun') return 'produksi_kebun';
-                          if (this.jenis === 'pabrik') return 'pks_biaya';
-                          if (this.jenis === 'rkap') return 'rkap_' + this.kategori;
-                          return 'rko_' + this.kategori;
+                          // RKO/RKAP: kategori BIAYA WBS memakai sumber anggaran BKU.
+                          const anggaran = { wbs: 'bku', ohc: 'ohc', gc: 'gc' };
+                          const sumber = anggaran[this.kategori] ?? null;
+                          if (sumber === null) return '';
+                          return (this.jenis === 'rkap' ? 'rkap_' : 'rko_') + sumber;
                       },
                       // Semua dropdown wajib terisi sebelum boleh pratinjau / unduh template.
                       allSelected() {
@@ -110,31 +106,18 @@
                     <label>Jenis Import</label>
                     <select x-model="jenis" @change="kategori = ''" class="field-control">
                         <option value="">— pilih jenis —</option>
-                        <option value="aktual">Aktual</option>
-                        <option value="rko">RKO</option>
+                        <option value="aktual">ACTUAL</option>
                         <option value="rkap">RKAP</option>
-                        <option value="areal">Areal</option>
-                        <option value="produksi">Produksi</option>
-                        <option value="produksi_kebun">Produksi Kebun</option>
-                        <option value="pabrik">Pabrik (Biaya PKS)</option>
+                        <option value="rko">RKO</option>
                     </select>
                 </div>
                 <div class="field" style="margin-bottom:0" x-show="needKategori()">
-                    <label>Kategori Import</label>
+                    <label>Kategori</label>
                     <select x-model="kategori" class="field-control">
                         <option value="">— pilih kategori —</option>
                         <template x-for="opt in kategoriOptions()" :key="opt.v">
-                            <option :value="opt.v" x-text="opt.t"></option>
+                            <option :value="opt.v" :disabled="opt.disabled" x-text="opt.t"></option>
                         </template>
-                    </select>
-                </div>
-                <div class="field" style="margin-bottom:0">
-                    <label>Tahun</label>
-                    <select name="year" x-model="year" class="field-control" required>
-                        <option value="">— pilih tahun —</option>
-                        @foreach (range((int) date('Y') + 1, 2020) as $y)
-                            <option value="{{ $y }}" @selected((int) ($pending['year'] ?? 0) === $y)>{{ $y }}</option>
-                        @endforeach
                     </select>
                 </div>
                 <div class="field" style="margin-bottom:0">
@@ -146,6 +129,15 @@
                         <option value="">— pilih bulan —</option>
                         @foreach ($namaBulan as $m => $nama)
                             <option value="{{ $m }}" @selected((int) ($pending['month'] ?? 0) === $m)>{{ $nama }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label>Tahun</label>
+                    <select name="year" x-model="year" class="field-control" required>
+                        <option value="">— pilih tahun —</option>
+                        @foreach (range(2025, 2035) as $y)
+                            <option value="{{ $y }}" @selected((int) ($pending['year'] ?? 0) === $y)>{{ $y }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -164,7 +156,7 @@
                     <a x-show="allSelected()" x-cloak :href="templateUrl()"
                        class="btn btn-outline" style="text-decoration:none">⬇ Download Template</a>
                     <span class="field-hint" x-show="!allSelected()" x-cloak style="align-self:center">
-                        Pilih Jenis<span x-show="needKategori()">, Kategori</span>, Tahun &amp; Bulan untuk mengunduh template &amp; pratinjau.
+                        Pilih Jenis Import, Kategori, Bulan &amp; Tahun untuk mengunduh template &amp; pratinjau.
                     </span>
                 </div>
             </form>
