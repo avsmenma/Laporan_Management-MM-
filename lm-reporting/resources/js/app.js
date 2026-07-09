@@ -100,9 +100,29 @@ function textColumn(field, title, width) {
     };
 }
 
+// Aturan warna kolom Capaian (%) khusus baris PRODUKSI LM16 (permintaan user):
+//  - 'redHigh'  (stok): >= 100 MERAH, < 100 HIJAU — stok menumpuk itu buruk.
+//  - 'greenHigh' (TBS masuk/diolah, Minyak/Inti Sawit, Rendemen): >= 100 HIJAU, < 100 MERAH.
+// Baris lain (biaya, subtotal) memakai aturan default: merah hanya bila >= 100,01.
+function lm16CapaianRule(uraian) {
+    const u = String(uraian ?? '').trim().toLowerCase();
+    if (u.startsWith('stok awal tbs') || u.startsWith('stok akhir tbs')) {
+        return 'redHigh';
+    }
+    if (u.includes('rendemen')
+        || u.startsWith('tbs dari lapangan')
+        || u.startsWith('tbs di olah')
+        || u === 'minyak sawit'
+        || u === 'inti sawit') {
+        return 'greenHigh';
+    }
+    return null;
+}
+
 // clickable=false → sel tidak membuka popup sumber data & tidak tampak bisa diklik.
 // Dipakai LM13 yang tak punya rincian sumber mentah (drilldown hanya untuk LM14).
-function numberColumn(field, title, clickable = true) {
+// lm16Cap=true → kolom Capaian (%) LM16: warna per aturan baris (lm16CapaianRule).
+function numberColumn(field, title, clickable = true, lm16Cap = false) {
     const column = {
         title,
         field,
@@ -122,30 +142,44 @@ function numberColumn(field, title, clickable = true) {
                 return '';
             }
 
-            // Capaian terhadap RKO/RKAP ("% RKO" / "% RKAP"):
-            //  - Tak ada RKO/RKAP DAN tak ada biaya (Real = 0) → strip "-".
-            //  - Tak ada RKO/RKAP tapi ADA biaya (Real > 0)    → 100,01 (merah).
-            //  - Ada RKO/RKAP → rasio biasa; ≥ 100,01% diwarnai merah.
-            if (/^cap_.*(rko|rkap)$/.test(field)) {
-                // Pada baris subtotal/total (latar hijau gelap), angka merah nyaris hilang.
-                // Bungkus dengan "chip" latar putih agar kontras tetap tinggi; baris biasa
-                // (putih) cukup teks merah polos.
+            // Capaian (%):
+            //  - Kolom terhadap RKO/RKAP: tak ada anggaran DAN tak ada realisasi → "-";
+            //    tak ada anggaran tapi ADA realisasi → sentinel 100,01 merah.
+            //  - Warna: baris produksi LM16 ikut lm16CapaianRule (hijau/merah per baris);
+            //    baris lain default — merah hanya bila >= 100,01.
+            const capRule = lm16Cap ? lm16CapaianRule(row.uraian) : null;
+            const isBudgetCap = /^cap_.*(rko|rkap)$/.test(field);
+            if (isBudgetCap || (capRule !== null && field.startsWith('cap_'))) {
+                // Pada baris subtotal/total (latar hijau gelap), angka berwarna nyaris
+                // hilang. Bungkus dengan "chip" latar putih agar kontras tetap tinggi;
+                // baris biasa (putih) cukup teks berwarna polos.
                 const darkRow = row.row_type === 'subtotal' || row.row_type === 'total';
-                const red = (t) => darkRow
-                    ? `<span style="color:#c0392b;font-weight:700;background:#fff;border-radius:5px;padding:0 6px;display:inline-block;line-height:1.45">${t}</span>`
-                    : `<span style="color:#c0392b;font-weight:600">${t}</span>`;
-                const base = field.slice(4);                       // cap_bi_rko → bi_rko
-                const denom = Number(row[base] ?? 0);             // nilai RKO/RKAP
-                const real = Number(row[base.split('_')[0] + '_jumlah'] ?? 0); // bi_jumlah / sd_jumlah (Real)
-                if (Math.abs(denom) < 0.000001) {
-                    // Tak ada RKO/RKAP: strip bila tak ada biaya, selain itu sentinel 100,01.
-                    return Math.abs(real) < 0.000001 ? '-' : red('100,01');
+                const paint = (t, color) => darkRow
+                    ? `<span style="color:${color};font-weight:700;background:#fff;border-radius:5px;padding:0 6px;display:inline-block;line-height:1.45">${t}</span>`
+                    : `<span style="color:${color};font-weight:600">${t}</span>`;
+                const red = (t) => paint(t, '#c0392b');
+                const green = (t) => paint(t, '#1e8449');
+                if (isBudgetCap) {
+                    const base = field.slice(4);                       // cap_bi_rko → bi_rko
+                    const denom = Number(row[base] ?? 0);             // nilai RKO/RKAP
+                    const real = Number(row[base.split('_')[0] + '_jumlah'] ?? 0); // bi_jumlah / sd_jumlah (Real)
+                    if (Math.abs(denom) < 0.000001) {
+                        // Tak ada RKO/RKAP: strip bila tak ada realisasi; sentinel tetap
+                        // MERAH di semua baris (penanda anggaran belum ada, bukan capaian).
+                        return Math.abs(real) < 0.000001 ? '-' : red('100,01');
+                    }
                 }
                 const pct = Number(cell.getValue() ?? 0);
                 if (Math.abs(pct) < 0.000001) {
                     return '-';
                 }
                 const text = pct.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                if (capRule === 'greenHigh') {
+                    return pct >= 100 ? green(text) : red(text);
+                }
+                if (capRule === 'redHigh') {
+                    return pct >= 100 ? red(text) : green(text);
+                }
                 return pct >= 100.01 ? red(text) : text;
             }
 
@@ -373,11 +407,11 @@ function lm16Columns(meta) {
         {
             title: 'Capaian (%)',
             columns: [
-                numberColumn('cap_bi_lalu', 'BI/Lalu'),
-                numberColumn('cap_bi_rko', 'BI/RKO'),
-                numberColumn('cap_bi_rkap', 'BI/RKAP'),
-                numberColumn('cap_sd_rko', 'S.D BI/RKO'),
-                numberColumn('cap_sd_rkap', 'S.D BI/RKAP'),
+                numberColumn('cap_bi_lalu', 'BI/Lalu', true, true),
+                numberColumn('cap_bi_rko', 'BI/RKO', true, true),
+                numberColumn('cap_bi_rkap', 'BI/RKAP', true, true),
+                numberColumn('cap_sd_rko', 'S.D BI/RKO', true, true),
+                numberColumn('cap_sd_rkap', 'S.D BI/RKAP', true, true),
             ],
         },
         {
