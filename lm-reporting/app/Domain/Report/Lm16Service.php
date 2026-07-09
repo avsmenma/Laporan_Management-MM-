@@ -304,6 +304,10 @@ class Lm16Service
     }
 
     /**
+     * Kode anggaran yang cocok utk satu baris template LM16. 'U{urutan}' = kunci
+     * unik per baris — dipakai impor anggaran PKS (uraian/kode template bisa
+     * ambigu antar seksi, mis. "Biaya Air" ada di Pengolahan & Overhead).
+     *
      * @return array<int, string>
      */
     public static function budgetCodes(LmTemplateRow $template): array
@@ -311,6 +315,7 @@ class Lm16Service
         $codes = array_filter([(string) $template->uraian, (string) $template->kode]);
 
         return array_values(array_unique([
+            'U'.$template->urutan,
             ...$codes,
             ...match ($template->uraian) {
                 'TBS dari Lapangan (masuk)', 'TBS di olah' => ['TBS Diolah'],

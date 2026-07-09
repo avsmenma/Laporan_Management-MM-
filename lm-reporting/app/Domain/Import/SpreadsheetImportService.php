@@ -108,9 +108,13 @@ class SpreadsheetImportService
             'rko_bku' => 'RKO — BKU',
             'rko_ohc' => 'RKO — OHC',
             'rko_gc' => 'RKO — GC',
+            'rko_pks_biaya' => 'RKO — Biaya PKS',
+            'rko_pks_produksi' => 'RKO — Produksi PKS',
             'rkap_bku' => 'RKAP — BKU',
             'rkap_ohc' => 'RKAP — OHC',
             'rkap_gc' => 'RKAP — GC',
+            'rkap_pks_biaya' => 'RKAP — Biaya PKS',
+            'rkap_pks_produksi' => 'RKAP — Produksi PKS',
             'areal' => 'Areal',
             'produksi' => 'Produksi',
             'produksi_kebun' => 'Produksi Kebun',
@@ -157,15 +161,23 @@ class SpreadsheetImportService
         return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type);
     }
 
-    /** Sumber budget (BKU/OHC/GC) untuk jenis rko_*, atau null. */
+    /** Sumber budget (BKU/OHC/GC/PKS) untuk jenis anggaran rko & rkap, atau null. */
     public static function budgetSource(string $type): ?string
     {
         return match ($type) {
             'rko_bku', 'rkap_bku' => 'BKU',
             'rko_ohc', 'rkap_ohc' => 'OHC',
             'rko_gc', 'rkap_gc' => 'GC',
+            'rko_pks_biaya', 'rkap_pks_biaya' => 'PKSBIAYA',
+            'rko_pks_produksi', 'rkap_pks_produksi' => 'PKSPROD',
             default => null,
         };
+    }
+
+    /** Jenis anggaran PABRIK (LM16): biaya PKS & produksi PKS. */
+    public static function isBudgetPks(string $type): bool
+    {
+        return in_array($type, ['rko_pks_biaya', 'rkap_pks_biaya', 'rko_pks_produksi', 'rkap_pks_produksi'], true);
     }
 
     /**
@@ -250,6 +262,9 @@ class SpreadsheetImportService
     public function importBudget(int $year, string $type, UploadedFile|string $file, ?int $userId = null, ?callable $onProgress = null, ?int $month = null): ImportResult
     {
         abort_unless(self::isBudget($type), 422, 'Jenis bukan anggaran.');
+        if (self::isBudgetPks($type)) {
+            return $this->importBudgetPks($year, $type, $file, $userId, $onProgress, $month);
+        }
         $source = self::budgetSource($type); // BKU/OHC/GC
         $kind = self::budgetKind($type);     // rko | rkap
         $targetTable = $kind === 'rkap' ? 'budget_rkap' : 'budget_rko';
@@ -353,6 +368,170 @@ class SpreadsheetImportService
             // Tabel anggaran tujuan (budget_rko ATAU budget_rkap) — hanya satu yang disentuh.
             $scope(DB::table($targetTable))->delete();
             // budget_source (audit/drill-down) dipisah per jenis agar rincian RKO ≠ RKAP.
+            $scope(DB::table('budget_source'))->where('jenis', $kind)->delete();
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table($targetTable)->insert($chunk);
+            }
+            foreach (array_chunk($rawSrc, 500) as $chunk) {
+                DB::table('budget_source')->insert($chunk);
+            }
+        });
+
+        if ($onProgress !== null) {
+            $onProgress($seen);
+        }
+
+        $result = new ImportResult(rowCount: count($rows), errors: array_slice($errors, 0, 50));
+
+        ImportUploadLog::query()->create([
+            'batch_id' => null,
+            'user_id' => $userId,
+            'jenis' => $type,
+            'filename' => $filename,
+            'row_count' => $result->rowCount,
+            'error_count' => $result->errorCount(),
+            'errors' => $result->errors,
+            'uploaded_at' => now(),
+        ]);
+
+        return $result;
+    }
+
+    /**
+     * Impor anggaran PABRIK (LM16) — Biaya PKS & Produksi PKS — ke budget_rko/budget_rkap
+     * + budget_source. Layout kolom sama dgn anggaran OHC: A=Komoditi B=Plant D=Period
+     * E=Kode CC F=CO Object Name J=Nilai.
+     *
+     * Pemetaan kode file → baris template LM16 (kode disimpan sbg 'U{urutan}', kunci
+     * unik per baris — lihat Lm16Service::budgetCodes):
+     *  - Biaya, kode berawalan '6' (600.00/603-604.xx) → seksi PENGOLAHAN (urutan 16-31),
+     *    dicocokkan via nama CO Object = uraian template (spasi dinormalkan).
+     *  - Biaya, kode angka lain (400..426, 490) → seksi OVERHEAD/Depresiasi (34-55),
+     *    dicocokkan via bagian bulat kode template ('400.0' → 400).
+     *  - Produksi: kode wajib TBS Diolah / CPO / Inti (dipakai langsung; cocok dgn
+     *    budgetCodes baris produksi & rendemenBudget).
+     * Kode di luar pemetaan dicatat sebagai error dan dilewati (bukan dipaksakan).
+     * Idempoten per (year, report_type=LM16, source, [period bila bulan dipilih]).
+     */
+    private function importBudgetPks(int $year, string $type, UploadedFile|string $file, ?int $userId, ?callable $onProgress, ?int $month): ImportResult
+    {
+        $source = self::budgetSource($type);       // PKSBIAYA | PKSPROD
+        $kind = self::budgetKind($type);           // rko | rkap
+        $isProduksi = $source === 'PKSPROD';
+        $targetTable = $kind === 'rkap' ? 'budget_rkap' : 'budget_rko';
+        $path = $file instanceof UploadedFile ? $file->getRealPath() : $file;
+        $filename = $file instanceof UploadedFile ? $file->getClientOriginalName() : basename($file);
+
+        $unitType = RefUnit::query()->get(['code', 'type'])
+            ->mapWithKeys(fn ($u) => [strtoupper((string) $u->code) => $u->type])->all();
+
+        // Peta pencocokan baris template LM16 (biaya): uraian ternormalisasi (pengolahan)
+        // dan bagian bulat kode (overhead/depresiasi) → urutan baris.
+        $norm = fn (string $s): string => strtolower(preg_replace('/\s+/', ' ', trim($s)) ?? '');
+        $byUraian = [];
+        $byKodeInt = [];
+        foreach (DB::table('lm_template_row')->where('report_type', 'LM16')->whereIn('row_type', ['detail'])->get(['urutan', 'kode', 'uraian']) as $t) {
+            $u = (int) $t->urutan;
+            if ($u >= 16 && $u <= 31) {
+                $byUraian[$norm((string) $t->uraian)] = $u;
+            } elseif ($u >= 34 && $u <= 55 && is_numeric((string) $t->kode)) {
+                $byKodeInt[(int) $t->kode] = $u;
+            }
+        }
+        $produksiKode = ['TBS DIOLAH' => 'TBS Diolah', 'CPO' => 'CPO', 'INTI' => 'Inti', 'INTI SAWIT' => 'Inti'];
+
+        // Indeks kolom 0-based (identik layout anggaran OHC).
+        [$C_KOM, $C_PLANT, $C_PERIOD, $C_KODE, $C_OBJ, $C_CE, $C_CEDESC, $C_KLAS, $C_NILAI, $C_FISIK]
+            = [0, 1, 3, 4, 5, 6, 7, 8, 9, 10];
+        $str = fn ($v, int $len): ?string => ($t = trim((string) ($v ?? ''))) === '' ? null : mb_substr($t, 0, $len);
+
+        $acc = [];      // "KOM|PLANT|period|kode" => nilai
+        $rawSrc = [];
+        $errors = [];
+        $seen = 0;
+
+        foreach ($this->dataRows($path) as $c) {
+            if ($this->isEmptyRow($c)) {
+                continue;
+            }
+            $kom = strtoupper(trim((string) ($c[$C_KOM] ?? '')));
+            $plant = strtoupper(trim((string) ($c[$C_PLANT] ?? '')));
+            $kodeRaw = trim((string) ($c[$C_KODE] ?? ''));
+            $obj = trim((string) ($c[$C_OBJ] ?? ''));
+            if ($kom === '' || $plant === '' || $kodeRaw === '') {
+                continue;
+            }
+            $seen++;
+            if ($onProgress !== null && $seen % 500 === 0) {
+                $onProgress($seen);
+            }
+            $period = is_numeric($c[$C_PERIOD] ?? null) ? (int) $c[$C_PERIOD] : null;
+            if ($month !== null && $period !== $month) {
+                continue;
+            }
+            if (($unitType[$plant] ?? null) !== 'PABRIK') {
+                $errors[] = "Unit non-pabrik dilewati: {$plant}";
+
+                continue;
+            }
+
+            // Petakan ke kode simpan.
+            if ($isProduksi) {
+                $kode = $produksiKode[strtoupper($kodeRaw)] ?? null;
+                if ($kode === null) {
+                    $errors[] = "Kode produksi di luar LM16: {$kodeRaw}";
+
+                    continue;
+                }
+            } else {
+                $urutan = str_starts_with($kodeRaw, '6')
+                    ? ($byUraian[$norm($obj)] ?? null)
+                    : (is_numeric($kodeRaw) ? ($byKodeInt[(int) $kodeRaw] ?? null) : null);
+                if ($urutan === null) {
+                    $errors[] = "Kode di luar LM16: {$kodeRaw} ({$obj})";
+
+                    continue;
+                }
+                $kode = 'U'.$urutan;
+            }
+
+            $nilai = $this->numericValue($c[$C_NILAI] ?? 0);
+            $k = $kom.'|'.$plant.'|'.($period ?? '').'|'.$kode;
+            $acc[$k] = ($acc[$k] ?? 0) + $nilai;
+
+            $rawSrc[] = [
+                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
+                'report_type' => 'LM16', 'kode' => $kode, 'source' => $source, 'jenis' => $kind, 'period' => $period,
+                'object_name' => $str($obj, 250),
+                'cost_element' => $str($c[$C_CE] ?? null, 40),
+                'cost_element_desc' => $str($c[$C_CEDESC] ?? null, 250),
+                'klasifikasi' => $str($c[$C_KLAS] ?? null, 60),
+                'nilai' => round($nilai, 2),
+                'fisik' => is_numeric($c[$C_FISIK] ?? null) ? (float) $c[$C_FISIK] : null,
+            ];
+        }
+
+        $rows = [];
+        foreach ($acc as $key => $nilai) {
+            [$kom, $plant, $period, $kode] = explode('|', $key, 4);
+            $rows[] = [
+                'year' => $year, 'komoditi' => $kom, 'plant_code' => $plant,
+                'report_type' => 'LM16', 'kode' => $kode, 'source' => $source,
+                'period' => $period === '' ? null : (int) $period,
+                'nilai' => round($nilai, 2),
+            ];
+        }
+
+        DB::transaction(function () use ($rows, $rawSrc, $year, $source, $kind, $targetTable, $month): void {
+            $scope = function ($q) use ($year, $source, $month) {
+                $q->where('year', $year)->where('report_type', 'LM16')->where('source', $source);
+                if ($month !== null) {
+                    $q->where('period', $month);
+                }
+
+                return $q;
+            };
+            $scope(DB::table($targetTable))->delete();
             $scope(DB::table('budget_source'))->where('jenis', $kind)->delete();
             foreach (array_chunk($rows, 500) as $chunk) {
                 DB::table($targetTable)->insert($chunk);

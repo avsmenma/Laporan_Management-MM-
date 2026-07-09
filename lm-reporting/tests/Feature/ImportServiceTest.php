@@ -19,14 +19,24 @@ class ImportServiceTest extends TestCase
     public function test_types_now_include_realisasi_and_budget(): void
     {
         $this->assertSame(
-            ['wbs', 'ohc', 'gc', 'rko_bku', 'rko_ohc', 'rko_gc', 'rkap_bku', 'rkap_ohc', 'rkap_gc', 'areal', 'produksi', 'produksi_kebun', 'pks_biaya'],
+            [
+                'wbs', 'ohc', 'gc',
+                'rko_bku', 'rko_ohc', 'rko_gc', 'rko_pks_biaya', 'rko_pks_produksi',
+                'rkap_bku', 'rkap_ohc', 'rkap_gc', 'rkap_pks_biaya', 'rkap_pks_produksi',
+                'areal', 'produksi', 'produksi_kebun', 'pks_biaya', 'investasi_wbs', 'investasi_asset',
+            ],
             array_keys(SpreadsheetImportService::types())
         );
         $this->assertFalse(SpreadsheetImportService::isBudget('wbs'));
         $this->assertTrue(SpreadsheetImportService::isBudget('rko_ohc'));
         $this->assertTrue(SpreadsheetImportService::isBudget('rkap_ohc'));
+        $this->assertTrue(SpreadsheetImportService::isBudget('rkap_pks_biaya'));
         $this->assertSame('OHC', SpreadsheetImportService::budgetSource('rko_ohc'));
         $this->assertSame('OHC', SpreadsheetImportService::budgetSource('rkap_ohc'));
+        $this->assertSame('PKSBIAYA', SpreadsheetImportService::budgetSource('rkap_pks_biaya'));
+        $this->assertSame('PKSPROD', SpreadsheetImportService::budgetSource('rko_pks_produksi'));
+        $this->assertTrue(SpreadsheetImportService::isBudgetPks('rkap_pks_produksi'));
+        $this->assertFalse(SpreadsheetImportService::isBudgetPks('rkap_bku'));
         $this->assertNull(SpreadsheetImportService::budgetSource('wbs'));
         $this->assertSame('rko', SpreadsheetImportService::budgetKind('rko_bku'));
         $this->assertSame('rkap', SpreadsheetImportService::budgetKind('rkap_gc'));

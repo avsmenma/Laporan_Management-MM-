@@ -88,6 +88,38 @@ class ImportTemplateService
                     'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
                 ],
             ],
+            'rko_pks_biaya' => [
+                'sheet' => 'Sheet1',
+                'note' => 'Anggaran RKO — Biaya PKS. Kolom: A=Komoditi (KS), B=Plant (5F01..), D=Period (bulan 1-12), E=Kode CC (600.00/603-604.xx/400..426/490), F=CO Object Name (nama biaya sesuai baris LM16), J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode CC', 'CO Object Name', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'rko_pks_produksi' => [
+                'sheet' => 'Sheet1',
+                'note' => 'Anggaran RKO — Produksi PKS. Kolom: A=Komoditi (KS), B=Plant (5F01..), D=Period (bulan 1-12), E=Kode CC (TBS Diolah / CPO / Inti), J=Nilai (Kg). Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode CC', 'CO Object Name', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'rkap_pks_biaya' => [
+                'sheet' => 'Sheet1',
+                'note' => 'Anggaran RKAP — Biaya PKS. Kolom: A=Komoditi (KS), B=Plant (5F01..), D=Period (bulan 1-12), E=Kode CC (600.00/603-604.xx/400..426/490), F=CO Object Name (nama biaya sesuai baris LM16), J=Nilai. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode CC', 'CO Object Name', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
+            'rkap_pks_produksi' => [
+                'sheet' => 'Sheet1',
+                'note' => 'Anggaran RKAP — Produksi PKS. Kolom: A=Komoditi (KS), B=Plant (5F01..), D=Period (bulan 1-12), E=Kode CC (TBS Diolah / CPO / Inti), J=Nilai (Kg). Isi mulai baris ke-2.',
+                'headers' => [
+                    'Komoditi', 'Plant', 'Unit Kerja', 'Period', 'Kode CC', 'CO Object Name', 'Cost Element',
+                    'Cost element name', 'Klasifikasi', 'Nilai', 'Fisik',
+                ],
+            ],
             'rkap_bku' => [
                 'sheet' => 'BKU',
                 'note' => 'Anggaran RKAP — BKU. Kolom: A=Komoditi (KS/KR), D=Period (bulan), E=Aktifitas (kode), J=Nilai. Isi mulai baris ke-2.',

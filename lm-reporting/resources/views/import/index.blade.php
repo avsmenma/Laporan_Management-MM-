@@ -35,7 +35,7 @@
                 // Kategori memakai kunci seragam utk 3 jenis: areal/wbs/ohc/gc/
                 // produksi_kebun/pks_biaya/produksi. Utk RKO/RKAP, sumber BKU = padanan WBS.
                 $pType = $pending['type'] ?? '';
-                $bkuToKategori = ['bku' => 'wbs', 'ohc' => 'ohc', 'gc' => 'gc'];
+                $bkuToKategori = ['bku' => 'wbs', 'ohc' => 'ohc', 'gc' => 'gc', 'pks_biaya' => 'pks_biaya', 'pks_produksi' => 'produksi'];
                 if ($pType === '') {
                     $pJenis = '';
                     $pKategori = '';
@@ -71,8 +71,8 @@
                               { v: 'ohc', t: '[KEBUN] BIAYA OHC', budget: true },
                               { v: 'gc', t: '[KEBUN] BIAYA GC', budget: true },
                               { v: 'produksi_kebun', t: '[KEBUN] PRODUKSI KEBUN', budget: false },
-                              { v: 'pks_biaya', t: '[PABRIK] BIAYA PKS ALL', budget: false },
-                              { v: 'produksi', t: '[PABRIK] PRODUKSI PKS', budget: false },
+                              { v: 'pks_biaya', t: '[PABRIK] BIAYA PKS ALL', budget: true },
+                              { v: 'produksi', t: '[PABRIK] PRODUKSI PKS', budget: true },
                           ];
                           if (!this.isBudgetType()) return semua.map(o => ({ ...o, disabled: false }));
                           return semua.map(o => ({
@@ -85,8 +85,9 @@
                       backendType() {
                           if (this.jenis === '' || this.kategori === '') return '';
                           if (this.jenis === 'aktual') return this.kategori;
-                          // RKO/RKAP: kategori BIAYA WBS memakai sumber anggaran BKU.
-                          const anggaran = { wbs: 'bku', ohc: 'ohc', gc: 'gc' };
+                          // RKO/RKAP: kategori BIAYA WBS memakai sumber anggaran BKU;
+                          // kategori pabrik memakai jalur anggaran PKS (LM16).
+                          const anggaran = { wbs: 'bku', ohc: 'ohc', gc: 'gc', pks_biaya: 'pks_biaya', produksi: 'pks_produksi' };
                           const sumber = anggaran[this.kategori] ?? null;
                           if (sumber === null) return '';
                           return (this.jenis === 'rkap' ? 'rkap_' : 'rko_') + sumber;
