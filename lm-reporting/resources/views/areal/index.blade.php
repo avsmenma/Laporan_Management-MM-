@@ -16,21 +16,21 @@
             </div>
 
             <div class="filter-group">
-                <label class="filter-label">Tahun</label>
-                <select class="filter-select" x-model="filters.year" @change="syncBatch(); reload()">
-                    <option value="">— pilih tahun —</option>
-                    <template x-for="y in years()" :key="y">
-                        <option :value="y" x-text="y"></option>
-                    </template>
-                </select>
-            </div>
-
-            <div class="filter-group">
                 <label class="filter-label">Periode (Bulan)</label>
                 <select class="filter-select" x-model="filters.month" @change="reload()">
                     <option value="">— pilih bulan —</option>
                     <template x-for="m in months()" :key="m">
                         <option :value="m" x-text="bulanNama(m)"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label class="filter-label">Tahun</label>
+                <select class="filter-select" x-model="filters.year" @change="syncBatch(); reload()">
+                    <option value="">— pilih tahun —</option>
+                    <template x-for="y in years()" :key="y">
+                        <option :value="y" x-text="y"></option>
                     </template>
                 </select>
             </div>
@@ -163,9 +163,12 @@ function arealApp() {
         },
 
         months() {
-            return this.batches
-                .filter(x => String(x.year) === String(this.filters.year))
-                .map(x => Number(x.period ?? x.month))
+            // Bila tahun belum dipilih, tampilkan semua bulan yang ada di batch
+            // (dropdown Bulan kini berada sebelum Tahun).
+            const list = this.filters.year
+                ? this.batches.filter(x => String(x.year) === String(this.filters.year))
+                : this.batches;
+            return [...new Set(list.map(x => Number(x.period ?? x.month)))]
                 .sort((a, b) => a - b);
         },
 

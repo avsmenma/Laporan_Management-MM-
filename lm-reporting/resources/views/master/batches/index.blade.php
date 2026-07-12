@@ -36,16 +36,16 @@
                     <form method="POST" action="{{ route('batches.store') }}" class="grid gap-4 md:grid-cols-4">
                         @csrf
                         <div class="field" style="margin-bottom:0">
-                            <label>Tahun</label>
-                            <input name="year" type="number" value="2026" class="field-control">
-                        </div>
-                        <div class="field" style="margin-bottom:0">
                             <label>Bulan</label>
                             <select name="month" class="field-control">
                                 @foreach (range(1, 12) as $month)
                                     <option value="{{ $month }}" @selected($month === 5)>{{ $month }}</option>
                                 @endforeach
                             </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0">
+                            <label>Tahun</label>
+                            <input name="year" type="number" value="2026" class="field-control">
                         </div>
                         <div class="field" style="margin-bottom:0">
                             <label>Status</label>

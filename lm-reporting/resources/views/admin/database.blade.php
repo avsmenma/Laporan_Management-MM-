@@ -68,20 +68,20 @@
                     </select>
                 </div>
                 <div class="db-field" x-show="filters.has_batch" x-cloak>
-                    <label>Tahun</label>
-                    <select x-model="year" @change="onFilterChange()">
-                        <option value="">Semua Tahun</option>
-                        <template x-for="y in filters.years" :key="y">
-                            <option :value="y" x-text="y"></option>
-                        </template>
-                    </select>
-                </div>
-                <div class="db-field" x-show="filters.has_batch" x-cloak>
                     <label>Bulan</label>
                     <select x-model="month" @change="onFilterChange()">
                         <option value="">Semua Bulan</option>
                         <template x-for="m in filters.months" :key="m.value">
                             <option :value="m.value" x-text="m.label"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="db-field" x-show="filters.has_batch" x-cloak>
+                    <label>Tahun</label>
+                    <select x-model="year" @change="onFilterChange()">
+                        <option value="">Semua Tahun</option>
+                        <template x-for="y in filters.years" :key="y">
+                            <option :value="y" x-text="y"></option>
                         </template>
                     </select>
                 </div>

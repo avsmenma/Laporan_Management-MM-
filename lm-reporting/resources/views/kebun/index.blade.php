@@ -31,21 +31,21 @@
             </div>
 
             <div class="filter-group">
-                <label class="filter-label">Tahun</label>
-                <select class="filter-select" x-model="filters.year" @change="onYearChange()">
-                    <option value="">- Pilih Tahun -</option>
-                    <template x-for="y in availableYears()" :key="y">
-                        <option :value="y" x-text="y"></option>
-                    </template>
-                </select>
-            </div>
-
-            <div class="filter-group">
                 <label class="filter-label">Periode (Bulan)</label>
                 <select class="filter-select" x-model="filters.period" @change="onPeriodChange()">
                     <option value="">- Pilih Bulan -</option>
                     <template x-for="m in availableMonths()" :key="m">
                         <option :value="m" x-text="monthName(m)"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label class="filter-label">Tahun</label>
+                <select class="filter-select" x-model="filters.year" @change="onYearChange()">
+                    <option value="">- Pilih Tahun -</option>
+                    <template x-for="y in availableYears()" :key="y">
+                        <option :value="y" x-text="y"></option>
                     </template>
                 </select>
             </div>
@@ -110,7 +110,7 @@
     <div x-show="!reportData" style="background: white; padding: 4rem; text-align: center; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
         <div style="font-size: 3rem; margin-bottom: 1rem;">LM</div>
         <h3 style="color: #666; font-weight: 500;">Silakan pilih filter untuk melihat laporan</h3>
-        <p style="color: #999; margin-top: 0.5rem;">Pilih Komoditas, Tahun, Bulan, dan Unit Kebun</p>
+        <p style="color: #999; margin-top: 0.5rem;">Pilih Komoditas, Bulan, Tahun, dan Unit Kebun</p>
     </div>
 
     <!-- Popup rincian sumber (drill-down) saat angka tabel diklik — gaya sama dgn /pabrik (lm-dd-pks) -->

@@ -60,6 +60,14 @@
                             <option value="all">Semua Periode</option>
                         </select>
                     </div>
+                    <div class="field" style="margin-bottom:0" x-show="mode === 'month'">
+                        <label>Bulan</label>
+                        <select name="month" class="field-control">
+                            @foreach (range(1, 12) as $m)
+                                <option value="{{ $m }}" @selected($m === 5)>{{ $m }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div class="field" style="margin-bottom:0" x-show="mode !== 'all'">
                         <label>Tahun</label>
                         <select name="year" class="field-control">
@@ -68,14 +76,6 @@
                             @empty
                                 <option value="{{ now()->year }}">{{ now()->year }}</option>
                             @endforelse
-                        </select>
-                    </div>
-                    <div class="field" style="margin-bottom:0" x-show="mode === 'month'">
-                        <label>Bulan</label>
-                        <select name="month" class="field-control">
-                            @foreach (range(1, 12) as $m)
-                                <option value="{{ $m }}" @selected($m === 5)>{{ $m }}</option>
-                            @endforeach
                         </select>
                     </div>
                     <div class="field" style="margin-bottom:0">
