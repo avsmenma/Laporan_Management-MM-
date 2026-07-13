@@ -117,6 +117,18 @@ class AlokasiBiayaOlahController extends Controller
             $pools[$tab] = $this->poolFromLm16($batchId !== null ? (int) $batchId : null, $templateId, $plants);
         }
 
+        // Matriks produksi CPO+INTI (Bulan Ini) per kebun×plant — dasar proporsi.
+        $prod = [];
+        foreach ($rows as $r) {
+            $prod[(string) $r->kebun_code][(string) $r->plant_code] = (float) $r->produksi_bulan_ini;
+        }
+
+        // Isi tabel proporsi biaya per tab: value = prod/prod_total_plant × pool_plant.
+        $tables = [];
+        foreach ($pools as $tab => $pool) {
+            $tables[$tab] = $this->buildProporsi($pool, $prod, $plants, $kebun);
+        }
+
         return response()->json([
             'periods' => $periods,
             'year' => $year,
@@ -124,7 +136,61 @@ class AlokasiBiayaOlahController extends Controller
             'plants' => $plants,
             'kebun' => $kebun,
             'pools' => $pools,
+            'tables' => $tables,
         ]);
+    }
+
+    /**
+     * Tabel proporsi biaya (baris per Kebun): mengikuti rumus Excel Sheet2
+     *   value[kebun][plant] = IFERROR( prod[kebun][plant] / Σ_kebun prod[·][plant] × pool[plant], 0 ).
+     * JLH baris = Σ antar-plant; Grand Total kolom = Σ antar-kebun (≡ pool[plant]).
+     *
+     * @param  array<string, float|null>  $pool  {plant_code: nilai, grand}
+     * @param  array<string, array<string, float>>  $prod  [kebun][plant] produksi bulan ini
+     * @param  array<int, array{code:string, name:string}>  $plants
+     * @param  array<int, array{code:string, nama:string}>  $kebun
+     * @return array{rows: array<int, mixed>, grand: array{v: array<string, float>, grand: float}}
+     */
+    private function buildProporsi(array $pool, array $prod, array $plants, array $kebun): array
+    {
+        // Total produksi per plant (penyebut).
+        $colTot = [];
+        foreach ($plants as $p) {
+            $c = $p['code'];
+            $s = 0.0;
+            foreach ($kebun as $k) {
+                $s += $prod[$k['code']][$c] ?? 0.0;
+            }
+            $colTot[$c] = $s;
+        }
+
+        $grandCol = [];
+        foreach ($plants as $p) {
+            $grandCol[$p['code']] = 0.0;
+        }
+        $grandTot = 0.0;
+
+        $rows = [];
+        foreach ($kebun as $k) {
+            $kc = $k['code'];
+            $cells = [];
+            $jlh = 0.0;
+            foreach ($plants as $p) {
+                $pc = $p['code'];
+                $poolV = $pool[$pc] ?? null;
+                $tot = $colTot[$pc];
+                $val = ($tot > 0 && $poolV !== null)
+                    ? ($prod[$kc][$pc] ?? 0.0) / $tot * (float) $poolV
+                    : 0.0;
+                $cells[$pc] = $val;
+                $jlh += $val;
+                $grandCol[$pc] += $val;
+            }
+            $rows[] = ['kebun' => $kc, 'nama' => $k['nama'], 'v' => $cells, 'jlh' => $jlh];
+            $grandTot += $jlh;
+        }
+
+        return ['rows' => $rows, 'grand' => ['v' => $grandCol, 'grand' => $grandTot]];
     }
 
     /**

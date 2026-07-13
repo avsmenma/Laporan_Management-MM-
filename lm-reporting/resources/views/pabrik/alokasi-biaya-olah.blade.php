@@ -72,6 +72,7 @@ function alokasiBiayaOlahApp() {
         plants: [],
         kebun: [],
         pools: {},
+        tables: {},
         hasData: false,
         errorMsg: null,
         table: null,
@@ -149,6 +150,7 @@ function alokasiBiayaOlahApp() {
                 this.plants = data.plants || [];
                 this.kebun = data.kebun || [];
                 this.pools = data.pools || {};
+                this.tables = data.tables || {};
                 this.hasData = (this.periods.length > 0) && !!this.year && !!this.month;
                 if (this.hasData) {
                     this.$nextTick(() => this.renderActive());
@@ -192,11 +194,29 @@ function alokasiBiayaOlahApp() {
                 o['v_grand'] = pool ? (pool['grand'] ?? null) : null;
                 return o;
             };
+            const tbl = (this.tables && this.tables[def.key]) || null;
+
             const list = [];
             list.push({ kebun: def.cost, nama: '', _cost: true, ...costRow() });
             list.push({ kebun: 'Proporsi:', nama: '', _section: true });
-            this.kebun.forEach(k => list.push({ kebun: k.code, nama: k.nama, ...blank() }));
-            list.push({ kebun: '', nama: '', _grand: true, ...blank() });
+
+            if (tbl && tbl.rows) {
+                // Baris proporsi per Kebun (hasil hitung server).
+                tbl.rows.forEach(r => {
+                    const o = { kebun: r.kebun, nama: r.nama };
+                    this.plants.forEach(p => { o[`v_${p.code}`] = (r.v && r.v[p.code] != null) ? r.v[p.code] : null; });
+                    o['v_grand'] = (r.jlh != null) ? r.jlh : null;
+                    list.push(o);
+                });
+                const g = { kebun: '', nama: '', _grand: true };
+                this.plants.forEach(p => { g[`v_${p.code}`] = (tbl.grand && tbl.grand.v && tbl.grand.v[p.code] != null) ? tbl.grand.v[p.code] : null; });
+                g['v_grand'] = (tbl.grand && tbl.grand.grand != null) ? tbl.grand.grand : null;
+                list.push(g);
+            } else {
+                // Belum dihitung → kerangka kosong.
+                this.kebun.forEach(k => list.push({ kebun: k.code, nama: k.nama, ...blank() }));
+                list.push({ kebun: '', nama: '', _grand: true, ...blank() });
+            }
             return list;
         },
 
