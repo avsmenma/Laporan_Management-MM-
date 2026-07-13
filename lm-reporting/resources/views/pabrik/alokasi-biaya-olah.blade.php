@@ -71,6 +71,7 @@ function alokasiBiayaOlahApp() {
         month: '',
         plants: [],
         kebun: [],
+        pools: {},
         hasData: false,
         errorMsg: null,
         table: null,
@@ -147,6 +148,7 @@ function alokasiBiayaOlahApp() {
                 }
                 this.plants = data.plants || [];
                 this.kebun = data.kebun || [];
+                this.pools = data.pools || {};
                 this.hasData = (this.periods.length > 0) && !!this.year && !!this.month;
                 if (this.hasData) {
                     this.$nextTick(() => this.renderActive());
@@ -175,15 +177,23 @@ function alokasiBiayaOlahApp() {
         },
 
         // Baris (identik Sheet2): pool biaya → "Proporsi:" → daftar Kebun → Grand Total.
-        rows(costLabel) {
+        rows(def) {
             const blank = () => {
                 const o = {};
                 this.plants.forEach(p => { o[`v_${p.code}`] = null; });
                 o['v_grand'] = null;
                 return o;
             };
+            // Baris pool biaya: isi dari pools[tab] (LM16 kolom Olah); null bila belum ada.
+            const pool = (this.pools && this.pools[def.key]) || null;
+            const costRow = () => {
+                const o = {};
+                this.plants.forEach(p => { o[`v_${p.code}`] = pool ? (pool[p.code] ?? null) : null; });
+                o['v_grand'] = pool ? (pool['grand'] ?? null) : null;
+                return o;
+            };
             const list = [];
-            list.push({ kebun: costLabel, nama: '', _cost: true, ...blank() });
+            list.push({ kebun: def.cost, nama: '', _cost: true, ...costRow() });
             list.push({ kebun: 'Proporsi:', nama: '', _section: true });
             this.kebun.forEach(k => list.push({ kebun: k.code, nama: k.nama, ...blank() }));
             list.push({ kebun: '', nama: '', _grand: true, ...blank() });
@@ -196,7 +206,7 @@ function alokasiBiayaOlahApp() {
             if (!def) return;
 
             this.table = new window.Tabulator('#abo-active', {
-                data: this.rows(def.cost),
+                data: this.rows(def),
                 columns: this.columns(),
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',

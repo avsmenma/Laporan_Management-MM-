@@ -30,6 +30,17 @@ class AlokasiBiayaOlahController extends Controller
         '5F09' => 'Pakem', '5F14' => 'Papam', '5F15' => 'Papel', '5F21' => 'Pasam', '5F22' => 'Palpi',
     ];
 
+    /**
+     * Baris pool biaya (paling atas tiap tab) ditarik dari subtotal LM16 kolom "Olah"
+     * (report_lm16.bi_olah) per unit PKS. template_id = baris subtotal LM16:
+     *   570 = "Jumlah Biaya Pengolahan", 592 = "Jumlah Biaya Overhead",
+     *   593 = "Biaya Depresiasi (Penyusutan)".
+     * Fase ini baru mengisi Biaya Pengolahan; overhead/depresiasi menyusul.
+     */
+    private const POOL_LM16_TEMPLATE = [
+        'pengolahan' => 570,
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $this->authenticateReportRequest($request);
@@ -99,12 +110,61 @@ class AlokasiBiayaOlahController extends Controller
         $kebunCodes = array_merge($first5e, $others);
         $kebun = array_map(fn ($k) => ['code' => $k, 'nama' => $nama[$k] ?? ''], $kebunCodes);
 
+        // Baris pool biaya per tab (LM16 kolom Olah). Butuh batch periode ini.
+        $batchId = DB::table('batch')->where('year', $year)->where('month', $month)->value('id');
+        $pools = [];
+        foreach (self::POOL_LM16_TEMPLATE as $tab => $templateId) {
+            $pools[$tab] = $this->poolFromLm16($batchId !== null ? (int) $batchId : null, $templateId, $plants);
+        }
+
         return response()->json([
             'periods' => $periods,
             'year' => $year,
             'month' => $month,
             'plants' => $plants,
             'kebun' => $kebun,
+            'pools' => $pools,
         ]);
+    }
+
+    /**
+     * Nilai pool biaya per PKS = report_lm16.bi_olah (kolom "Olah") pada baris subtotal
+     * $templateId, untuk $batchId. Mengembalikan map {plant_code: nilai, ..., grand: total}.
+     * Nilai null bila tak ada batch/data (ditampilkan '-' di UI).
+     *
+     * @param  array<int, array{code:string, name:string}>  $plants
+     * @return array<string, float|null>
+     */
+    private function poolFromLm16(?int $batchId, int $templateId, array $plants): array
+    {
+        $out = [];
+        foreach ($plants as $p) {
+            $out[$p['code']] = null;
+        }
+        $out['grand'] = null;
+
+        if ($batchId === null) {
+            return $out;
+        }
+
+        $vals = DB::table('report_lm16 as r')
+            ->join('ref_unit as u', 'u.id', '=', 'r.unit_id')
+            ->where('r.batch_id', $batchId)
+            ->where('r.template_id', $templateId)
+            ->pluck('r.bi_olah', 'u.code');
+
+        $grand = 0.0;
+        $any = false;
+        foreach ($plants as $p) {
+            if ($vals->has($p['code'])) {
+                $v = (float) $vals->get($p['code']);
+                $out[$p['code']] = $v;
+                $grand += $v;
+                $any = true;
+            }
+        }
+        $out['grand'] = $any ? $grand : null;
+
+        return $out;
     }
 }
