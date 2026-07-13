@@ -35,10 +35,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
         'subjudul' => 'Laporan LM Investasi Pabrik sedang disiapkan dan akan segera tersedia.',
     ])->name('pabrik.investasi');
 
-    Route::view('/pabrik/alokasi-biaya-olah', 'coming-soon', [
-        'judul' => 'Alokasi Biaya Olah — Pabrik',
-        'subjudul' => 'Laporan Alokasi Biaya Olah sedang disiapkan dan akan segera tersedia.',
-    ])->name('pabrik.alokasi-biaya-olah');
+    Route::view('/pabrik/alokasi-biaya-olah', 'pabrik.alokasi-biaya-olah')->name('pabrik.alokasi-biaya-olah');
 
     Route::view('/areal', 'areal.index')->name('areal');
 
@@ -70,6 +67,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/areal/ringkasan', [\App\Http\Controllers\Api\ArealController::class, 'ringkasan']);
     Route::get('/produksi', [\App\Http\Controllers\Api\ProduksiController::class, 'index']);
     Route::get('/produksi/kebun', [\App\Http\Controllers\Api\ProduksiKebunController::class, 'index']);
+    Route::get('/alokasi-biaya-olah', [\App\Http\Controllers\Api\AlokasiBiayaOlahController::class, 'index']);
 });
 
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
