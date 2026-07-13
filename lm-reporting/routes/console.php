@@ -937,3 +937,25 @@ Artisan::command('produksi-kebun:import {--file=} {--year=} {--month=}', functio
 
     return 0;
 })->purpose('Impor jembatan timbang TBS kebun (sheet ZESTHLE020) ke produksi_kebun_wb (idempoten per tanggal). --year+--month sebagai penjaga.');
+
+Artisan::command('produksi:cpo-inti {--year=} {--month=}', function (\App\Domain\Report\ProduksiCpoIntiService $service): int {
+    $year = $this->option('year') !== null ? (int) $this->option('year') : null;
+    $month = $this->option('month') !== null ? (int) $this->option('month') : null;
+
+    if ($year !== null && $month !== null) {
+        $n = $service->generate($year, $month);
+        $this->info("Selesai: {$n} sel PRODUKSI CPO+INTI untuk {$year}-".str_pad((string) $month, 2, '0', STR_PAD_LEFT).'.');
+
+        return 0;
+    }
+
+    // Tanpa periode → regenerasi semua periode yang ada di produksi_pks.
+    $total = 0;
+    foreach ($service->generateAll() as $r) {
+        $this->line("  {$r['year']}-".str_pad((string) $r['month'], 2, '0', STR_PAD_LEFT).": {$r['cells']} sel");
+        $total += $r['cells'];
+    }
+    $this->info("Selesai: {$total} sel PRODUKSI CPO+INTI (semua periode).");
+
+    return 0;
+})->purpose('Materialisasi tabel PRODUKSI CPO + INTI (produksi_cpo_inti) dari produksi_pks. Tanpa --year/--month = semua periode.');

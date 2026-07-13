@@ -57,6 +57,13 @@ class ProcessImport implements ShouldQueue
             } elseif (SpreadsheetImportService::isProduksi($job->type)) {
                 $result = $service->importProduksi($path, $job->user_id, $onProgress, (int) $job->year, $month);
                 $affected = $this->batchIdsForPeriod((int) $job->year, $month);
+                // Materialisasi ulang PRODUKSI CPO + INTI (Alokasi Biaya Olah) untuk
+                // periode ini — otomatis mengikuti perubahan angka produksi.
+                if ($month !== null) {
+                    app(\App\Domain\Report\ProduksiCpoIntiService::class)->generate((int) $job->year, $month);
+                } else {
+                    app(\App\Domain\Report\ProduksiCpoIntiService::class)->generateAll();
+                }
             } elseif ($isBudget) {
                 $result = $service->importBudget((int) $job->year, $job->type, $path, $job->user_id, $onProgress, $month);
                 // Anggaran terkunci per tahun → seluruh batch tahun itu perlu regenerasi.

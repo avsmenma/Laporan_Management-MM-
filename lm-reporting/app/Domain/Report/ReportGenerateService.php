@@ -11,6 +11,7 @@ class ReportGenerateService
         private Lm13Service $lm13,
         private Lm14Service $lm14,
         private Lm16Service $lm16,
+        private ProduksiCpoIntiService $cpoInti,
     ) {}
 
     /**
@@ -65,6 +66,9 @@ class ReportGenerateService
 
             $detail["LM16 {$unit->code}"] = $c16;
         }
+
+        // PRODUKSI CPO + INTI (Alokasi Biaya Olah) untuk periode batch ini.
+        $this->cpoInti->generate((int) $batch->year, (int) $batch->month);
 
         // Tandai batch sudah diproses.
         $batch->forceFill([
