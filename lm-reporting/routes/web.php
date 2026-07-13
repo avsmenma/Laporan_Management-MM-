@@ -35,6 +35,11 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
         'subjudul' => 'Laporan LM Investasi Pabrik sedang disiapkan dan akan segera tersedia.',
     ])->name('pabrik.investasi');
 
+    Route::view('/pabrik/alokasi-biaya-olah', 'coming-soon', [
+        'judul' => 'Alokasi Biaya Olah — Pabrik',
+        'subjudul' => 'Laporan Alokasi Biaya Olah sedang disiapkan dan akan segera tersedia.',
+    ])->name('pabrik.alokasi-biaya-olah');
+
     Route::view('/areal', 'areal.index')->name('areal');
 
     // Produksi punya submenu: PKS (halaman saat ini) & Kebun (akan datang).

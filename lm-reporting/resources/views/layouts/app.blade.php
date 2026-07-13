@@ -429,6 +429,7 @@
                         <ul class="sidebar-subnav" data-flyout="PABRIK" x-show="open" x-cloak>
                             <li><a href="{{ route('pabrik') }}" class="sidebar-sublink {{ request()->routeIs('pabrik') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Eksploitasi</a></li>
                             <li><a href="{{ route('pabrik.investasi') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.investasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
+                            <li><a href="{{ route('pabrik.alokasi-biaya-olah') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.alokasi-biaya-olah') ? 'active' : '' }}"><span class="tree-ico">📄</span> Alokasi Biaya Olah</a></li>
                         </ul>
                     </li>
                     <li class="sidebar-nav-item">
