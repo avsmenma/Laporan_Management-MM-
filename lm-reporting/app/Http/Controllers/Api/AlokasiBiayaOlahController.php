@@ -38,6 +38,7 @@ class AlokasiBiayaOlahController extends Controller
      * Fase ini baru mengisi Biaya Pengolahan; overhead/depresiasi menyusul.
      */
     private const POOL_LM16_TEMPLATE = [
+        'summary' => 594,     // "Total Biaya Pabrik" = Pengolahan + Overhead + Depresiasi
         'pengolahan' => 570,
         'overhead' => 592,
         'depresiasi' => 593,
