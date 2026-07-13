@@ -40,6 +40,7 @@ class AlokasiBiayaOlahController extends Controller
     private const POOL_LM16_TEMPLATE = [
         'pengolahan' => 570,
         'overhead' => 592,
+        'depresiasi' => 593,
     ];
 
     public function index(Request $request): JsonResponse
