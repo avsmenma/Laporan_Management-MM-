@@ -230,6 +230,10 @@ function alokasiBiayaOlahApp() {
                 columns: this.columns(),
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',
+                // Beri tinggi maksimum agar tabel punya scroll vertikal sendiri →
+                // baris header (Kebun/Nama Kebun + PKS + JLH) tetap frozen di atas
+                // saat isi tabel digulir. Sesuaikan dgn tinggi topbar+filter+tab.
+                maxHeight: 'calc(100vh - 210px)',
                 rowFormatter: (row) => {
                     const d = row.getData();
                     let bg = null, fw = null, italic = false;
