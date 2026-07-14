@@ -73,6 +73,8 @@ function alokasiBiayaOlahApp() {
         kebun: [],
         pools: {},
         tables: {},
+        poolsSd: {},
+        tablesSd: {},
         hasData: false,
         errorMsg: null,
         table: null,
@@ -151,6 +153,8 @@ function alokasiBiayaOlahApp() {
                 this.kebun = data.kebun || [];
                 this.pools = data.pools || {};
                 this.tables = data.tables || {};
+                this.poolsSd = data.pools_sd || {};
+                this.tablesSd = data.tables_sd || {};
                 this.hasData = (this.periods.length > 0) && !!this.year && !!this.month;
                 if (this.hasData) {
                     this.$nextTick(() => this.renderActive());
@@ -162,55 +166,85 @@ function alokasiBiayaOlahApp() {
             }
         },
 
-        // Kolom: Kebun & Nama Kebun (frozen) + kolom per PKS + JLH.
+        // Kolom: Kebun & Nama Kebun (frozen) + dua blok grouped header:
+        // "Bulan {bulan}" (v_*) dan "s.d {bulan}" (vsd_*), masing-masing PKS + JLH.
         columns() {
-            const cols = [
+            const bln = this.bulanNama(this.month);
+            const idCols = [
                 { title: 'Kebun', field: 'kebun', frozen: true, minWidth: 110,
                   formatter: (c) => { const d = c.getRow().getData(); return d._grand ? 'Grand Total' : (d.kebun ?? ''); } },
                 { title: 'Nama Kebun', field: 'nama', frozen: true, minWidth: 190 },
             ];
-            this.plants.forEach(p => cols.push({
-                title: p.name || p.code, field: `v_${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
-                formatter: this.valFmt.bind(this), minWidth: 95,
-            }));
-            cols.push({ title: 'JLH', field: 'v_grand', hozAlign: 'right', headerHozAlign: 'center',
-                formatter: this.valFmt.bind(this), minWidth: 120 });
-            return cols;
+            const blockCols = (prefix) => {
+                const cols = [];
+                this.plants.forEach(p => cols.push({
+                    title: p.name || p.code, field: `${prefix}${p.code}`, hozAlign: 'right', headerHozAlign: 'center',
+                    formatter: this.valFmt.bind(this), minWidth: 95,
+                }));
+                cols.push({ title: 'JLH', field: `${prefix}grand`, hozAlign: 'right', headerHozAlign: 'center',
+                    formatter: this.valFmt.bind(this), minWidth: 120 });
+                return cols;
+            };
+            return [
+                ...idCols,
+                { title: 'Bulan ' + bln, columns: blockCols('v_') },
+                { title: 's.d ' + bln, columns: blockCols('vsd_') },
+            ];
         },
 
         // Baris (identik Sheet2): pool biaya → "Proporsi:" → daftar Kebun → Grand Total.
+        // Tiap baris membawa nilai Bulan Ini (v_*) & s.d (vsd_*).
         rows(def) {
+            const poolBi = (this.pools && this.pools[def.key]) || null;
+            const poolSd = (this.poolsSd && this.poolsSd[def.key]) || null;
+            const tblBi = (this.tables && this.tables[def.key]) || null;
+            const tblSd = (this.tablesSd && this.tablesSd[def.key]) || null;
+
             const blank = () => {
                 const o = {};
-                this.plants.forEach(p => { o[`v_${p.code}`] = null; });
+                this.plants.forEach(p => { o[`v_${p.code}`] = null; o[`vsd_${p.code}`] = null; });
                 o['v_grand'] = null;
+                o['vsd_grand'] = null;
                 return o;
             };
             // Baris pool biaya: isi dari pools[tab] (LM16 kolom Olah); null bila belum ada.
-            const pool = (this.pools && this.pools[def.key]) || null;
             const costRow = () => {
                 const o = {};
-                this.plants.forEach(p => { o[`v_${p.code}`] = pool ? (pool[p.code] ?? null) : null; });
-                o['v_grand'] = pool ? (pool['grand'] ?? null) : null;
+                this.plants.forEach(p => {
+                    o[`v_${p.code}`] = poolBi ? (poolBi[p.code] ?? null) : null;
+                    o[`vsd_${p.code}`] = poolSd ? (poolSd[p.code] ?? null) : null;
+                });
+                o['v_grand'] = poolBi ? (poolBi['grand'] ?? null) : null;
+                o['vsd_grand'] = poolSd ? (poolSd['grand'] ?? null) : null;
                 return o;
             };
-            const tbl = (this.tables && this.tables[def.key]) || null;
 
             const list = [];
             list.push({ kebun: def.cost, nama: '', _cost: true, ...costRow() });
             list.push({ kebun: 'Proporsi:', nama: '', _section: true });
 
-            if (tbl && tbl.rows) {
-                // Baris proporsi per Kebun (hasil hitung server).
-                tbl.rows.forEach(r => {
+            if (tblBi && tblBi.rows) {
+                // Padankan baris s.d dgn baris Bulan Ini berdasarkan kode Kebun.
+                const sdByK = {};
+                if (tblSd && tblSd.rows) { tblSd.rows.forEach(r => { sdByK[r.kebun] = r; }); }
+                tblBi.rows.forEach(r => {
+                    const rs = sdByK[r.kebun] || null;
                     const o = { kebun: r.kebun, nama: r.nama };
-                    this.plants.forEach(p => { o[`v_${p.code}`] = (r.v && r.v[p.code] != null) ? r.v[p.code] : null; });
+                    this.plants.forEach(p => {
+                        o[`v_${p.code}`] = (r.v && r.v[p.code] != null) ? r.v[p.code] : null;
+                        o[`vsd_${p.code}`] = (rs && rs.v && rs.v[p.code] != null) ? rs.v[p.code] : null;
+                    });
                     o['v_grand'] = (r.jlh != null) ? r.jlh : null;
+                    o['vsd_grand'] = (rs && rs.jlh != null) ? rs.jlh : null;
                     list.push(o);
                 });
                 const g = { kebun: '', nama: '', _grand: true };
-                this.plants.forEach(p => { g[`v_${p.code}`] = (tbl.grand && tbl.grand.v && tbl.grand.v[p.code] != null) ? tbl.grand.v[p.code] : null; });
-                g['v_grand'] = (tbl.grand && tbl.grand.grand != null) ? tbl.grand.grand : null;
+                this.plants.forEach(p => {
+                    g[`v_${p.code}`] = (tblBi.grand && tblBi.grand.v && tblBi.grand.v[p.code] != null) ? tblBi.grand.v[p.code] : null;
+                    g[`vsd_${p.code}`] = (tblSd && tblSd.grand && tblSd.grand.v && tblSd.grand.v[p.code] != null) ? tblSd.grand.v[p.code] : null;
+                });
+                g['v_grand'] = (tblBi.grand && tblBi.grand.grand != null) ? tblBi.grand.grand : null;
+                g['vsd_grand'] = (tblSd && tblSd.grand && tblSd.grand.grand != null) ? tblSd.grand.grand : null;
                 list.push(g);
             } else {
                 // Belum dihitung → kerangka kosong.

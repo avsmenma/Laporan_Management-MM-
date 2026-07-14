@@ -114,22 +114,31 @@ class AlokasiBiayaOlahController extends Controller
         $kebun = array_map(fn ($k) => ['code' => $k, 'nama' => $nama[$k] ?? ''], $kebunCodes);
 
         // Baris pool biaya per tab (LM16 kolom Olah). Butuh batch periode ini.
+        // Dua blok: Bulan Ini (bi_olah) dan s.d bulan ini (sd_olah, kumulatif).
         $batchId = DB::table('batch')->where('year', $year)->where('month', $month)->value('id');
+        $bid = $batchId !== null ? (int) $batchId : null;
         $pools = [];
+        $poolsSd = [];
         foreach (self::POOL_LM16_TEMPLATE as $tab => $templateId) {
-            $pools[$tab] = $this->poolFromLm16($batchId !== null ? (int) $batchId : null, $templateId, $plants);
+            $pools[$tab] = $this->poolFromLm16($bid, $templateId, $plants, 'bi_olah');
+            $poolsSd[$tab] = $this->poolFromLm16($bid, $templateId, $plants, 'sd_olah');
         }
 
-        // Matriks produksi CPO+INTI (Bulan Ini) per kebun×plant — dasar proporsi.
+        // Matriks produksi CPO+INTI per kebun×plant — dasar proporsi.
+        // Bulan Ini = produksi_bulan_ini; s.d = produksi_sd (kumulatif).
         $prod = [];
+        $prodSd = [];
         foreach ($rows as $r) {
             $prod[(string) $r->kebun_code][(string) $r->plant_code] = (float) $r->produksi_bulan_ini;
+            $prodSd[(string) $r->kebun_code][(string) $r->plant_code] = (float) $r->produksi_sd;
         }
 
         // Isi tabel proporsi biaya per tab: value = prod/prod_total_plant × pool_plant.
         $tables = [];
+        $tablesSd = [];
         foreach ($pools as $tab => $pool) {
             $tables[$tab] = $this->buildProporsi($pool, $prod, $plants, $kebun);
+            $tablesSd[$tab] = $this->buildProporsi($poolsSd[$tab], $prodSd, $plants, $kebun);
         }
 
         return response()->json([
@@ -140,6 +149,8 @@ class AlokasiBiayaOlahController extends Controller
             'kebun' => $kebun,
             'pools' => $pools,
             'tables' => $tables,
+            'pools_sd' => $poolsSd,
+            'tables_sd' => $tablesSd,
         ]);
     }
 
