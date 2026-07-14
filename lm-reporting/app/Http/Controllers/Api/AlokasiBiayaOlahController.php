@@ -144,6 +144,73 @@ class AlokasiBiayaOlahController extends Controller
     }
 
     /**
+     * JLH (total baris) proporsi biaya olah per Kebun, untuk dipakai LM13 Kebun sebagai
+     * "Beban Langsung/Overhead/Penyusutan Pengolahan". Mengembalikan:
+     *   [kebun_code => ['pengolahan'=>['bi'=>f,'sd'=>f], 'overhead'=>..., 'depresiasi'=>...], ...]
+     * plus key '_grand' => [tab => ['bi'=>f,'sd'=>f]] (total semua Kebun, utk "Semua Unit").
+     *
+     * Bln Ini: pool LM16 kolom Olah (bi_olah) × produksi_bulan_ini.
+     * s.d    : pool LM16 kolom Olah kumulatif (sd_olah) × produksi_sd.
+     * template_id: pengolahan=570, overhead=592, depresiasi=593.
+     *
+     * @return array<string, mixed>
+     */
+    public function jlhPerKebunLm13(int $year, int $month): array
+    {
+        $rows = DB::table('produksi_cpo_inti')
+            ->where('year', $year)->where('month', $month)->get();
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $present = $rows->pluck('plant_code')->filter()->unique()->values()->all();
+        $plants = array_map(fn ($p) => ['code' => (string) $p], $present);
+
+        $kebunCodes = $rows->pluck('kebun_code')->filter()->unique()->values()->all();
+        $kebun = array_map(fn ($k) => ['code' => (string) $k, 'nama' => ''], $kebunCodes);
+
+        $prodBi = [];
+        $prodSd = [];
+        foreach ($rows as $r) {
+            $prodBi[(string) $r->kebun_code][(string) $r->plant_code] = (float) $r->produksi_bulan_ini;
+            $prodSd[(string) $r->kebun_code][(string) $r->plant_code] = (float) $r->produksi_sd;
+        }
+
+        $batchId = DB::table('batch')->where('year', $year)->where('month', $month)->value('id');
+        $batchId = $batchId !== null ? (int) $batchId : null;
+
+        $tabs = [
+            'pengolahan' => self::POOL_LM16_TEMPLATE['pengolahan'],
+            'overhead' => self::POOL_LM16_TEMPLATE['overhead'],
+            'depresiasi' => self::POOL_LM16_TEMPLATE['depresiasi'],
+        ];
+
+        $out = [];
+        $grand = [];
+        foreach ($tabs as $tab => $tid) {
+            $tblBi = $this->buildProporsi($this->poolFromLm16($batchId, $tid, $plants, 'bi_olah'), $prodBi, $plants, $kebun);
+            $tblSd = $this->buildProporsi($this->poolFromLm16($batchId, $tid, $plants, 'sd_olah'), $prodSd, $plants, $kebun);
+
+            $biByK = [];
+            foreach ($tblBi['rows'] as $r) {
+                $biByK[$r['kebun']] = (float) $r['jlh'];
+            }
+            $sdByK = [];
+            foreach ($tblSd['rows'] as $r) {
+                $sdByK[$r['kebun']] = (float) $r['jlh'];
+            }
+            foreach ($kebun as $k) {
+                $kc = $k['code'];
+                $out[$kc][$tab] = ['bi' => $biByK[$kc] ?? 0.0, 'sd' => $sdByK[$kc] ?? 0.0];
+            }
+            $grand[$tab] = ['bi' => (float) $tblBi['grand']['grand'], 'sd' => (float) $tblSd['grand']['grand']];
+        }
+        $out['_grand'] = $grand;
+
+        return $out;
+    }
+
+    /**
      * Tabel proporsi biaya (baris per Kebun): mengikuti rumus Excel Sheet2
      *   value[kebun][plant] = IFERROR( prod[kebun][plant] / Σ_kebun prod[·][plant] × pool[plant], 0 ).
      * JLH baris = Σ antar-plant; Grand Total kolom = Σ antar-kebun (≡ pool[plant]).
@@ -204,7 +271,7 @@ class AlokasiBiayaOlahController extends Controller
      * @param  array<int, array{code:string, name:string}>  $plants
      * @return array<string, float|null>
      */
-    private function poolFromLm16(?int $batchId, int $templateId, array $plants): array
+    private function poolFromLm16(?int $batchId, int $templateId, array $plants, string $col = 'bi_olah'): array
     {
         $out = [];
         foreach ($plants as $p) {
@@ -220,7 +287,7 @@ class AlokasiBiayaOlahController extends Controller
             ->join('ref_unit as u', 'u.id', '=', 'r.unit_id')
             ->where('r.batch_id', $batchId)
             ->where('r.template_id', $templateId)
-            ->pluck('r.bi_olah', 'u.code');
+            ->pluck("r.{$col}", 'u.code');
 
         $grand = 0.0;
         $any = false;

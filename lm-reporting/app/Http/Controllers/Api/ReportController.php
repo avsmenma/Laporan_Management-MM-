@@ -126,6 +126,11 @@ class ReportController extends Controller
         // (tabel produksi_pks), lalu hitung ulang subtotal & HPP yang terdampak.
         $rows = $this->applyProduksiToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
 
+        // Isi baris "Beban Langsung/Overhead/Penyusutan Pengolahan" dari halaman
+        // Alokasi Biaya Olah (JLH per Kebun), lalu hitung ulang subtotal Beban
+        // Pengolahan/Penyusutan/Produksi Kebun Inti. Lapisan presentasi.
+        $rows = $this->applyAlokasiOlahToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
+
         // Sisipkan baris "Jumlah" untuk seksi A (Saldo Awal) — turunan dari baris
         // detail yang sudah terverifikasi, tidak mengubah template/mesin hitung.
         $rows = $this->withSaldoAwalJumlah($rows);
@@ -1005,6 +1010,98 @@ class ReportController extends Controller
         // dengan kolom biaya yang juga membandingkan periode yang sama tahun lalu.
         $fill($aggregate($batch->year, $batch->month), 'bi_real_thn_ini', 'sd_real_thn_ini');
         $fill($aggregate($batch->year - 1, $batch->month), 'bi_real_thn_lalu', 'sd_real_thn_lalu');
+
+        return $rows;
+    }
+
+    /**
+     * Isi baris Pengolahan LM13 Kebun dari halaman Alokasi Biaya Olah (JLH per Kebun):
+     *   Beban Langsung Pengolahan      ← tab Biaya Pengolahan (JLH baris Kebun)
+     *   Beban Overhead Pengolahan      ← tab Biaya Overhead
+     *   Beban Penyusutan Overhead Pengolahan ← tab Biaya Depresiasi
+     * Kolom "Real Bln Ini" (bi_real_thn_ini) & "Real s.d" (sd_real_thn_ini) saja.
+     *
+     * Lalu hitung ulang subtotal yang terdampak (kolom Bln Ini & s.d):
+     *   Jumlah Beban Pengolahan          = Langsung + Overhead
+     *   Jumlah Beban Penyusutan          = Penyusutan Kebun (existing) + Penyusutan Pengolahan
+     *   Jumlah Beban Produksi Kebun Inti = (Tanaman+Overhead) + Jumlah Beban Pengolahan + Jumlah Beban Penyusutan
+     *
+     * Hanya blok OLAH_JUAL ("Kebun Sendiri + Pihak III"), sama seperti applyProduksiToLm13.
+     * Untuk "Semua Unit" ($isAll) nilai = total seluruh Kebun (_grand). Lapisan presentasi.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function applyAlokasiOlahToLm13(\Illuminate\Support\Collection $rows, Batch $batch, ?RefUnit $unit, string $komoditi, bool $isAll): \Illuminate\Support\Collection
+    {
+        $komoditi = strtoupper($komoditi);
+
+        // Peta urutan baris per komoditi (lihat seed_lm_template_row.sql).
+        $map = [
+            'KS' => ['langsung' => 56, 'overhead' => 57, 'jml_olah' => 58, 'peny_kebun' => 59, 'peny_olah' => 60, 'jml_peny' => 61, 'jml_tan_oh' => 55, 'jml_prod_inti' => 62],
+            'KR' => ['langsung' => 36, 'overhead' => 37, 'jml_olah' => 38, 'peny_kebun' => 39, 'peny_olah' => 40, 'jml_peny' => 41, 'jml_tan_oh' => 35, 'jml_prod_inti' => 42],
+        ];
+        if (! isset($map[$komoditi])) {
+            return $rows;
+        }
+        $u = $map[$komoditi];
+
+        // JLH Alokasi Biaya Olah per Kebun untuk periode batch.
+        $alok = app(\App\Http\Controllers\Api\AlokasiBiayaOlahController::class)
+            ->jlhPerKebunLm13((int) $batch->year, (int) $batch->month);
+        if ($alok === []) {
+            return $rows;
+        }
+
+        // Nilai untuk unit ini (atau total semua Kebun bila konsolidasi).
+        if ($isAll) {
+            $vals = $alok['_grand'] ?? null;
+        } else {
+            $vals = ($unit !== null) ? ($alok[$unit->code] ?? null) : null;
+        }
+        if ($vals === null) {
+            return $rows;
+        }
+
+        // Indeks baris blok OLAH_JUAL per urutan (blok "Kebun Sendiri + Pihak III").
+        $oj = [];
+        foreach ($rows as $row) {
+            if ($row->blok === 'OLAH_JUAL') {
+                $oj[(int) $row->urutan] = $row;
+            }
+        }
+        if ($oj === []) {
+            return $rows;
+        }
+
+        $set = function (int $urutan, float $bi, float $sd) use ($oj): void {
+            if (isset($oj[$urutan])) {
+                $oj[$urutan]->bi_real_thn_ini = $bi;
+                $oj[$urutan]->sd_real_thn_ini = $sd;
+            }
+        };
+
+        // Isi 3 baris detail dari JLH tiap tab.
+        $set($u['langsung'], (float) $vals['pengolahan']['bi'], (float) $vals['pengolahan']['sd']);
+        $set($u['overhead'], (float) $vals['overhead']['bi'], (float) $vals['overhead']['sd']);
+        $set($u['peny_olah'], (float) $vals['depresiasi']['bi'], (float) $vals['depresiasi']['sd']);
+
+        // Hitung ulang subtotal terdampak (kolom Bln Ini & s.d).
+        $sumInto = function (int $target, array $sources) use ($oj): void {
+            if (! isset($oj[$target])) {
+                return;
+            }
+            $bi = $sd = 0.0;
+            foreach ($sources as $s) {
+                $bi += (float) ($oj[$s]->bi_real_thn_ini ?? 0);
+                $sd += (float) ($oj[$s]->sd_real_thn_ini ?? 0);
+            }
+            $oj[$target]->bi_real_thn_ini = $bi;
+            $oj[$target]->sd_real_thn_ini = $sd;
+        };
+        $sumInto($u['jml_olah'], [$u['langsung'], $u['overhead']]);
+        $sumInto($u['jml_peny'], [$u['peny_kebun'], $u['peny_olah']]);
+        $sumInto($u['jml_prod_inti'], [$u['jml_tan_oh'], $u['jml_olah'], $u['jml_peny']]);
 
         return $rows;
     }
