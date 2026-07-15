@@ -411,6 +411,15 @@
         <aside class="app-sidebar">
             <nav>
                 <ul class="sidebar-nav">
+                    <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('laba-rugi*') ? 'true' : 'false' }} }">
+                        <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('laba-rugi*') ? 'active' : '' }}" @click="if (document.documentElement.classList.contains('sidebar-collapsed')) { lmToggleSidebar(); open = true } else { open = !open }">
+                            <span class="nav-ico">📁</span> LABA RUGI
+                            <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <ul class="sidebar-subnav" data-flyout="LABA RUGI" x-show="open" x-cloak>
+                            <li><a href="{{ route('laba-rugi.penjualan') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.penjualan') ? 'active' : '' }}"><span class="tree-ico">📄</span> PENJUALAN</a></li>
+                        </ul>
+                    </li>
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('kebun*') ? 'true' : 'false' }} }">
                         <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('kebun*') ? 'active' : '' }}" @click="if (document.documentElement.classList.contains('sidebar-collapsed')) { lmToggleSidebar(); open = true } else { open = !open }">
                             <span class="nav-ico">📁</span> KEBUN
