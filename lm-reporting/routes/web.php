@@ -69,6 +69,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/produksi', [\App\Http\Controllers\Api\ProduksiController::class, 'index']);
     Route::get('/produksi/kebun', [\App\Http\Controllers\Api\ProduksiKebunController::class, 'index']);
     Route::get('/produksi/pembelian', [\App\Http\Controllers\Api\PembelianTbsController::class, 'index']);
+    Route::get('/laba-rugi/penjualan', [\App\Http\Controllers\Api\PenjualanProdukController::class, 'index']);
     Route::get('/alokasi-biaya-olah', [\App\Http\Controllers\Api\AlokasiBiayaOlahController::class, 'index']);
 });
 
