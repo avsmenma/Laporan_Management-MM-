@@ -445,6 +445,7 @@
                         <ul class="sidebar-subnav" data-flyout="PRODUKSI" x-show="open" x-cloak>
                             <li><a href="{{ route('produksi.pks') }}" class="sidebar-sublink {{ request()->routeIs('produksi.pks') ? 'active' : '' }}"><span class="tree-ico">📄</span> PKS</a></li>
                             <li><a href="{{ route('produksi.kebun') }}" class="sidebar-sublink {{ request()->routeIs('produksi.kebun') ? 'active' : '' }}"><span class="tree-ico">📄</span> KEBUN</a></li>
+                            <li><a href="{{ route('produksi.pembelian') }}" class="sidebar-sublink {{ request()->routeIs('produksi.pembelian') ? 'active' : '' }}"><span class="tree-ico">📄</span> PEMBELIAN</a></li>
                         </ul>
                     </li>
                     @if (in_array(optional(optional(auth()->user())->role)->name, ['Operator', 'Admin'], true))
