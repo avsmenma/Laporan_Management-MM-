@@ -7,7 +7,7 @@ use App\Http\Controllers\Master\BatchController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return redirect()->route('kebun');
+    return redirect()->route('laba-rugi.penjualan');
 });
 
 Route::middleware('guest')->group(function () {

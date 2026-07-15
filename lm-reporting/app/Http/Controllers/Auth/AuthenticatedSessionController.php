@@ -30,7 +30,7 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('kebun'));
+        return redirect()->intended(route('laba-rugi.penjualan'));
     }
 
     public function destroy(Request $request): RedirectResponse
