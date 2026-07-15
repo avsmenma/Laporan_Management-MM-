@@ -97,6 +97,10 @@ class DataPurgeService
                     ['table' => 'alokasi_produksi', 'scope' => 'batch'],
                 ],
             ],
+            'pembelian_tbs' => [
+                'label' => 'Pembelian TBS', 'group' => 'Pembelian TBS',
+                'tables' => [['table' => 'pembelian_tbs', 'scope' => 'year_period']],
+            ],
             'laporan' => [
                 'label' => 'Hasil Laporan (LM13 / LM14 / LM16)', 'group' => 'Hasil Laporan',
                 'tables' => [

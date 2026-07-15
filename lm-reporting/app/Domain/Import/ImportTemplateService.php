@@ -190,6 +190,15 @@ class ImportTemplateService
                     'Berat Timbang 1', 'Berat Timbang 2', 'Weight netto',
                 ],
             ],
+            'pembelian_tbs' => [
+                'sheet' => 'Data',
+                'note' => 'Pembelian TBS (ekspor SAP) — sheet harus bernama "Data". Satu file boleh berisi banyak periode (kolom Period); seluruh periode pada tahun terpilih diimpor (hapus-ganti per periode). Isi mulai baris ke-2.',
+                'headers' => [
+                    'Post. Date', 'Period', 'Plant', 'Plant Desc.', 'Batch', 'Vendor', 'Vendor Name', 'UOM',
+                    'Qty TBS', 'Prelim Val', 'Price Diff', 'Actual Value', 'Price', 'Curr.', 'Jenis',
+                    'Contract', 'Purch. Order', 'Mat. Doc', 'Year', 'Inv. Doc', 'Item Inv', 'Year Inv',
+                ],
+            ],
             'investasi_wbs' => [
                 'sheet' => 'DB',
                 'note' => 'Biaya investasi TBM (sheet harus bernama "DB"). Baca posisional; data mulai baris pertama yang kolom A berkode kebun (5Exx).',

@@ -118,6 +118,7 @@ class SpreadsheetImportService
             'areal' => 'Areal',
             'produksi' => 'Produksi',
             'produksi_kebun' => 'Produksi Kebun',
+            'pembelian_tbs' => 'Pembelian TBS',
             'pks_biaya' => 'Biaya PKS (LM16)',
             'investasi_wbs' => 'Investasi — Biaya (DB)',
             'investasi_asset' => 'Investasi — Aset (WS)',
@@ -155,10 +156,19 @@ class SpreadsheetImportService
         return $type === 'produksi_kebun';
     }
 
+    /** Jenis pembelian TBS pabrik (ekspor SAP, sheet "Data"). */
+    public static function isPembelianTbs(string $type): bool
+    {
+        return $type === 'pembelian_tbs';
+    }
+
     /** Jenis yang memakai bulan sebagai penjaga periode (tanpa Batch). */
     public static function usesMonthGuard(string $type): bool
     {
-        return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type);
+        // Catatan pembelian_tbs: bulan wajib dipilih di UI, tetapi file berisi banyak
+        // periode sekaligus — importer memakai TAHUN sebagai penjaga & mengimpor semua
+        // periode pada tahun itu (hapus-ganti per year+period).
+        return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type) || self::isPembelianTbs($type);
     }
 
     /** Sumber budget (BKU/OHC/GC/PKS) untuk jenis anggaran rko & rkap, atau null. */
@@ -609,6 +619,26 @@ class SpreadsheetImportService
             return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
         }
 
+        // Pembelian TBS: sampel dari sheet "Data" (kolom utama untuk verifikasi mata).
+        if (self::isPembelianTbs($type)) {
+            $total = max(0, $this->rowCountForType($type, $path));
+            $headers = ['Post. Date', 'Period', 'Plant', 'Plant Desc.', 'Batch', 'Vendor', 'Vendor Name', 'Qty TBS', 'Actual Value', 'Jenis'];
+            $idx = [0, 1, 2, 3, 4, 5, 6, 8, 11, 14];
+            $rows = [];
+            $emitted = 0;
+            foreach ($this->dataRowsSheet($path, 'Data') as $row) {
+                if ($this->isEmptyRow($row)) {
+                    continue;
+                }
+                $rows[] = array_map(fn ($i) => $row[$i] ?? null, $idx);
+                if (++$emitted >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
+        }
+
         // Areal: baca header + sampel dari sheet "DB", hitung total via rowCountForType.
         if ($type === 'areal') {
             $total = max(0, $this->rowCountForType('areal', $path));
@@ -663,15 +693,16 @@ class SpreadsheetImportService
         return $this->totalDataRows($path);
     }
 
-    /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", produksi pakai sheet "ZPTPNHLPP039", lainnya sheet pertama. */
+    /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", produksi pakai sheet "ZPTPNHLPP039", pembelian TBS sheet "Data", lainnya sheet pertama. */
     public function rowCountForType(string $type, string $path): int
     {
-        if ($type !== 'areal' && ! self::isProduksi($type) && ! self::isProduksiKebun($type)) {
+        if ($type !== 'areal' && ! self::isProduksi($type) && ! self::isProduksiKebun($type) && ! self::isPembelianTbs($type)) {
             return $this->totalDataRows($path);
         }
         $sheet = match (true) {
             $type === 'areal' => 'DB',
             self::isProduksiKebun($type) => 'ZESTHLE020',
+            self::isPembelianTbs($type) => 'Data',
             default => 'ZPTPNHLPP039',
         };
         $n = 0;
@@ -1334,6 +1365,110 @@ class SpreadsheetImportService
         });
 
         return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /** Indeks kolom 0-based sheet "Data" workbook Pembelian TBS (ekspor SAP). */
+    private const PEMBELIAN_TBS_COLS = [
+        'posting_date' => 0, 'period' => 1, 'plant_code' => 2, 'plant_desc' => 3,
+        'batch' => 4, 'vendor_code' => 5, 'vendor_name' => 6, 'uom' => 7,
+        'qty' => 8, 'prelim_val' => 9, 'price_diff' => 10, 'actual_value' => 11,
+        'price' => 12, 'jenis' => 14, 'contract' => 15, 'purch_order' => 16, 'mat_doc' => 17,
+    ];
+
+    /**
+     * Impor sheet "Data" (ekspor SAP pembelian TBS) → pembelian_tbs.
+     *
+     * Satu file berisi banyak periode sekaligus (tahun berjalan) — idempoten
+     * HAPUS-GANTI per (year, period) yang muncul di file; $year (bila diisi) menjadi
+     * penjaga: baris tahun lain dilewati. Semua jenis dokumen (Good Receipt & Invoice)
+     * dan nilai minus (koreksi) disimpan apa adanya — total per plant×batch×period
+     * tervalidasi selisih 0 terhadap pivot workbook acuan. Baris dibaca streaming dan
+     * disisipkan per-chunk (memori konstan; file ±131 ribu baris).
+     */
+    public function importPembelianTbs(string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null): ImportResult
+    {
+        $C = self::PEMBELIAN_TBS_COLS;
+        $inserted = 0;
+
+        DB::transaction(function () use ($path, $C, $year, $onProgress, &$inserted): void {
+            $records = [];
+            $cleared = []; // "year-period" yang sudah dihapus-ganti
+            $flush = function () use (&$records, &$inserted, $onProgress): void {
+                if ($records === []) {
+                    return;
+                }
+                DB::table('pembelian_tbs')->insert($records);
+                $inserted += count($records);
+                $records = [];
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
+            };
+
+            foreach ($this->dataRowsSheet($path, 'Data') as $v) {
+                if ($this->isEmptyRow($v)) {
+                    continue;
+                }
+                $plant = strtoupper(trim((string) ($v[$C['plant_code']] ?? '')));
+                $date = $this->pembelianDate($v[$C['posting_date']] ?? null);
+                $period = is_numeric($v[$C['period']] ?? null) ? (int) $v[$C['period']] : null;
+                if ($plant === '' || $date === null || $period === null || $period < 1 || $period > 12) {
+                    continue;
+                }
+                $rowYear = (int) substr($date, 0, 4);
+                // Penjaga tahun: hanya baris pada tahun terpilih yang diimpor.
+                if ($year !== null && $rowYear !== $year) {
+                    continue;
+                }
+
+                // Hapus-ganti data lama saat periode pertama kali dijumpai di file.
+                $key = "{$rowYear}-{$period}";
+                if (! isset($cleared[$key])) {
+                    DB::table('pembelian_tbs')->where('year', $rowYear)->where('period', $period)->delete();
+                    $cleared[$key] = true;
+                }
+
+                $records[] = [
+                    'posting_date' => $date,
+                    'year' => $rowYear,
+                    'period' => $period,
+                    'plant_code' => $plant,
+                    'plant_desc' => $this->produksiText($v[$C['plant_desc']] ?? null),
+                    'batch' => strtoupper((string) $this->produksiText($v[$C['batch']] ?? null, 12)),
+                    'vendor_code' => $this->produksiText($v[$C['vendor_code']] ?? null, 30),
+                    'vendor_name' => $this->produksiText($v[$C['vendor_name']] ?? null, 200),
+                    'uom' => $this->produksiText($v[$C['uom']] ?? null, 10),
+                    'qty' => $this->produksiNum($v[$C['qty']] ?? null),
+                    'prelim_val' => $this->produksiNum($v[$C['prelim_val']] ?? null),
+                    'price_diff' => $this->produksiNum($v[$C['price_diff']] ?? null),
+                    'actual_value' => $this->produksiNum($v[$C['actual_value']] ?? null),
+                    'price' => $this->produksiNum($v[$C['price']] ?? null),
+                    'jenis' => $this->produksiText($v[$C['jenis']] ?? null, 30),
+                    'contract' => $this->produksiText($v[$C['contract']] ?? null, 30),
+                    'purch_order' => $this->produksiText($v[$C['purch_order']] ?? null, 30),
+                    'mat_doc' => $this->produksiText($v[$C['mat_doc']] ?? null, 30),
+                ];
+                if (count($records) >= 500) {
+                    $flush();
+                }
+            }
+            $flush();
+        });
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /** Tanggal pembelian: serial Excel / 'Y-m-d' (via produksiDate) atau teks 'm/d/Y'. */
+    private function pembelianDate(mixed $v): ?string
+    {
+        $d = $this->produksiDate($v);
+        if ($d !== null) {
+            return $d;
+        }
+        $t = trim((string) ($v ?? ''));
+        $p = \DateTime::createFromFormat('!n/j/Y', $t);
+
+        return $p ? $p->format('Y-m-d') : null;
     }
 
     /**

@@ -938,6 +938,21 @@ Artisan::command('produksi-kebun:import {--file=} {--year=} {--month=}', functio
     return 0;
 })->purpose('Impor jembatan timbang TBS kebun (sheet ZESTHLE020) ke produksi_kebun_wb (idempoten per tanggal). --year+--month sebagai penjaga.');
 
+Artisan::command('pembelian-tbs:import {--file=} {--year=}', function (SpreadsheetImportService $service): int {
+    $file = (string) $this->option('file');
+    if ($file === '' || ! is_file($file)) {
+        $this->error('Pakai --file=<path .xlsx berisi sheet Data (ekspor SAP pembelian TBS)>.');
+
+        return 1;
+    }
+    $year = $this->option('year') !== null ? (int) $this->option('year') : null;
+    $result = $service->importPembelianTbs($file, null, null, $year);
+    $guard = $year !== null ? " (penjaga tahun {$year})" : '';
+    $this->info("Selesai: {$result->rowCount} baris pembelian TBS tersimpan{$guard}.");
+
+    return 0;
+})->purpose('Impor pembelian TBS (sheet Data) ke pembelian_tbs (hapus-ganti per tahun+periode di file). --year sebagai penjaga.');
+
 Artisan::command('produksi:cpo-inti {--year=} {--month=}', function (\App\Domain\Report\ProduksiCpoIntiService $service): int {
     $year = $this->option('year') !== null ? (int) $this->option('year') : null;
     $month = $this->option('month') !== null ? (int) $this->option('month') : null;

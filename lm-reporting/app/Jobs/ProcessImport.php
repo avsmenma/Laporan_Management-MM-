@@ -54,6 +54,10 @@ class ProcessImport implements ShouldQueue
             if (SpreadsheetImportService::isProduksiKebun($job->type)) {
                 $result = $service->importProduksiKebun($path, $job->user_id, $onProgress, (int) $job->year, $month);
                 $affected = $this->batchIdsForPeriod((int) $job->year, $month);
+            } elseif (SpreadsheetImportService::isPembelianTbs($job->type)) {
+                // Seluruh periode pada tahun terpilih diimpor (file setahun berjalan);
+                // tidak menyentuh report batch → tanpa regenerasi.
+                $result = $service->importPembelianTbs($path, $job->user_id, $onProgress, (int) $job->year);
             } elseif (SpreadsheetImportService::isProduksi($job->type)) {
                 $result = $service->importProduksi($path, $job->user_id, $onProgress, (int) $job->year, $month);
                 $affected = $this->batchIdsForPeriod((int) $job->year, $month);
