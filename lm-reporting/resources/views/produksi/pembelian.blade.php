@@ -105,10 +105,12 @@ function pembelianTbsApp() {
             return [...new Set(this.periods.map(p => p.year))].sort((a, b) => b - a);
         },
         months() {
-            return this.periods
-                .filter(p => String(p.year) === String(this.year))
-                .map(p => Number(p.month))
-                .sort((a, b) => a - b);
+            // Bila tahun sudah dipilih, batasi bulan ke tahun itu; bila belum,
+            // tampilkan semua bulan yang tersedia agar dropdown tetap berisi item.
+            const src = this.year
+                ? this.periods.filter(p => String(p.year) === String(this.year))
+                : this.periods;
+            return [...new Set(src.map(p => Number(p.month)))].sort((a, b) => a - b);
         },
         onYearChange() {
             const ms = this.months();
@@ -124,7 +126,18 @@ function pembelianTbsApp() {
         },
 
         async init() {
-            await this.load(true);
+            // Muat daftar periode untuk mengisi opsi dropdown, TAPI jangan auto-pilih
+            // bulan/tahun — biarkan kosong sampai user memilih sendiri.
+            try {
+                const resp = await fetch('/report-data/produksi/pembelian');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    this.periods = data.periods || [];
+                }
+            } catch (e) { /* biarkan; dropdown akan kosong bila gagal */ }
+            this.year = '';
+            this.month = '';
+            this.hasData = false;
         },
 
         async load(adopt = false) {
