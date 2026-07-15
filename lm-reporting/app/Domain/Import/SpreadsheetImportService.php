@@ -119,6 +119,7 @@ class SpreadsheetImportService
             'produksi' => 'Produksi',
             'produksi_kebun' => 'Produksi Kebun',
             'pembelian_tbs' => 'Pembelian TBS',
+            'penjualan_produk' => 'Penjualan Produk',
             'pks_biaya' => 'Biaya PKS (LM16)',
             'investasi_wbs' => 'Investasi — Biaya (DB)',
             'investasi_asset' => 'Investasi — Aset (WS)',
@@ -162,13 +163,20 @@ class SpreadsheetImportService
         return $type === 'pembelian_tbs';
     }
 
+    /** Jenis penjualan produk / Laba Rugi (ekspor GL SAP, sheet "Data"). */
+    public static function isPenjualanProduk(string $type): bool
+    {
+        return $type === 'penjualan_produk';
+    }
+
     /** Jenis yang memakai bulan sebagai penjaga periode (tanpa Batch). */
     public static function usesMonthGuard(string $type): bool
     {
-        // Catatan pembelian_tbs: bulan wajib dipilih di UI, tetapi file berisi banyak
-        // periode sekaligus — importer memakai TAHUN sebagai penjaga & mengimpor semua
-        // periode pada tahun itu (hapus-ganti per year+period).
-        return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type) || self::isPembelianTbs($type);
+        // Catatan pembelian_tbs & penjualan_produk: bulan wajib dipilih di UI, tetapi file
+        // berisi banyak periode sekaligus — importer memakai TAHUN sebagai penjaga &
+        // mengimpor semua periode pada tahun itu (hapus-ganti per year+period).
+        return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type)
+            || self::isPembelianTbs($type) || self::isPenjualanProduk($type);
     }
 
     /** Sumber budget (BKU/OHC/GC/PKS) untuk jenis anggaran rko & rkap, atau null. */
@@ -639,6 +647,26 @@ class SpreadsheetImportService
             return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
         }
 
+        // Penjualan Produk: sampel dari sheet "Data" (kolom utama untuk verifikasi mata).
+        if (self::isPenjualanProduk($type)) {
+            $total = max(0, $this->rowCountForType($type, $path));
+            $headers = ['Posting Date', 'Period', 'Account', 'Profit Center', 'Description Prctr', 'Material Description', 'Quantity', 'Amount', 'Customer', 'Customer Name'];
+            $idx = [1, 2, 3, 8, 9, 25, 26, 14, 31, 32];
+            $rows = [];
+            $emitted = 0;
+            foreach ($this->dataRowsSheet($path, 'Data') as $row) {
+                if ($this->isEmptyRow($row)) {
+                    continue;
+                }
+                $rows[] = array_map(fn ($i) => $row[$i] ?? null, $idx);
+                if (++$emitted >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
+        }
+
         // Areal: baca header + sampel dari sheet "DB", hitung total via rowCountForType.
         if ($type === 'areal') {
             $total = max(0, $this->rowCountForType('areal', $path));
@@ -696,13 +724,14 @@ class SpreadsheetImportService
     /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", produksi pakai sheet "ZPTPNHLPP039", pembelian TBS sheet "Data", lainnya sheet pertama. */
     public function rowCountForType(string $type, string $path): int
     {
-        if ($type !== 'areal' && ! self::isProduksi($type) && ! self::isProduksiKebun($type) && ! self::isPembelianTbs($type)) {
+        if ($type !== 'areal' && ! self::isProduksi($type) && ! self::isProduksiKebun($type)
+            && ! self::isPembelianTbs($type) && ! self::isPenjualanProduk($type)) {
             return $this->totalDataRows($path);
         }
         $sheet = match (true) {
             $type === 'areal' => 'DB',
             self::isProduksiKebun($type) => 'ZESTHLE020',
-            self::isPembelianTbs($type) => 'Data',
+            self::isPembelianTbs($type), self::isPenjualanProduk($type) => 'Data',
             default => 'ZPTPNHLPP039',
         };
         $n = 0;
@@ -1447,6 +1476,96 @@ class SpreadsheetImportService
                     'contract' => $this->produksiText($v[$C['contract']] ?? null, 30),
                     'purch_order' => $this->produksiText($v[$C['purch_order']] ?? null, 30),
                     'mat_doc' => $this->produksiText($v[$C['mat_doc']] ?? null, 30),
+                ];
+                if (count($records) >= 500) {
+                    $flush();
+                }
+            }
+            $flush();
+        });
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /** Indeks kolom 0-based sheet "Data" workbook Penjualan Produk (ekspor GL SAP). */
+    private const PENJUALAN_COLS = [
+        'document_number' => 0, 'posting_date' => 1, 'period' => 2, 'account' => 3,
+        'reference' => 5, 'profit_center' => 8, 'profit_center_desc' => 9,
+        'document_type' => 12, 'amount' => 14, 'gl_account_desc' => 18,
+        'material_code' => 24, 'material_desc' => 25, 'qty' => 26, 'uom' => 27,
+        'customer_code' => 31, 'customer_name' => 32,
+    ];
+
+    /**
+     * Impor sheet "Data" (ekspor GL SAP penjualan) → penjualan_produk.
+     *
+     * Pola sama dgn importPembelianTbs: file berisi banyak periode → idempoten
+     * HAPUS-GANTI per (year, period) yang muncul di file; $year = penjaga tahun.
+     * Qty & Amount disimpan APA ADANYA (negatif = kredit pendapatan; koreksi positif
+     * ikut) — total per material×(customer|profit center)×period tervalidasi selisih 0
+     * terhadap pivot workbook acuan. Streaming + insert per-chunk (memori konstan).
+     */
+    public function importPenjualanProduk(string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null): ImportResult
+    {
+        $C = self::PENJUALAN_COLS;
+        $inserted = 0;
+
+        DB::transaction(function () use ($path, $C, $year, $onProgress, &$inserted): void {
+            $records = [];
+            $cleared = []; // "year-period" yang sudah dihapus-ganti
+            $flush = function () use (&$records, &$inserted, $onProgress): void {
+                if ($records === []) {
+                    return;
+                }
+                DB::table('penjualan_produk')->insert($records);
+                $inserted += count($records);
+                $records = [];
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
+            };
+
+            foreach ($this->dataRowsSheet($path, 'Data') as $v) {
+                if ($this->isEmptyRow($v)) {
+                    continue;
+                }
+                $pc = strtoupper(trim((string) ($v[$C['profit_center']] ?? '')));
+                $date = $this->pembelianDate($v[$C['posting_date']] ?? null);
+                $period = is_numeric($v[$C['period']] ?? null) ? (int) $v[$C['period']] : null;
+                if ($pc === '' || $date === null || $period === null || $period < 1 || $period > 12) {
+                    continue;
+                }
+                $rowYear = (int) substr($date, 0, 4);
+                // Penjaga tahun: hanya baris pada tahun terpilih yang diimpor.
+                if ($year !== null && $rowYear !== $year) {
+                    continue;
+                }
+
+                // Hapus-ganti data lama saat periode pertama kali dijumpai di file.
+                $key = "{$rowYear}-{$period}";
+                if (! isset($cleared[$key])) {
+                    DB::table('penjualan_produk')->where('year', $rowYear)->where('period', $period)->delete();
+                    $cleared[$key] = true;
+                }
+
+                $records[] = [
+                    'document_number' => $this->produksiText($v[$C['document_number']] ?? null, 20),
+                    'posting_date' => $date,
+                    'year' => $rowYear,
+                    'period' => $period,
+                    'account' => $this->produksiText($v[$C['account']] ?? null, 20),
+                    'gl_account_desc' => $this->produksiText($v[$C['gl_account_desc']] ?? null),
+                    'profit_center' => $pc,
+                    'profit_center_desc' => $this->produksiText($v[$C['profit_center_desc']] ?? null),
+                    'material_code' => $this->produksiText($v[$C['material_code']] ?? null, 20),
+                    'material_desc' => (string) $this->produksiText($v[$C['material_desc']] ?? null, 100),
+                    'qty' => $this->produksiNum($v[$C['qty']] ?? null),
+                    'uom' => $this->produksiText($v[$C['uom']] ?? null, 10),
+                    'amount' => $this->produksiNum($v[$C['amount']] ?? null),
+                    'customer_code' => $this->produksiText($v[$C['customer_code']] ?? null, 30),
+                    'customer_name' => $this->produksiText($v[$C['customer_name']] ?? null, 200),
+                    'document_type' => $this->produksiText($v[$C['document_type']] ?? null, 10),
+                    'reference' => $this->produksiText($v[$C['reference']] ?? null, 30),
                 ];
                 if (count($records) >= 500) {
                     $flush();

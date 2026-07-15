@@ -72,6 +72,7 @@
                               { v: 'gc', t: '[KEBUN] BIAYA GC', budget: true },
                               { v: 'produksi_kebun', t: '[KEBUN] PRODUKSI KEBUN', budget: false },
                               { v: 'pembelian_tbs', t: '[PABRIK] PEMBELIAN TBS', budget: false },
+                              { v: 'penjualan_produk', t: '[LABA RUGI] PENJUALAN PRODUK', budget: false },
                               { v: 'pks_biaya', t: '[PABRIK] BIAYA PKS ALL', budget: true },
                               { v: 'produksi', t: '[PABRIK] PRODUKSI PKS', budget: true },
                           ];

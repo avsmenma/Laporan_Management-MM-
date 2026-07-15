@@ -101,6 +101,10 @@ class DataPurgeService
                 'label' => 'Pembelian TBS', 'group' => 'Pembelian TBS',
                 'tables' => [['table' => 'pembelian_tbs', 'scope' => 'year_period']],
             ],
+            'penjualan_produk' => [
+                'label' => 'Penjualan Produk', 'group' => 'Laba Rugi',
+                'tables' => [['table' => 'penjualan_produk', 'scope' => 'year_period']],
+            ],
             'laporan' => [
                 'label' => 'Hasil Laporan (LM13 / LM14 / LM16)', 'group' => 'Hasil Laporan',
                 'tables' => [

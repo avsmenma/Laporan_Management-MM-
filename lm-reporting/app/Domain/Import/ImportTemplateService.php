@@ -199,6 +199,19 @@ class ImportTemplateService
                     'Contract', 'Purch. Order', 'Mat. Doc', 'Year', 'Inv. Doc', 'Item Inv', 'Year Inv',
                 ],
             ],
+            'penjualan_produk' => [
+                'sheet' => 'Data',
+                'note' => 'Penjualan Produk (ekspor GL SAP) — sheet harus bernama "Data". Satu file boleh berisi banyak periode (kolom Posting Period); seluruh periode pada tahun terpilih diimpor (hapus-ganti per periode). Nilai kredit (negatif) disimpan apa adanya. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Document Number', 'Posting Date', 'Posting Period', 'Account', 'Assignment', 'Reference',
+                    'Supplier', 'Vendor Name', 'Profit Center', 'Description Prctr',
+                    'Offsetting Account in General Ledger', 'Name of offsetting account', 'Document Type',
+                    'Posting Key', 'Amount in Local Currency', 'Clearing Document', 'Text', 'User Name',
+                    'GL Account Desc', 'Entry Date', 'Time of Entry', 'Year/Month', 'Reference Key',
+                    'Purchasing Document', 'Material', 'Material Description', 'Quantity', 'Base Unit of Measure',
+                    'Cost Center', 'Cost Element', 'Reference Key 3', 'Customer', 'Customer Name', 'Asset',
+                ],
+            ],
             'investasi_wbs' => [
                 'sheet' => 'DB',
                 'note' => 'Biaya investasi TBM (sheet harus bernama "DB"). Baca posisional; data mulai baris pertama yang kolom A berkode kebun (5Exx).',

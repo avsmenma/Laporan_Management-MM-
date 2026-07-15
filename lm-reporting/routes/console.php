@@ -953,6 +953,21 @@ Artisan::command('pembelian-tbs:import {--file=} {--year=}', function (Spreadshe
     return 0;
 })->purpose('Impor pembelian TBS (sheet Data) ke pembelian_tbs (hapus-ganti per tahun+periode di file). --year sebagai penjaga.');
 
+Artisan::command('penjualan-produk:import {--file=} {--year=}', function (SpreadsheetImportService $service): int {
+    $file = (string) $this->option('file');
+    if ($file === '' || ! is_file($file)) {
+        $this->error('Pakai --file=<path .xlsx berisi sheet Data (ekspor GL SAP penjualan)>.');
+
+        return 1;
+    }
+    $year = $this->option('year') !== null ? (int) $this->option('year') : null;
+    $result = $service->importPenjualanProduk($file, null, null, $year);
+    $guard = $year !== null ? " (penjaga tahun {$year})" : '';
+    $this->info("Selesai: {$result->rowCount} baris penjualan produk tersimpan{$guard}.");
+
+    return 0;
+})->purpose('Impor penjualan produk (sheet Data) ke penjualan_produk (hapus-ganti per tahun+periode di file). --year sebagai penjaga.');
+
 Artisan::command('produksi:cpo-inti {--year=} {--month=}', function (\App\Domain\Report\ProduksiCpoIntiService $service): int {
     $year = $this->option('year') !== null ? (int) $this->option('year') : null;
     $month = $this->option('month') !== null ? (int) $this->option('month') : null;
