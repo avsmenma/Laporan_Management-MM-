@@ -74,10 +74,10 @@ function produksiKebunApp() {
         table: null,
         activeTab: 'sendiri',
 
+        // Tab Pembelian sudah dipindah ke halaman /produksi/pembelian (menu Produksi).
         allTabs() {
             return [
                 { key: 'sendiri', title: 'Kebun Sendiri' },
-                { key: 'pembelian', title: 'Pembelian' },
             ];
         },
         setTab(key) {
@@ -212,63 +212,10 @@ function produksiKebunApp() {
             return rows;
         },
 
-        // ---- Pembelian: PEMBELIAN + KODE SUPLIER + NAMA SUPPLIER + kolom Short Plant + Grand Total ----
-        pembelianColumns() {
-            const fmt = this.qtyFmt.bind(this);
-            const sps = this.payload?.short_plant || [];
-            // Dua blok kolom angka (Short Plant + Grand Total): "Bulan {bulan}" & "s.d Bulan {bulan}".
-            const block = (prefix) => {
-                const cols = sps.map(sp => ({ title: sp, field: prefix + '_sp_' + sp, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 95 }));
-                cols.push({ title: 'Grand Total', field: prefix + '_grand_total', hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 120 });
-                return cols;
-            };
-            return [
-                { title: 'PEMBELIAN', field: 'kategori', frozen: true, minWidth: 150 },
-                { title: 'KODE SUPLIER', field: 'supplier_code', frozen: true, minWidth: 120 },
-                { title: 'NAMA SUPPLIER', field: 'supplier_name', frozen: true, minWidth: 240 },
-                { title: this.biLabel(), headerHozAlign: 'center', columns: block('bi') },
-                { title: this.sdLabel(), headerHozAlign: 'center', columns: block('sd') },
-            ];
-        },
-        pembelianRows() {
-            const pb = this.payload?.pembelian;
-            const sps = this.payload?.short_plant || [];
-            if (!pb) return [];
-            const fill = (o, src) => {
-                ['bi', 'sd'].forEach(p => {
-                    const blk = (src && src[p]) || { sp: {}, grand_total: 0 };
-                    o[p + '_grand_total'] = blk.grand_total ?? 0;
-                    sps.forEach(sp => { o[p + '_sp_' + sp] = (blk.sp && blk.sp[sp]) ? blk.sp[sp] : 0; });
-                });
-                return o;
-            };
-            const rows = [];
-            (pb.groups || []).forEach(g => {
-                (g.rows || []).forEach((r, i) => {
-                    rows.push(fill({
-                        kategori: i === 0 ? g.kategori : '',
-                        supplier_code: r.supplier_code,
-                        supplier_name: r.supplier_name,
-                        _type: 'detail',
-                    }, r));
-                });
-                rows.push(fill({
-                    kategori: g.kategori + ' Total', supplier_code: '', supplier_name: '',
-                    _type: 'subtotal',
-                }, g.subtotal || {}));
-            });
-            rows.push(fill({
-                kategori: 'Grand Total', supplier_code: '', supplier_name: '',
-                _type: 'grand',
-            }, pb.grand || {}));
-            return rows;
-        },
-
         renderActive() {
             if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
-            const isSendiri = this.activeTab === 'sendiri';
-            const columns = isSendiri ? this.sendiriColumns() : this.pembelianColumns();
-            const rows = isSendiri ? this.sendiriRows() : this.pembelianRows();
+            const columns = this.sendiriColumns();
+            const rows = this.sendiriRows();
             this.table = new window.Tabulator('#prodkebun-active', {
                 data: rows, columns,
                 columnDefaults: { headerSort: false },

@@ -10,16 +10,14 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Data halaman /produksi/kebun. Sumber: produksi_kebun_wb (sheet ZESTHLE020).
- * Menyajikan dua pivot (mereplikasi sheet VIEW2):
- *  - Kebun Sendiri : baris=kebun (Goods Recipient), kolom=Afdeling, nilai=ΣWeight netto.
- *  - Pembelian     : baris=supplier (dikelompokkan per Kategori), kolom=Short Plant.
+ * Menyajikan pivot Kebun Sendiri (mereplikasi sheet VIEW2): baris=kebun
+ * (Goods Recipient), kolom=Afdeling, nilai=ΣWeight netto.
+ * Pivot Pembelian sudah dipindah ke halaman /produksi/pembelian
+ * (PembelianTbsController, sumber pembelian_tbs dengan nilai rupiah).
  */
 class ProduksiKebunController extends Controller
 {
     use AuthorizesReportRequests;
-
-    /** Urutan grup kategori pembelian sesuai VIEW2. */
-    private const KATEGORI_ORDER = ['Kebun Pihak 3', 'Kebun Plasma'];
 
     public function index(Request $request): JsonResponse
     {
@@ -34,9 +32,8 @@ class ProduksiKebunController extends Controller
         if ($dates === []) {
             return response()->json([
                 'periods' => [], 'year' => null, 'month' => null,
-                'afdeling' => [], 'short_plant' => [],
+                'afdeling' => [],
                 'kebun_sendiri' => ['rows' => [], 'grand' => ['afd' => [], 'grand_total' => 0]],
-                'pembelian' => ['groups' => [], 'grand' => ['sp' => [], 'grand_total' => 0]],
             ]);
         }
 
@@ -84,9 +81,7 @@ class ProduksiKebunController extends Controller
             'year' => $year,
             'month' => $month,
             'afdeling' => $this->afdelingColumns($baseSD),
-            'short_plant' => $this->shortPlantColumns($baseSD),
             'kebun_sendiri' => $this->kebunSendiri($baseBI, $baseSD),
-            'pembelian' => $this->pembelian($baseBI, $baseSD),
         ]);
     }
 
@@ -98,16 +93,6 @@ class ProduksiKebunController extends Controller
         sort($afds);
 
         return array_values($afds);
-    }
-
-    /** Kolom Short Plant (urut: Pagun, Pakem, Palpi, ...). */
-    private function shortPlantColumns(callable $base): array
-    {
-        $sps = $base()->where('supply', 'Pembelian')->whereNotNull('short_plant')
-            ->distinct()->pluck('short_plant')->all();
-        sort($sps);
-
-        return array_values($sps);
     }
 
     /**
@@ -178,109 +163,4 @@ class ProduksiKebunController extends Controller
         return ['rows' => $rows, 'grandAfd' => $grandAfd, 'grandTotal' => $grandTotal];
     }
 
-    /**
-     * Pivot Pembelian gabungan 2 blok (Bulan Ini + s.d), dikelompokkan per kategori
-     * (subtotal) + Grand Total. Tiap baris/subtotal/grand membawa nilai `bi` & `sd`.
-     */
-    private function pembelian(callable $baseBI, callable $baseSD): array
-    {
-        $bi = $this->pivotPembelian($baseBI);
-        $sd = $this->pivotPembelian($baseSD);
-
-        // Union kategori, urut sesuai VIEW2 (Pihak 3 dulu), tak dikenal di akhir.
-        $katKeys = array_keys($sd['byKat'] + $bi['byKat']);
-        usort($katKeys, function ($a, $b) {
-            $ia = array_search($a, self::KATEGORI_ORDER, true);
-            $ib = array_search($b, self::KATEGORI_ORDER, true);
-            $ia = $ia === false ? 99 : $ia;
-            $ib = $ib === false ? 99 : $ib;
-
-            return ($ia <=> $ib) ?: strcmp($a, $b);
-        });
-
-        $groups = [];
-        foreach ($katKeys as $kat) {
-            $sdSup = $sd['byKat'][$kat] ?? [];
-            $biSup = $bi['byKat'][$kat] ?? [];
-            $codes = array_keys($sdSup + $biSup);
-            sort($codes); // urut kode supplier ascending
-
-            $rows = [];
-            $subBiSp = [];
-            $subBiTot = 0.0;
-            $subSdSp = [];
-            $subSdTot = 0.0;
-            foreach ($codes as $code) {
-                $code = (string) $code;
-                $b = $biSup[$code] ?? null;
-                $s = $sdSup[$code] ?? null;
-                $rows[] = [
-                    'supplier_code' => $code,
-                    'supplier_name' => (string) ($s['supplier_name'] ?? $b['supplier_name'] ?? ''),
-                    'bi' => ['sp' => $b['sp'] ?? [], 'grand_total' => $b['grand_total'] ?? 0.0],
-                    'sd' => ['sp' => $s['sp'] ?? [], 'grand_total' => $s['grand_total'] ?? 0.0],
-                ];
-                foreach (($b['sp'] ?? []) as $sp => $v) {
-                    $subBiSp[$sp] = ($subBiSp[$sp] ?? 0) + $v;
-                }
-                foreach (($s['sp'] ?? []) as $sp => $v) {
-                    $subSdSp[$sp] = ($subSdSp[$sp] ?? 0) + $v;
-                }
-                $subBiTot += $b['grand_total'] ?? 0.0;
-                $subSdTot += $s['grand_total'] ?? 0.0;
-            }
-
-            $groups[] = [
-                'kategori' => $kat,
-                'rows' => $rows,
-                'subtotal' => [
-                    'bi' => ['sp' => $subBiSp, 'grand_total' => $subBiTot],
-                    'sd' => ['sp' => $subSdSp, 'grand_total' => $subSdTot],
-                ],
-            ];
-        }
-
-        return [
-            'groups' => $groups,
-            'grand' => [
-                'bi' => ['sp' => $bi['grandSp'], 'grand_total' => $bi['grandTotal']],
-                'sd' => ['sp' => $sd['grandSp'], 'grand_total' => $sd['grandTotal']],
-            ],
-        ];
-    }
-
-    /** Hitung pivot pembelian utk satu cakupan → byKat[kategori][supplier_code]. */
-    private function pivotPembelian(callable $base): array
-    {
-        $grouped = $base()->where('supply', 'Pembelian')
-            ->select('kategori_pembelian', 'supplier_code', 'supplier_name', 'short_plant', DB::raw('SUM(weight_netto) AS total'))
-            ->groupBy('kategori_pembelian', 'supplier_code', 'supplier_name', 'short_plant')
-            ->get();
-
-        $byKat = [];
-        $grandSp = [];
-        $grandTotal = 0.0;
-        foreach ($grouped as $r) {
-            $kat = (string) ($r->kategori_pembelian ?? 'Kebun Pihak 3');
-            $code = (string) ($r->supplier_code ?? '');
-            $byKat[$kat] ??= [];
-            if (! isset($byKat[$kat][$code])) {
-                $byKat[$kat][$code] = [
-                    'supplier_name' => (string) ($r->supplier_name ?? ''),
-                    'sp' => [],
-                    'grand_total' => 0.0,
-                ];
-            }
-            $val = (float) $r->total;
-            $sp = (string) ($r->short_plant ?? '');
-            if ($sp !== '') {
-                $byKat[$kat][$code]['sp'][$sp] = ($byKat[$kat][$code]['sp'][$sp] ?? 0) + $val;
-                $grandSp[$sp] = ($grandSp[$sp] ?? 0) + $val;
-            }
-            $byKat[$kat][$code]['grand_total'] += $val;
-            $grandTotal += $val;
-        }
-
-        return ['byKat' => $byKat, 'grandSp' => $grandSp, 'grandTotal' => $grandTotal];
-    }
 }
