@@ -52,7 +52,9 @@ class ReportLm13PerHaTest extends TestCase
         };
         $set(53, 1_000_000, 5_000_000);   // Jumlah Beban Tanaman
         $set(61, 200_000, 800_000);       // Jumlah Beban Penyusutan
-        $set(68, 1_500_000, 7_000_000);   // Jumlah Biaya Produksi
+        // 68 (Jumlah Biaya Produksi) dihitung ulang = 62 + 67 di lapisan presentasi,
+        // jadi numerator disetel lewat 62 (67 = 0 tanpa data pembelian/alokasi).
+        $set(62, 1_500_000, 7_000_000);   // Jumlah Beban Produksi Kebun Inti
 
         $role = Role::query()->firstOrCreate(['name' => Role::OPERATOR], ['description' => 'Operator']);
         $user = User::factory()->create(['role_id' => $role->id]);
@@ -85,7 +87,7 @@ class ReportLm13PerHaTest extends TestCase
             ->where('report_type', 'LM13')->where('komoditi', 'KS')->where('urutan', $u)->value('id');
         DB::table('report_lm13')
             ->where('batch_id', $batch->id)->where('unit_id', $unit->id)
-            ->where('template_id', $tplId(68))->where('blok', 'OLAH_JUAL')
+            ->where('template_id', $tplId(62))->where('blok', 'OLAH_JUAL')
             ->update(['bi_real_thn_ini' => 1_500_000, 'sd_real_thn_ini' => 7_000_000]);
 
         $role = Role::query()->firstOrCreate(['name' => Role::OPERATOR], ['description' => 'Operator']);
