@@ -75,6 +75,86 @@ class ReportLm13ProduksiTest extends TestCase
         $this->assertEqualsWithDelta(7.0, (float) $oj('46')['sd_jumlah'], 0.001);
     }
 
+    public function test_baris_plasma_dan_pihak_iii_ditarik_dari_produksi_pks(): void
+    {
+        $this->seed();
+        $batch = Batch::query()->create(['code' => 'Batch #2026-05', 'year' => 2026, 'month' => 5, 'status' => 'draft']);
+        // 5E02 Kebun Gunung Mas terpetakan ke plant 5F01 (LM13_PEMBELIAN_PLANT_KEBUN).
+        $unit = RefUnit::query()->where('code', '5E02')->firstOrFail();
+
+        $mk = fn (string $kebun, string $plant, array $v) => array_merge([
+            'posting_date' => '2026-05-31', 'tidak_mengolah' => false,
+            'plant_code' => $plant, 'plant_desc' => 'PKS', 'group_pemilik' => 'Kebun Sendiri',
+            'kebun_code' => $kebun, 'nama_kebun' => $kebun,
+        ], $v);
+        DB::table('produksi_pks')->insert([
+            // Kebun Inti: dijumlah lintas plant (di sini satu plant saja).
+            $mk('5E02', '5F08', ['tbs_diterima_sdhari' => 100, 'tbs_diterima_sdbulan' => 1000, 'tbs_diolah_sdhari' => 80, 'tbs_diolah_sdbulan' => 800, 'sisa_akhir' => 5, 'ms_sdhari' => 16, 'ms_sdbulan' => 160, 'is_sdhari' => 4, 'is_sdbulan' => 40]),
+            // Plasma & Pihak III pada plant terpetakan (5F01).
+            $mk('PLSM', '5F01', ['tbs_diterima_sdhari' => 50, 'tbs_diterima_sdbulan' => 500, 'tbs_diolah_sdhari' => 40, 'tbs_diolah_sdbulan' => 400, 'sisa_akhir' => 3, 'ms_sdhari' => 8, 'ms_sdbulan' => 80, 'is_sdhari' => 2, 'is_sdbulan' => 20]),
+            $mk('PHTG', '5F01', ['tbs_diterima_sdhari' => 30, 'tbs_diterima_sdbulan' => 300, 'tbs_diolah_sdhari' => 20, 'tbs_diolah_sdbulan' => 200, 'sisa_akhir' => 1, 'ms_sdhari' => 4, 'ms_sdbulan' => 40, 'is_sdhari' => 1, 'is_sdbulan' => 10]),
+            // Plant lain (5F04 → milik 5E04) tidak boleh ikut untuk 5E02.
+            $mk('PLSM', '5F04', ['tbs_diterima_sdhari' => 999, 'tbs_diterima_sdbulan' => 999, 'tbs_diolah_sdhari' => 999, 'tbs_diolah_sdbulan' => 999, 'sisa_akhir' => 999, 'ms_sdhari' => 999, 'ms_sdbulan' => 999, 'is_sdhari' => 999, 'is_sdbulan' => 999]),
+        ]);
+
+        app(Lm13Service::class)->generate($batch, $unit, 'KS');
+
+        $role = Role::query()->firstOrCreate(['name' => Role::OPERATOR], ['description' => 'Operator']);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        $data = $this->actingAs($user)->getJson('/report-data/lm13?batch='.$batch->id.'&unit='.$unit->code.'&komoditi=KS')->assertOk()->json();
+        $rows = collect($data['rows']);
+        $oj = fn (string $urutan) => $rows->first(fn ($r) => (string) $r['urutan'] === $urutan && $r['block'] === 'OLAH_JUAL');
+        $bi = fn (string $urutan) => (float) $oj($urutan)['bi_jumlah'];
+        $sd = fn (string $urutan) => (float) $oj($urutan)['sd_jumlah'];
+
+        // A Saldo Awal = Diolah + Akhir − Diterima: Plasma (3) = 40+3−50 = −7;
+        // Pihak III (4) = 20+1−30 = −9; Jumlah (4.5) = −15 + −7 + −9 = −31.
+        $this->assertEqualsWithDelta(-7.0, $bi('3'), 0.001);
+        $this->assertEqualsWithDelta(-9.0, $bi('4'), 0.001);
+        $this->assertEqualsWithDelta(-31.0, $bi('4.5'), 0.001);
+
+        // B Diterima: Plasma (7) 50/500, Pihak III (8) 30/300, Jumlah (9) = 180.
+        $this->assertEqualsWithDelta(50.0, $bi('7'), 0.001);
+        $this->assertEqualsWithDelta(500.0, $sd('7'), 0.001);
+        $this->assertEqualsWithDelta(30.0, $bi('8'), 0.001);
+        $this->assertEqualsWithDelta(180.0, $bi('9'), 0.001);
+
+        // D MS: Plasma (17) 8, Pihak III (18) 4, Jumlah (19) = 28.
+        // E IS: Plasma (22) 2, Pihak III (23) 1, Jumlah (24) = 7; MS+IS (25) = 35.
+        $this->assertEqualsWithDelta(8.0, $bi('17'), 0.001);
+        $this->assertEqualsWithDelta(4.0, $bi('18'), 0.001);
+        $this->assertEqualsWithDelta(28.0, $bi('19'), 0.001);
+        $this->assertEqualsWithDelta(2.0, $bi('22'), 0.001);
+        $this->assertEqualsWithDelta(1.0, $bi('23'), 0.001);
+        $this->assertEqualsWithDelta(7.0, $bi('24'), 0.001);
+        $this->assertEqualsWithDelta(35.0, $bi('25'), 0.001);
+
+        // F TBS Olah: Plasma (29) 40, Pihak III (30) 20, Jumlah (31) = 140.
+        $this->assertEqualsWithDelta(40.0, $bi('29'), 0.001);
+        $this->assertEqualsWithDelta(20.0, $bi('30'), 0.001);
+        $this->assertEqualsWithDelta(140.0, $bi('31'), 0.001);
+
+        // F MS (33/34/35 = D per pihak) Jumlah (36) = 28; F IS Jumlah (41) = 7;
+        // Jumlah Produksi yang MS+IS (42) = 35.
+        $this->assertEqualsWithDelta(16.0, $bi('33'), 0.001);
+        $this->assertEqualsWithDelta(8.0, $bi('34'), 0.001);
+        $this->assertEqualsWithDelta(28.0, $bi('36'), 0.001);
+        $this->assertEqualsWithDelta(4.0, $bi('38'), 0.001);
+        $this->assertEqualsWithDelta(7.0, $bi('41'), 0.001);
+        $this->assertEqualsWithDelta(35.0, $bi('42'), 0.001);
+
+        // F Restan Loading Ramp per pihak (43/44/45) → Saldo Akhir TBS (46) = 5+3+1 = 9.
+        $this->assertEqualsWithDelta(5.0, $bi('43'), 0.001);
+        $this->assertEqualsWithDelta(3.0, $bi('44'), 0.001);
+        $this->assertEqualsWithDelta(1.0, $bi('45'), 0.001);
+        $this->assertEqualsWithDelta(9.0, $bi('46'), 0.001);
+        $this->assertEqualsWithDelta(9.0, $sd('46'), 0.001);
+
+        // HPP Pihak III (73): biaya (67) masih 0 tanpa data pembelian → tetap 0 ('-').
+        $this->assertEqualsWithDelta(0.0, $bi('73'), 0.001);
+    }
+
     public function test_kolom_real_thn_lalu_produksi_ditarik_dari_produksi_pks_tahun_lalu(): void
     {
         $this->seed();

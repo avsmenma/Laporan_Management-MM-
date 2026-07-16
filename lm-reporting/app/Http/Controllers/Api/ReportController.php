@@ -171,9 +171,6 @@ class ReportController extends Controller
         // jadi rasio ini diisi di lapisan presentasi agar konsisten dengan Luas Area.
         $rows = $this->applyPerHaToLm13($rows, (float) ($area['real_thn_ini'] ?? 0), $komoditi);
 
-        // Kosongkan baris "Harga Pokok Pihak III" (belum ada data Pihak III).
-        $rows = $this->blankLm13HppPihakIII($rows);
-
         return response()->json([
             'success' => true,
             'meta' => $meta,
@@ -911,19 +908,24 @@ class ReportController extends Controller
     }
 
     /**
-     * Tarik nilai produksi LM13 (baris "- Kebun Inti" tiap grup + Saldo Akhir TBS) dari
+     * Tarik nilai produksi LM13 seksi A–F (baris Kebun Inti + Plasma + Pihak III) dari
      * data halaman Produksi (produksi_pks) untuk blok "Kebun Sendiri + Pihak III"
      * (OLAH_JUAL), lalu hitung ulang subtotal "Jumlah" dan baris HPP yang terdampak.
      *
-     * Pemetaan grup → Grand Total tabel Produksi (kolom Bln Ini ← blok BULAN INI/sdhari,
-     * s.d ← blok S.D BULAN INI/sdbulan):
-     *   urutan 2  (A Saldo Awal TBS · Kebun Inti)  ← Restan Awal  (= Diolah + Akhir − Diterima)
-     *   urutan 6  (B Diterima Lapangan · Kebun Inti) ← TBS Diterima
-     *   urutan 16 (D Minyak Sawit · Kebun Inti)     ← Produksi Minyak Sawit
-     *   urutan 21 (E Inti Sawit · Kebun Inti)       ← Produksi Inti Sawit
-     *   urutan 28 (F TBS Olah · Kebun Inti)         ← TBS Diolah
-     *   urutan 46 (Saldo Akhir TBS)                 ← Restan Akhir (= sisa_akhir)
-     * Grup C (Produksi di Jual) dibiarkan kosong; blok Olah & Jual/KSO menyusul.
+     * Ukuran per seksi ← tab halaman Produksi (kolom Bln Ini ← blok BULAN INI/sdhari,
+     * s.d ← blok S.D BULAN INI/sdbulan), per pihak (urutan inti/PLSM/PHTG):
+     *   A Saldo Awal TBS   (2/3/4)    ← Restan Awal (= Diolah + Akhir − Diterima)
+     *   B Diterima Lapangan (6/7/8)   ← TBS Diterima
+     *   D Minyak Sawit     (16/17/18) ← Produksi Minyak Sawit
+     *   E Inti Sawit       (21/22/23) ← Produksi Inti Sawit
+     *   F TBS Olah         (28/29/30) ← TBS Diolah
+     *   F Minyak Sawit     (33/34/35) ← Produksi Minyak Sawit (Excel: D = salinan F, E27=E44)
+     *   F Inti Sawit       (38/39/40) ← Produksi Inti Sawit
+     *   F Restan Loading Ramp (43/44/45) ← Restan Akhir (= sisa_akhir); 46 = 43+44+45
+     * Baris Kebun Inti = baris kebun ybs (Semua Unit: semua 5E). Baris Plasma = baris
+     * PLSM, Pihak III = baris PHTG — hanya pada kolom plant terpetakan (peta PKS→Kebun
+     * pembelian TBS, LM13_PEMBELIAN_PLANT_KEBUN); kebun tak terpetakan dibiarkan kosong.
+     * Grup C (Produksi di Jual) dibiarkan kosong (tak ada tab padanannya).
      * Hanya KS (produksi_pks = sawit). Lapisan presentasi (tanpa regenerasi).
      *
      * @param  \Illuminate\Support\Collection<int, object>  $rows
@@ -947,8 +949,8 @@ class ReportController extends Controller
         }
 
         // Agregat produksi (snapshot tanggal posting terbaru dlm bulan) untuk satu tahun,
-        // sama seperti resolusi di halaman Produksi. Mengembalikan map urutan baris
-        // "- Kebun Inti" => ['bi' => s/d hari, 'sd' => s/d bulan], atau null bila tak ada data.
+        // sama seperti resolusi di halaman Produksi, dipisah tiga pihak. Mengembalikan
+        // map urutan baris => ['bi' => s/d hari, 'sd' => s/d bulan], null bila tak ada data.
         $aggregate = function (int $year, int $month) use ($unit, $isAll): ?array {
             $date = DB::table('produksi_pks')
                 ->whereYear('posting_date', $year)
@@ -958,26 +960,54 @@ class ReportController extends Controller
                 return null;
             }
 
-            $q = DB::table('produksi_pks')->whereDate('posting_date', $date);
-            if (! $isAll && $unit !== null) {
-                $q->where('kebun_code', $unit->code);
-            }
-            $a = $q->selectRaw(
-                'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
-                'COALESCE(SUM(tbs_diolah_sdhari),0) tdo_h, COALESCE(SUM(tbs_diolah_sdbulan),0) tdo_b, '.
-                'COALESCE(SUM(sisa_akhir),0) akhir, '.
-                'COALESCE(SUM(ms_sdhari),0) ms_h, COALESCE(SUM(ms_sdbulan),0) ms_b, '.
-                'COALESCE(SUM(is_sdhari),0) is_h, COALESCE(SUM(is_sdbulan),0) is_b'
-            )->first();
+            // Plant untuk baris Plasma/Pihak III: semua plant terpetakan (konsolidasi)
+            // atau plant milik kebun ini saja (kebun tak terpetakan → whereIn [] → 0).
+            $plants = $isAll
+                ? array_keys(self::LM13_PEMBELIAN_PLANT_KEBUN)
+                : array_keys(array_filter(
+                    self::LM13_PEMBELIAN_PLANT_KEBUN,
+                    fn (string $kebun) => $unit !== null && $kebun === $unit->code
+                ));
 
-            return [
-                2 => ['bi' => $a->tdo_h + $a->akhir - $a->tdi_h, 'sd' => $a->tdo_b + $a->akhir - $a->tdi_b],
-                6 => ['bi' => $a->tdi_h, 'sd' => $a->tdi_b],
-                16 => ['bi' => $a->ms_h, 'sd' => $a->ms_b],
-                21 => ['bi' => $a->is_h, 'sd' => $a->is_b],
-                28 => ['bi' => $a->tdo_h, 'sd' => $a->tdo_b],
-                46 => ['bi' => $a->akhir, 'sd' => $a->akhir],
+            $sum = function (\Closure $filter) use ($date): object {
+                $q = DB::table('produksi_pks')->whereDate('posting_date', $date);
+                $filter($q);
+
+                return $q->selectRaw(
+                    'COALESCE(SUM(tbs_diterima_sdhari),0) tdi_h, COALESCE(SUM(tbs_diterima_sdbulan),0) tdi_b, '.
+                    'COALESCE(SUM(tbs_diolah_sdhari),0) tdo_h, COALESCE(SUM(tbs_diolah_sdbulan),0) tdo_b, '.
+                    'COALESCE(SUM(sisa_akhir),0) akhir, '.
+                    'COALESCE(SUM(ms_sdhari),0) ms_h, COALESCE(SUM(ms_sdbulan),0) ms_b, '.
+                    'COALESCE(SUM(is_sdhari),0) is_h, COALESCE(SUM(is_sdbulan),0) is_b'
+                )->first();
+            };
+
+            $inti = $sum(function ($q) use ($unit, $isAll): void {
+                if ($isAll) {
+                    $q->where('kebun_code', 'like', '5E%');
+                } elseif ($unit !== null) {
+                    $q->where('kebun_code', $unit->code);
+                }
+            });
+            $plsm = $sum(fn ($q) => $q->where('kebun_code', 'PLSM')->whereIn('plant_code', $plants));
+            $phtg = $sum(fn ($q) => $q->where('kebun_code', 'PHTG')->whereIn('plant_code', $plants));
+
+            // Urutan baris per pihak: [A saldo awal, B diterima, D MS, E IS,
+            // F TBS olah, F MS, F IS, F restan loading ramp].
+            $map = fn (object $a, array $u): array => [
+                $u[0] => ['bi' => $a->tdo_h + $a->akhir - $a->tdi_h, 'sd' => $a->tdo_b + $a->akhir - $a->tdi_b],
+                $u[1] => ['bi' => $a->tdi_h, 'sd' => $a->tdi_b],
+                $u[2] => ['bi' => $a->ms_h, 'sd' => $a->ms_b],
+                $u[3] => ['bi' => $a->is_h, 'sd' => $a->is_b],
+                $u[4] => ['bi' => $a->tdo_h, 'sd' => $a->tdo_b],
+                $u[5] => ['bi' => $a->ms_h, 'sd' => $a->ms_b],
+                $u[6] => ['bi' => $a->is_h, 'sd' => $a->is_b],
+                $u[7] => ['bi' => $a->akhir, 'sd' => $a->akhir],
             ];
+
+            return $map($inti, [2, 6, 16, 21, 28, 33, 38, 43])
+                + $map($plsm, [3, 7, 17, 22, 29, 34, 39, 44])
+                + $map($phtg, [4, 8, 18, 23, 30, 35, 40, 45]);
         };
 
         // Isi nilai produksi + hitung ulang subtotal & HPP untuk satu pasang kolom
@@ -1012,7 +1042,10 @@ class ReportController extends Controller
             $sumInto(24, [21, 22, 23]); // E: Jumlah
             $sumInto(25, [19, 24]);     // Jumlah Produksi MS + IS
             $sumInto(31, [28, 29, 30]); // F TBS Olah: Jumlah
+            $sumInto(36, [33, 34, 35]); // F Minyak Sawit: Jumlah
+            $sumInto(41, [38, 39, 40]); // F Inti Sawit: Jumlah
             $sumInto(42, [19, 24]);     // Jumlah Produksi yang MS + IS (Excel E53 = E47+E52)
+            $sumInto(46, [43, 44, 45]); // Saldo Akhir TBS (Excel E57 = SUM(E54:E56))
 
             // HPP (urutan 72,73,74) = Jumlah Biaya Produksi (68) / Jumlah Produksi MS+IS (25).
             if (isset($oj[68], $oj[25])) {
@@ -1231,7 +1264,8 @@ class ReportController extends Controller
         //   72 Kebun Sendiri = 62 / (MS inti (16) + IS inti (21))
         //   73 Pihak III     = 67 / (MS+IS Plasma & Pihak III (17,18,22,23))
         //   74 AF Pabrik     = 68 / Jumlah Produksi yang MS+IS (42)
-        // Produksi Plasma/Pihak III belum ada sumber → 73 jadi 0 ('-').
+        // Produksi Plasma/Pihak III diisi applyProduksiToLm13 (baris PLSM/PHTG
+        // produksi_pks); kebun tanpa plant terpetakan → penyebut 0 → 73 tampil '-'.
         $safeDiv = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d, 4);
         $hpp = [
             72 => [[62], [16, 21]],
@@ -1413,32 +1447,6 @@ class ReportController extends Controller
             $row->rp_kg_mi = $div((float) $row->bi_jumlah, $miBi);
             $row->rp_kg_tbs_sd = $div((float) $row->sd_jumlah, $tbsSd);
             $row->rp_kg_mi_sd = $div((float) $row->sd_jumlah, $miSd);
-        }
-
-        return $rows;
-    }
-
-    /**
-     * Kosongkan nilai baris "Harga Pokok Pihak III ..." LM13 (KS Rp/Kg Ms+IS,
-     * KR Rp/Kg Lump) di semua blok — belum ada data produksi Pihak III, jadi sel
-     * ditampilkan kosong ("-"). Lapisan presentasi (tidak mengubah mesin hitung).
-     *
-     * @param  \Illuminate\Support\Collection<int, object>  $rows
-     * @return \Illuminate\Support\Collection<int, object>
-     */
-    private function blankLm13HppPihakIII(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
-    {
-        $valueCols = [
-            'bi_real_thn_lalu', 'bi_real_thn_ini', 'bi_rko_tw', 'bi_rkap',
-            'sd_real_thn_lalu', 'sd_real_thn_ini', 'sd_rko_tw', 'sd_rkap',
-        ];
-
-        foreach ($rows as $row) {
-            if (str_starts_with((string) ($row->uraian ?? ''), 'Harga Pokok Pihak III')) {
-                foreach ($valueCols as $col) {
-                    $row->{$col} = 0.0;
-                }
-            }
         }
 
         return $rows;
