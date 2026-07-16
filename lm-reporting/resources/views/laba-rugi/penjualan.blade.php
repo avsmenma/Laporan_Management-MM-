@@ -85,17 +85,13 @@ function penjualanApp() {
         ],
 
         // Angka apa adanya dari GL (penjualan = kredit → negatif): negatif dirender
-        // dalam tanda kurung merah seperti pivot Excel; 0/null → '-'.
+        // dalam tanda kurung seperti pivot Excel (warna tetap normal); 0/null → '-'.
         numFmt(cell) {
             const v = cell.getValue();
             if (v == null || Number(v) === 0) return '-';
             const n = Number(v);
             const s = Math.abs(n).toLocaleString('id-ID', { maximumFractionDigits: 0 });
-            if (n < 0) {
-                cell.getElement().style.color = '#c0392b';
-                return '(' + s + ')';
-            }
-            return s;
+            return n < 0 ? '(' + s + ')' : s;
         },
 
         bulanNama(m) {
