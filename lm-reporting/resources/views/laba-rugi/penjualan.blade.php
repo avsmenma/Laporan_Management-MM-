@@ -99,7 +99,7 @@ function penjualanApp() {
             const v = cell.getValue();
             return (v == null || Number(v) === 0)
                 ? '-'
-                : (Number(v) * 100).toLocaleString('id-ID', { maximumFractionDigits: 2 }) + '%';
+                : (Number(v) * 100).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
         },
 
         bulanNama(m) {
