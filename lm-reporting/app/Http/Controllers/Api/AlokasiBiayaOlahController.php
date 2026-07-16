@@ -222,6 +222,62 @@ class AlokasiBiayaOlahController extends Controller
     }
 
     /**
+     * "Biaya Pengolahan Pihak III" per PKS untuk LM13 Kebun = sel baris PHTG + PLSM
+     * pada tab Summary (Total Biaya Pabrik) di kolom plant tsb. Mengembalikan:
+     *   [plant_code => ['bi' => f, 'sd' => f], ...]
+     * Bln Ini: pool bi_olah × produksi_bulan_ini; s.d: pool sd_olah × produksi_sd.
+     * Plant tanpa alokasi (mis. Non Olah) tidak muncul di hasil.
+     *
+     * @return array<string, array{bi: float, sd: float}>
+     */
+    public function pihakIIIPerPlantLm13(int $year, int $month): array
+    {
+        $rows = DB::table('produksi_cpo_inti')
+            ->where('year', $year)->where('month', $month)->get();
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $present = $rows->pluck('plant_code')->filter()->unique()->values()->all();
+        $plants = array_map(fn ($p) => ['code' => (string) $p], $present);
+
+        $kebunCodes = $rows->pluck('kebun_code')->filter()->unique()->values()->all();
+        $kebun = array_map(fn ($k) => ['code' => (string) $k, 'nama' => ''], $kebunCodes);
+
+        $prodBi = [];
+        $prodSd = [];
+        foreach ($rows as $r) {
+            $prodBi[(string) $r->kebun_code][(string) $r->plant_code] = (float) $r->produksi_bulan_ini;
+            $prodSd[(string) $r->kebun_code][(string) $r->plant_code] = (float) $r->produksi_sd;
+        }
+
+        $batchId = DB::table('batch')->where('year', $year)->where('month', $month)->value('id');
+        $batchId = $batchId !== null ? (int) $batchId : null;
+
+        $tid = self::POOL_LM16_TEMPLATE['summary'];
+        $tblBi = $this->buildProporsi($this->poolFromLm16($batchId, $tid, $plants, 'bi_olah'), $prodBi, $plants, $kebun);
+        $tblSd = $this->buildProporsi($this->poolFromLm16($batchId, $tid, $plants, 'sd_olah'), $prodSd, $plants, $kebun);
+
+        $out = [];
+        foreach (['bi' => $tblBi, 'sd' => $tblSd] as $key => $tbl) {
+            foreach ($tbl['rows'] as $r) {
+                if (! in_array($r['kebun'], ['PHTG', 'PLSM'], true)) {
+                    continue;
+                }
+                foreach ($r['v'] as $plantCode => $val) {
+                    if ((float) $val === 0.0) {
+                        continue;
+                    }
+                    $out[$plantCode] = $out[$plantCode] ?? ['bi' => 0.0, 'sd' => 0.0];
+                    $out[$plantCode][$key] += (float) $val;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Tabel proporsi biaya (baris per Kebun): mengikuti rumus Excel Sheet2
      *   value[kebun][plant] = IFERROR( prod[kebun][plant] / Σ_kebun prod[·][plant] × pool[plant], 0 ).
      * JLH baris = Σ antar-plant; Grand Total kolom = Σ antar-kebun (≡ pool[plant]).

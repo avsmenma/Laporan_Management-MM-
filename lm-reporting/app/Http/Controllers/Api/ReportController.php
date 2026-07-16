@@ -20,6 +20,22 @@ class ReportController extends Controller
     use AuthorizesReportRequests;
 
     /**
+     * Pemetaan PKS → Kebun untuk baris LM13 "Pembelian TBS Plasma/Pihak III" &
+     * "Biaya Pengolahan Pihak III" (acuan: Pembelian TBS Tahun 2026 sheet
+     * "Summary Pabrik Batch" kolom MAPPING UNIT). Kebun di luar peta tidak diisi.
+     */
+    private const LM13_PEMBELIAN_PLANT_KEBUN = [
+        '5F01' => '5E02', // Pabrik Gunung Meliau → Kebun Gunung Mas
+        '5F04' => '5E04', // Pabrik Rimba Belian  → Kebun Rimba Belian
+        '5F07' => '5E07', // Pabrik Ngabang       → Kebun Ngabang
+        '5F08' => '5E08', // Pabrik Parindu       → Kebun Parindu
+        '5F09' => '5E09', // Pabrik Kembayan      → Kebun Kembayan
+        '5F14' => '5E14', // Pabrik Pamukan       → Kebun Pamukan
+        '5F15' => '5E15', // Pabrik Pelaihari     → Kebun Pelaihari
+        '5F22' => '5E17', // Pabrik Long Pinang   → Kebun Tajati
+    ];
+
+    /**
      * GET /api/report/lm14?batch=1&unit=5E11&komoditi=KS
      */
     public function lm14(Request $request): JsonResponse
@@ -130,6 +146,11 @@ class ReportController extends Controller
         // Alokasi Biaya Olah (JLH per Kebun), lalu hitung ulang subtotal Beban
         // Pengolahan/Penyusutan/Produksi Kebun Inti. Lapisan presentasi.
         $rows = $this->applyAlokasiOlahToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
+
+        // Isi baris "Pembelian TBS Plasma/Pihak III" & "Biaya Pengolahan Pihak III"
+        // dari data Pembelian TBS + Alokasi Biaya Olah (peta PKS→Kebun), lalu hitung
+        // ulang "Jumlah Biaya Produksi". Lapisan presentasi.
+        $rows = $this->applyPembelianTbsToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
 
         // Sisipkan baris "Jumlah" untuk seksi A (Saldo Awal) — turunan dari baris
         // detail yang sudah terverifikasi, tidak mengubah template/mesin hitung.
@@ -1102,6 +1123,98 @@ class ReportController extends Controller
         $sumInto($u['jml_olah'], [$u['langsung'], $u['overhead']]);
         $sumInto($u['jml_peny'], [$u['peny_kebun'], $u['peny_olah']]);
         $sumInto($u['jml_prod_inti'], [$u['jml_tan_oh'], $u['jml_olah'], $u['jml_peny']]);
+
+        return $rows;
+    }
+
+    /**
+     * Isi baris Pembelian LM13 Sawit (blok OLAH_JUAL, kolom Real Bln Ini & s.d):
+     *   Pembelian TBS Plasma ( KKPA )  ← pembelian_tbs batch PLSM plant terpetakan
+     *   Pembelian TBS Pihak III        ← pembelian_tbs batch PHTG plant terpetakan
+     *   Biaya Pengolahan Pihak III     ← Alokasi Biaya Olah tab Summary,
+     *                                    sel baris PHTG + PLSM pada kolom plant tsb
+     * Pemetaan PKS→Kebun: LM13_PEMBELIAN_PLANT_KEBUN; kebun di luar peta dibiarkan.
+     *
+     * Lalu "Jumlah Biaya Produksi" dihitung ulang = Jumlah Beban Produksi Kebun Inti
+     * + 5 baris di bawahnya — untuk SEMUA kebun (baris 62 sudah diubah overlay
+     * alokasi olah, jadi subtotal tersimpan sudah basi). Baris "... per Ha" ikut
+     * menyesuaikan karena applyPerHaToLm13 berjalan setelahnya. Lapisan presentasi.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function applyPembelianTbsToLm13(\Illuminate\Support\Collection $rows, Batch $batch, ?RefUnit $unit, string $komoditi, bool $isAll): \Illuminate\Support\Collection
+    {
+        if (strtoupper($komoditi) !== 'KS') {
+            return $rows;
+        }
+
+        // Indeks baris blok OLAH_JUAL ("Kebun Sendiri + Pihak III") per urutan.
+        $oj = [];
+        foreach ($rows as $row) {
+            if ($row->blok === 'OLAH_JUAL') {
+                $oj[(int) $row->urutan] = $row;
+            }
+        }
+        if ($oj === []) {
+            return $rows;
+        }
+
+        // Plant yang relevan: semua plant terpetakan (konsolidasi) atau plant milik
+        // kebun ini saja. Kebun tanpa plant terpetakan → 3 baris dibiarkan kosong.
+        $plants = $isAll
+            ? array_keys(self::LM13_PEMBELIAN_PLANT_KEBUN)
+            : array_keys(array_filter(
+                self::LM13_PEMBELIAN_PLANT_KEBUN,
+                fn (string $kebun) => $unit !== null && $kebun === $unit->code
+            ));
+
+        if ($plants !== []) {
+            $set = function (int $urutan, float $bi, float $sd) use ($oj): void {
+                if (isset($oj[$urutan])) {
+                    $oj[$urutan]->bi_real_thn_ini = $bi;
+                    $oj[$urutan]->sd_real_thn_ini = $sd;
+                }
+            };
+
+            // Pembelian TBS per batch: Bln Ini = periode batch, s.d = kumulatif ≤ bulan.
+            $beli = function (string $b, bool $kumulatif) use ($batch, $plants): float {
+                return (float) DB::table('pembelian_tbs')
+                    ->where('year', $batch->year)
+                    ->when(
+                        $kumulatif,
+                        fn ($q) => $q->where('period', '<=', $batch->month),
+                        fn ($q) => $q->where('period', $batch->month)
+                    )
+                    ->whereIn('plant_code', $plants)
+                    ->where('batch', $b)
+                    ->sum('actual_value');
+            };
+            $set(63, $beli('PLSM', false), $beli('PLSM', true));
+            $set(64, $beli('PHTG', false), $beli('PHTG', true));
+
+            // Biaya Pengolahan Pihak III = PHTG + PLSM tab Summary Alokasi Biaya Olah.
+            $p3 = app(\App\Http\Controllers\Api\AlokasiBiayaOlahController::class)
+                ->pihakIIIPerPlantLm13((int) $batch->year, (int) $batch->month);
+            $bi = $sd = 0.0;
+            foreach ($plants as $p) {
+                $bi += (float) ($p3[$p]['bi'] ?? 0);
+                $sd += (float) ($p3[$p]['sd'] ?? 0);
+            }
+            $set(65, $bi, $sd);
+        }
+
+        // Jumlah Biaya Produksi (68) = 62 + Pembelian Plasma/Pihak III + Biaya
+        // Pengolahan/Overhead/Produksi Pihak III (63..67), kolom Bln Ini & s.d.
+        if (isset($oj[68])) {
+            $bi = $sd = 0.0;
+            foreach ([62, 63, 64, 65, 66, 67] as $s) {
+                $bi += (float) ($oj[$s]->bi_real_thn_ini ?? 0);
+                $sd += (float) ($oj[$s]->sd_real_thn_ini ?? 0);
+            }
+            $oj[68]->bi_real_thn_ini = $bi;
+            $oj[68]->sd_real_thn_ini = $sd;
+        }
 
         return $rows;
     }
