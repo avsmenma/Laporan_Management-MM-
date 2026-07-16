@@ -141,7 +141,10 @@ class Lm13Service
             ->where('report_lm14.unit_id', $unit->id)
             ->where('report_lm14.komoditi', $komoditi)
             ->where('lm_template_row.report_type', 'LM14')
-            ->where('lm_template_row.uraian', $lm14Uraian)
+            // BINARY: pencocokan case-sensitive — LM14 punya 'Jumlah Biaya Panen'
+            // (subtotal) DAN 'JUMLAH BIAYA PANEN' (total, termasuk Sensus Produksi);
+            // collation ci membuat keduanya cocok dan subtotal terambil lebih dulu.
+            ->whereRaw('BINARY lm_template_row.uraian = ?', [$lm14Uraian])
             ->select('report_lm14.*')
             ->first();
 
