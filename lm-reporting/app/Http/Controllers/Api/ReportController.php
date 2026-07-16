@@ -1135,10 +1135,11 @@ class ReportController extends Controller
      *                                    sel baris PHTG + PLSM pada kolom plant tsb
      * Pemetaan PKS→Kebun: LM13_PEMBELIAN_PLANT_KEBUN; kebun di luar peta dibiarkan.
      *
-     * Lalu "Jumlah Biaya Produksi" dihitung ulang = Jumlah Beban Produksi Kebun Inti
-     * + 5 baris di bawahnya — untuk SEMUA kebun (baris 62 sudah diubah overlay
-     * alokasi olah, jadi subtotal tersimpan sudah basi). Baris "... per Ha" ikut
-     * menyesuaikan karena applyPerHaToLm13 berjalan setelahnya. Lapisan presentasi.
+     * Lalu subtotal & rasio dihitung ulang mengikuti rumus workbook acuan (sheet
+     * *-B), untuk SEMUA kebun (baris 62 sudah diubah overlay alokasi olah, jadi
+     * subtotal tersimpan sudah basi): 67 = 63+64+65+66; 68 = 62+67; HPP 72/73/74
+     * dengan penyebut produksi masing-masing. Baris "... per Ha" ikut menyesuaikan
+     * karena applyPerHaToLm13 berjalan setelahnya. Lapisan presentasi.
      *
      * @param  \Illuminate\Support\Collection<int, object>  $rows
      * @return \Illuminate\Support\Collection<int, object>
@@ -1204,28 +1205,41 @@ class ReportController extends Controller
             $set(65, $bi, $sd);
         }
 
-        // Jumlah Biaya Produksi (68) = 62 + Pembelian Plasma/Pihak III + Biaya
-        // Pengolahan/Overhead/Produksi Pihak III (63..67), kolom Bln Ini & s.d.
-        if (isset($oj[68])) {
-            $bi = $sd = 0.0;
-            foreach ([62, 63, 64, 65, 66, 67] as $s) {
-                $bi += (float) ($oj[$s]->bi_real_thn_ini ?? 0);
-                $sd += (float) ($oj[$s]->sd_real_thn_ini ?? 0);
+        // Rumus Excel (Gumas-B dst):
+        //   Biaya Produksi Pihak Ke III (67) = SUM(76:79) = Pembelian Plasma +
+        //     Pembelian Pihak III + Biaya Pengolahan P3 + Biaya Overhead Plasma
+        //   Jumlah Biaya Produksi (68)       = E75 + E80  = 62 + 67
+        $val = fn (int $u2, string $col): float => (float) ($oj[$u2]->{$col} ?? 0);
+        $sumOf = function (array $sources, string $col) use ($val): float {
+            $t = 0.0;
+            foreach ($sources as $s) {
+                $t += $val($s, $col);
             }
-            $oj[68]->bi_real_thn_ini = $bi;
-            $oj[68]->sd_real_thn_ini = $sd;
+
+            return $t;
+        };
+        foreach ([67 => [63, 64, 65, 66], 68 => [62, 67]] as $target => $sources) {
+            if (isset($oj[$target])) {
+                $oj[$target]->bi_real_thn_ini = $sumOf($sources, 'bi_real_thn_ini');
+                $oj[$target]->sd_real_thn_ini = $sumOf($sources, 'sd_real_thn_ini');
+            }
         }
 
-        // HPP (72,73,74) = Jumlah Biaya Produksi (68) / Jumlah Produksi MS+IS (25)
-        // — rumus sama dengan applyProduksiToLm13, dihitung ulang dari 68 final
-        // (kolom tahun ini saja; tahun lalu tidak disentuh overlay ini).
-        if (isset($oj[68], $oj[25])) {
-            $safeDiv = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d, 4);
-            foreach ([72, 73, 74] as $h) {
-                if (isset($oj[$h])) {
-                    $oj[$h]->bi_real_thn_ini = $safeDiv((float) $oj[68]->bi_real_thn_ini, (float) $oj[25]->bi_real_thn_ini);
-                    $oj[$h]->sd_real_thn_ini = $safeDiv((float) $oj[68]->sd_real_thn_ini, (float) $oj[25]->sd_real_thn_ini);
-                }
+        // Harga Pokok (rumus Excel, kolom tahun ini saja):
+        //   72 Kebun Sendiri = 62 / (MS inti (16) + IS inti (21))
+        //   73 Pihak III     = 67 / (MS+IS Plasma & Pihak III (17,18,22,23))
+        //   74 AF Pabrik     = 68 / Jumlah Produksi MS+IS (25)
+        // Produksi Plasma/Pihak III belum ada sumber → 73 jadi 0 ('-').
+        $safeDiv = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d, 4);
+        $hpp = [
+            72 => [[62], [16, 21]],
+            73 => [[67], [17, 18, 22, 23]],
+            74 => [[68], [25]],
+        ];
+        foreach ($hpp as $target => [$nums, $dens]) {
+            if (isset($oj[$target])) {
+                $oj[$target]->bi_real_thn_ini = $safeDiv($sumOf($nums, 'bi_real_thn_ini'), $sumOf($dens, 'bi_real_thn_ini'));
+                $oj[$target]->sd_real_thn_ini = $safeDiv($sumOf($nums, 'sd_real_thn_ini'), $sumOf($dens, 'sd_real_thn_ini'));
             }
         }
 
