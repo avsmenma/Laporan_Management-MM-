@@ -141,10 +141,15 @@ class Lm13Service
             ->where('report_lm14.unit_id', $unit->id)
             ->where('report_lm14.komoditi', $komoditi)
             ->where('lm_template_row.report_type', 'LM14')
-            // BINARY: pencocokan case-sensitive — LM14 punya 'Jumlah Biaya Panen'
-            // (subtotal) DAN 'JUMLAH BIAYA PANEN' (total, termasuk Sensus Produksi);
-            // collation ci membuat keduanya cocok dan subtotal terambil lebih dulu.
-            ->whereRaw('BINARY lm_template_row.uraian = ?', [$lm14Uraian])
+            // Pencocokan case-sensitive — LM14 punya 'Jumlah Biaya Panen' (subtotal)
+            // DAN 'JUMLAH BIAYA PANEN' (total, termasuk Sensus Produksi); collation
+            // ci MySQL membuat keduanya cocok dan subtotal terambil lebih dulu.
+            // BINARY hanya ada di MySQL; sqlite (test) sudah case-sensitive default.
+            ->when(
+                DB::connection()->getDriverName() === 'mysql',
+                fn ($q) => $q->whereRaw('BINARY lm_template_row.uraian = ?', [$lm14Uraian]),
+                fn ($q) => $q->where('lm_template_row.uraian', $lm14Uraian)
+            )
             ->select('report_lm14.*')
             ->first();
 
