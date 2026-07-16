@@ -422,20 +422,20 @@
                     </li>
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('kebun*') ? 'true' : 'false' }} }">
                         <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('kebun*') ? 'active' : '' }}" @click="if (document.documentElement.classList.contains('sidebar-collapsed')) { lmToggleSidebar(); open = true } else { open = !open }">
-                            <span class="nav-ico">📁</span> KEBUN
+                            <span class="nav-ico">📁</span> LM KEBUN
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
-                        <ul class="sidebar-subnav" data-flyout="KEBUN" x-show="open" x-cloak>
+                        <ul class="sidebar-subnav" data-flyout="LM KEBUN" x-show="open" x-cloak>
                             <li><a href="{{ route('kebun') }}" class="sidebar-sublink {{ request()->routeIs('kebun') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Eksploitasi</a></li>
                             <li><a href="{{ route('kebun.investasi') }}" class="sidebar-sublink {{ request()->routeIs('kebun.investasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
                         </ul>
                     </li>
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('pabrik*') ? 'true' : 'false' }} }">
                         <button type="button" class="sidebar-nav-link sidebar-parent {{ request()->routeIs('pabrik*') ? 'active' : '' }}" @click="if (document.documentElement.classList.contains('sidebar-collapsed')) { lmToggleSidebar(); open = true } else { open = !open }">
-                            <span class="nav-ico">📁</span> PABRIK
+                            <span class="nav-ico">📁</span> LM PABRIK
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
-                        <ul class="sidebar-subnav" data-flyout="PABRIK" x-show="open" x-cloak>
+                        <ul class="sidebar-subnav" data-flyout="LM PABRIK" x-show="open" x-cloak>
                             <li><a href="{{ route('pabrik') }}" class="sidebar-sublink {{ request()->routeIs('pabrik') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Eksploitasi</a></li>
                             <li><a href="{{ route('pabrik.investasi') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.investasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM Investasi</a></li>
                             <li><a href="{{ route('pabrik.alokasi-biaya-olah') }}" class="sidebar-sublink {{ request()->routeIs('pabrik.alokasi-biaya-olah') ? 'active' : '' }}"><span class="tree-ico">📄</span> Alokasi Biaya Olah</a></li>
