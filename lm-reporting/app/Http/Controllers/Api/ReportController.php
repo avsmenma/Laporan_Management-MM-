@@ -1216,6 +1216,19 @@ class ReportController extends Controller
             $oj[68]->sd_real_thn_ini = $sd;
         }
 
+        // HPP (72,73,74) = Jumlah Biaya Produksi (68) / Jumlah Produksi MS+IS (25)
+        // — rumus sama dengan applyProduksiToLm13, dihitung ulang dari 68 final
+        // (kolom tahun ini saja; tahun lalu tidak disentuh overlay ini).
+        if (isset($oj[68], $oj[25])) {
+            $safeDiv = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d, 4);
+            foreach ([72, 73, 74] as $h) {
+                if (isset($oj[$h])) {
+                    $oj[$h]->bi_real_thn_ini = $safeDiv((float) $oj[68]->bi_real_thn_ini, (float) $oj[25]->bi_real_thn_ini);
+                    $oj[$h]->sd_real_thn_ini = $safeDiv((float) $oj[68]->sd_real_thn_ini, (float) $oj[25]->sd_real_thn_ini);
+                }
+            }
+        }
+
         return $rows;
     }
 
