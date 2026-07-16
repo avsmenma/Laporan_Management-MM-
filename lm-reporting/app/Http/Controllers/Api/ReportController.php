@@ -1012,6 +1012,7 @@ class ReportController extends Controller
             $sumInto(24, [21, 22, 23]); // E: Jumlah
             $sumInto(25, [19, 24]);     // Jumlah Produksi MS + IS
             $sumInto(31, [28, 29, 30]); // F TBS Olah: Jumlah
+            $sumInto(42, [19, 24]);     // Jumlah Produksi yang MS + IS (Excel E53 = E47+E52)
 
             // HPP (urutan 72,73,74) = Jumlah Biaya Produksi (68) / Jumlah Produksi MS+IS (25).
             if (isset($oj[68], $oj[25])) {
@@ -1229,13 +1230,13 @@ class ReportController extends Controller
         // Harga Pokok (rumus Excel, kolom tahun ini saja):
         //   72 Kebun Sendiri = 62 / (MS inti (16) + IS inti (21))
         //   73 Pihak III     = 67 / (MS+IS Plasma & Pihak III (17,18,22,23))
-        //   74 AF Pabrik     = 68 / Jumlah Produksi MS+IS (25)
+        //   74 AF Pabrik     = 68 / Jumlah Produksi yang MS+IS (42)
         // Produksi Plasma/Pihak III belum ada sumber → 73 jadi 0 ('-').
         $safeDiv = fn (float $n, float $d): float => abs($d) < 0.00001 ? 0.0 : round($n / $d, 4);
         $hpp = [
             72 => [[62], [16, 21]],
             73 => [[67], [17, 18, 22, 23]],
-            74 => [[68], [25]],
+            74 => [[68], [42]],
         ];
         foreach ($hpp as $target => [$nums, $dens]) {
             if (isset($oj[$target])) {
