@@ -180,10 +180,24 @@ function penjualanApp() {
         // ===== Tab BUYER / PLANT (identik temp Buyer / temp Plant) =====
 
         duaColumns(isPlant) {
-            return [
+            const ident = [
                 { title: 'PRODUCT', field: 'product', frozen: true, minWidth: 170 },
                 { title: isPlant ? 'CODE PLANT' : 'CODE CUSTOMER', field: 'code', frozen: true, minWidth: 110 },
                 { title: isPlant ? 'NAMA PABRIK' : 'NAME CUSTOMER', field: 'name', frozen: true, minWidth: 250 },
+            ];
+            if (isPlant) {
+                // RKAP belum punya sumber data → sel dirender '-' (field tak diisi).
+                return [
+                    ...ident,
+                    { title: 'BULAN LALU', columns: this.qrnCols('bl') },
+                    { title: 'BULAN INI', columns: this.qrnCols('bi') },
+                    { title: 'RKAP BULAN INI', columns: this.qrnCols('rkbi') },
+                    { title: 'SD BULAN INI', columns: this.qrnCols('sd') },
+                    { title: 'SD RKAP BULAN INI', columns: this.qrnCols('rksd') },
+                ];
+            }
+            return [
+                ...ident,
                 { title: 'BULAN INI', columns: this.qrnCols('bi') },
                 { title: 'SD BULAN INI', columns: this.qrnCols('sd') },
             ];
@@ -193,7 +207,8 @@ function penjualanApp() {
             const list = [];
             if (!src || !src.groups) return list;
             const fill = (o, b) => {
-                ['bi', 'sd'].forEach(k => {
+                // 'bl' hanya ada di tab PLANT; RKAP (rkbi/rksd) belum ada sumber → null ('-').
+                ['bl', 'bi', 'sd'].forEach(k => {
                     const blk = b ? b[k] : null;
                     o[`${k}_q`] = blk ? blk.qty : null;
                     o[`${k}_r`] = blk ? blk.rpkg : null;

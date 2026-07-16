@@ -61,7 +61,7 @@ class PenjualanProdukController extends Controller
             'month' => $month,
             'plants' => $plants,
             'buyer' => $this->tabDua($year, $month, 'customer'),
-            'plant' => $this->tabDua($year, $month, 'plant'),
+            'plant' => $this->tabDua($year, $month, 'plant', true),
             'all' => $this->tabAll($year, $month, $plants),
         ]);
     }
@@ -149,53 +149,75 @@ class PenjualanProdukController extends Controller
     /**
      * Tab BUYER / PLANT (struktur sama, dimensi baris beda): grup produk → baris →
      * Jumlah per grup → Total; tiap baris blok bi & sd {qty, rpkg, nilai}.
+     * $withBl (tab PLANT): tambah blok bl = bulan tepat sebelum bulan terpilih
+     * (tahun sama; Januari → kosong). Kode baris dari bi+sd sudah mencakup bl
+     * karena cakupan s.d memuat bulan−1.
      */
-    private function tabDua(int $year, int $month, string $dim): array
+    private function tabDua(int $year, int $month, string $dim, bool $withBl = false): array
     {
         $bi = $this->agg($year, $month, '=', $dim);
         $sd = $this->agg($year, $month, '<=', $dim);
+        $bl = $withBl ? $this->agg($year, $month - 1, '=', $dim) : [];
 
         $groups = [];
+        $totBl = [0.0, 0.0];
         $totBi = [0.0, 0.0];
         $totSd = [0.0, 0.0];
         foreach (self::sortMaterials(array_keys($sd + $bi)) as $mat) {
             $sdRows = $sd[$mat] ?? [];
             $biRows = $bi[$mat] ?? [];
+            $blRows = $bl[$mat] ?? [];
             $codes = array_keys($sdRows + $biRows);
             sort($codes);
 
             $rows = [];
+            $jmlBl = [0.0, 0.0];
             $jmlBi = [0.0, 0.0];
             $jmlSd = [0.0, 0.0];
             foreach ($codes as $code) {
+                $l = $blRows[$code] ?? null;
                 $b = $biRows[$code] ?? null;
                 $s = $sdRows[$code] ?? null;
-                $rows[] = [
+                $row = [
                     'code' => (string) $code,
                     'name' => (string) ($s['name'] ?? $b['name'] ?? ''),
                     'bi' => self::blok($b['qty'] ?? 0.0, $b['nilai'] ?? 0.0),
                     'sd' => self::blok($s['qty'] ?? 0.0, $s['nilai'] ?? 0.0),
                 ];
+                if ($withBl) {
+                    $row['bl'] = self::blok($l['qty'] ?? 0.0, $l['nilai'] ?? 0.0);
+                }
+                $rows[] = $row;
+                $jmlBl[0] += $l['qty'] ?? 0.0;
+                $jmlBl[1] += $l['nilai'] ?? 0.0;
                 $jmlBi[0] += $b['qty'] ?? 0.0;
                 $jmlBi[1] += $b['nilai'] ?? 0.0;
                 $jmlSd[0] += $s['qty'] ?? 0.0;
                 $jmlSd[1] += $s['nilai'] ?? 0.0;
             }
+            $totBl[0] += $jmlBl[0];
+            $totBl[1] += $jmlBl[1];
             $totBi[0] += $jmlBi[0];
             $totBi[1] += $jmlBi[1];
             $totSd[0] += $jmlSd[0];
             $totSd[1] += $jmlSd[1];
+            $jumlah = ['bi' => self::blok(...$jmlBi), 'sd' => self::blok(...$jmlSd)];
+            if ($withBl) {
+                $jumlah['bl'] = self::blok(...$jmlBl);
+            }
             $groups[] = [
                 'material' => $mat,
                 'rows' => $rows,
-                'jumlah' => ['bi' => self::blok(...$jmlBi), 'sd' => self::blok(...$jmlSd)],
+                'jumlah' => $jumlah,
             ];
         }
 
-        return [
-            'groups' => $groups,
-            'total' => ['bi' => self::blok(...$totBi), 'sd' => self::blok(...$totSd)],
-        ];
+        $total = ['bi' => self::blok(...$totBi), 'sd' => self::blok(...$totSd)];
+        if ($withBl) {
+            $total['bl'] = self::blok(...$totBl);
+        }
+
+        return ['groups' => $groups, 'total' => $total];
     }
 
     /**
