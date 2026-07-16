@@ -94,6 +94,14 @@ function penjualanApp() {
             return n < 0 ? '(' + s + ')' : s;
         },
 
+        // Rasio → persen; 0/null → '-' (pola aman IFERROR, sama dgn halaman Pembelian).
+        pctFmt(cell) {
+            const v = cell.getValue();
+            return (v == null || Number(v) === 0)
+                ? '-'
+                : (Number(v) * 100).toLocaleString('id-ID', { maximumFractionDigits: 2 }) + '%';
+        },
+
         bulanNama(m) {
             return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
         },
@@ -167,6 +175,15 @@ function penjualanApp() {
             }
         },
 
+        // Blok rasio {QTY, NILAI} berformat persen untuk satu prefix field.
+        pctCols(prefix) {
+            const fmt = this.pctFmt.bind(this);
+            return [
+                { title: 'QTY', field: `${prefix}_q`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 75 },
+                { title: 'NILAI', field: `${prefix}_n`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 75 },
+            ];
+        },
+
         // Blok {QTY, RP/KG, NILAI} untuk satu prefix field.
         qrnCols(prefix) {
             const fmt = this.numFmt.bind(this);
@@ -194,6 +211,9 @@ function penjualanApp() {
                     { title: 'RKAP BULAN INI', columns: this.qrnCols('rkbi') },
                     { title: 'SD BULAN INI', columns: this.qrnCols('sd') },
                     { title: 'SD RKAP BULAN INI', columns: this.qrnCols('rksd') },
+                    { title: '%BI/BL', columns: this.pctCols('r_bibl') },
+                    { title: '%BI/RKAP', columns: this.pctCols('r_birkap') },
+                    { title: '%S.D BI/S.D RKAP', columns: this.pctCols('r_sdrkap') },
                 ];
             }
             return [
@@ -214,6 +234,11 @@ function penjualanApp() {
                     o[`${k}_r`] = blk ? blk.rpkg : null;
                     o[`${k}_n`] = blk ? blk.nilai : null;
                 });
+                // Rasio %BI/BL (penyebut 0/kosong → '-'); rasio vs RKAP menunggu
+                // sumber anggaran → dibiarkan null ('-').
+                const div = (a, c) => (a != null && c != null && Number(c) !== 0) ? Number(a) / Number(c) : null;
+                o.r_bibl_q = div(o.bi_q, o.bl_q);
+                o.r_bibl_n = div(o.bi_n, o.bl_n);
                 return o;
             };
             src.groups.forEach(g => {
