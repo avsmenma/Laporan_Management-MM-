@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Role;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 /**
@@ -37,8 +41,14 @@ class BebanUsahaController extends Controller
                 ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => $rows],
                 ['key' => 'ks', 'label' => 'ADMI KS', 'rows' => $rows],
                 ['key' => 'kr', 'label' => 'ADMI KR', 'rows' => $rows],
-                // Tabel rasio pembagi KS/KR per bulan (kolomnya khusus, baris dari API).
+                // Tabel proporsi ABS Sawit/Karet — input manual (inline edit).
                 ['key' => 'proporsi', 'label' => 'PROPORSI', 'rows' => []],
+            ],
+            'proporsi' => [
+                'listUrl' => route('laba-rugi.beban-usaha.proporsi.index'),
+                'saveUrl' => route('laba-rugi.beban-usaha.proporsi.store'),
+                'deleteUrl' => url('/laba-rugi/beban-usaha/proporsi'), // + /{id}
+                'canEdit' => (bool) auth()->user()?->hasRole(Role::OPERATOR, Role::ADMIN),
             ],
         ]]);
     }
@@ -77,6 +87,73 @@ class BebanUsahaController extends Controller
                 ['key' => 'kr', 'label' => 'KARET', 'rows' => $ksKr],
             ],
         ]]);
+    }
+
+    // ===== Tab PROPORSI (ABS Sawit/Karet, input manual) =====
+
+    /** Daftar baris proporsi (semua periode, urut tahun-bulan-uraian). */
+    public function proporsiIndex(): JsonResponse
+    {
+        $rows = DB::table('beban_usaha_proporsi')
+            ->orderBy('year')->orderBy('month')->orderBy('uraian')
+            ->get(['id', 'year', 'month', 'uraian', 'total_nilai', 'nilai_proporsi'])
+            ->map(fn ($r) => [
+                'id' => (int) $r->id,
+                'year' => (int) $r->year,
+                'month' => (int) $r->month,
+                'uraian' => $r->uraian,
+                'total_nilai' => (float) $r->total_nilai,
+                'nilai_proporsi' => (float) $r->nilai_proporsi,
+            ]);
+
+        return response()->json(['rows' => $rows]);
+    }
+
+    /**
+     * Simpan satu baris proporsi (Operator/Admin). Tanpa id → buat baru; kombinasi
+     * (tahun, bulan, uraian) unik — bila sudah ada, baris itulah yang diperbarui.
+     */
+    public function proporsiStore(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'id' => ['nullable', 'integer'],
+            'year' => ['required', 'integer', 'between:2000,2100'],
+            'month' => ['required', 'integer', 'between:1,12'],
+            'uraian' => ['required', 'in:ABS Sawit,ABS Karet'],
+            'total_nilai' => ['required', 'numeric'],
+            'nilai_proporsi' => ['required', 'numeric'],
+        ]);
+
+        $q = DB::table('beban_usaha_proporsi');
+        $dupe = DB::table('beban_usaha_proporsi')
+            ->where('year', $data['year'])->where('month', $data['month'])->where('uraian', $data['uraian'])
+            ->when(isset($data['id']), fn ($qq) => $qq->where('id', '<>', $data['id']))
+            ->exists();
+        if ($dupe) {
+            return response()->json(['message' => 'Baris '.$data['uraian'].' untuk periode itu sudah ada.'], 422);
+        }
+
+        $values = [
+            'year' => $data['year'], 'month' => $data['month'], 'uraian' => $data['uraian'],
+            'total_nilai' => $data['total_nilai'], 'nilai_proporsi' => $data['nilai_proporsi'],
+            'updated_at' => now(),
+        ];
+        if (isset($data['id'])) {
+            $q->where('id', $data['id'])->update($values);
+            $id = (int) $data['id'];
+        } else {
+            $id = (int) $q->insertGetId($values + ['created_at' => now()]);
+        }
+
+        return response()->json(['id' => $id]);
+    }
+
+    /** Hapus satu baris proporsi (Operator/Admin). */
+    public function proporsiDestroy(int $id): JsonResponse
+    {
+        DB::table('beban_usaha_proporsi')->where('id', $id)->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     /**

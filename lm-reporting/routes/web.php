@@ -28,6 +28,7 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::get('/laba-rugi/beban-penjualan', [\App\Http\Controllers\BebanUsahaController::class, 'bebanPenjualan'])->name('laba-rugi.beban-penjualan');
     Route::get('/laba-rugi/beban-administrasi', [\App\Http\Controllers\BebanUsahaController::class, 'bebanAdministrasi'])->name('laba-rugi.beban-administrasi');
     Route::get('/laba-rugi/beban-operasional-lainnya', [\App\Http\Controllers\BebanUsahaController::class, 'bebanOperasionalLainnya'])->name('laba-rugi.beban-operasional-lainnya');
+    Route::get('/laba-rugi/beban-usaha/proporsi', [\App\Http\Controllers\BebanUsahaController::class, 'proporsiIndex'])->name('laba-rugi.beban-usaha.proporsi.index');
     Route::get('/laba-rugi/pendapatan-lainnya', [\App\Http\Controllers\BebanUsahaController::class, 'pendapatanLainnya'])->name('laba-rugi.pendapatan-lainnya');
 
     // Halaman Kebun & Pabrik — submenu LM Eksploitasi (halaman saat ini) & LM Investasi (segera hadir)
@@ -86,6 +87,9 @@ Route::prefix('report-data')->group(function () {
 });
 
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
+    Route::post('/laba-rugi/beban-usaha/proporsi', [\App\Http\Controllers\BebanUsahaController::class, 'proporsiStore'])->name('laba-rugi.beban-usaha.proporsi.store');
+    Route::delete('/laba-rugi/beban-usaha/proporsi/{id}', [\App\Http\Controllers\BebanUsahaController::class, 'proporsiDestroy'])->name('laba-rugi.beban-usaha.proporsi.destroy');
+
     Route::get('/batches', [BatchController::class, 'index'])->name('batches.index');
     Route::post('/batches', [BatchController::class, 'store'])->name('batches.store');
     Route::get('/import', [ImportController::class, 'index'])->name('import.index');

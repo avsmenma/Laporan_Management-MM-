@@ -39,6 +39,9 @@
                     <div class="bu-title" x-text="cfg.title"></div>
                     <div class="bu-subtitle">(<span x-text="cfg.subtitle"></span>)</div>
                 </div>
+                <button x-show="activeTab === 'proporsi' && canEditProporsi()" x-cloak
+                        class="btn btn-primary" style="height:34px;padding:0 14px"
+                        @click="addProporsiRow()">+ Tambah Baris</button>
             </div>
             <div id="bu-table" class="lm-report-table"></div>
         </div>
@@ -76,6 +79,8 @@ function bebanUsahaApp(cfg) {
         values: null,
         activeTab: cfg.tabs[0].key,
         table: null,
+        propRows: [],
+        propLoaded: false,
 
         bulanNama(m) {
             return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
@@ -92,9 +97,12 @@ function bebanUsahaApp(cfg) {
             }
             return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
         },
-        setTab(key) {
+        async setTab(key) {
             if (this.activeTab === key) return;
             this.activeTab = key;
+            if (key === 'proporsi' && !this.propLoaded) {
+                await this.loadProporsi();
+            }
             this.$nextTick(() => this.render());
         },
         onPeriodChange() {
@@ -141,38 +149,103 @@ function bebanUsahaApp(cfg) {
             return (Number(v) * 100).toLocaleString('id-ID', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + '%';
         },
 
-        // ===== Tab PROPORSI (khusus halaman Beban Administrasi) =====
-        // Rasio pembagi ADMI KS/KR per bulan: porsi karet = Σ amount cost center
-        // akhiran 'KR' ÷ total beban admin bulan itu; KS = baris × % sawit.
-        proporsiColumns() {
-            return [
-                { title: 'Bulan', field: 'bulan', frozen: true, minWidth: 140 },
-                this.num('Total Beban Administrasi', 'total', 170),
-                this.num('Porsi Karet (Cost Center *KR)', 'karet', 170),
-                this.num('Porsi Sawit', 'sawit', 170),
-                { title: '% Karet', field: 'pctk', hozAlign: 'right', headerHozAlign: 'center', formatter: this.pctFmt.bind(this), minWidth: 110 },
-                { title: '% Sawit', field: 'pcts', hozAlign: 'right', headerHozAlign: 'center', formatter: this.pctFmt.bind(this), minWidth: 110 },
-            ];
+        // ===== Tab PROPORSI (input manual ABS Sawit/Karet, inline edit) =====
+        canEditProporsi() {
+            return !!(this.cfg.proporsi && this.cfg.proporsi.canEdit);
         },
-        proporsiRows() {
-            const src = (this.values && this.values.proporsi) ? this.values.proporsi : [];
-            const list = src.map(p => ({
-                bulan: this.bulanNama(p.month) + ' ' + this.year,
-                total: p.total, karet: p.karet, sawit: p.sawit,
-                pctk: p.pct_karet, pcts: p.pct_sawit,
-                _type: 'detail',
-            }));
-            if (list.length > 0) {
-                const tTotal = src.reduce((a, p) => a + Number(p.total), 0);
-                const tKaret = src.reduce((a, p) => a + Number(p.karet), 0);
-                list.push({
-                    bulan: 'Kumulatif', total: tTotal, karet: tKaret, sawit: tTotal - tKaret,
-                    pctk: tTotal !== 0 ? tKaret / tTotal : 0,
-                    pcts: tTotal !== 0 ? 1 - tKaret / tTotal : 1,
-                    _type: 'total',
-                });
+        async loadProporsi() {
+            if (!this.cfg.proporsi) return;
+            try {
+                const resp = await fetch(this.cfg.proporsi.listUrl);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                this.propRows = data.rows || [];
+                this.propLoaded = true;
+            } catch (e) {
+                if (window.lmToast) window.lmToast('Gagal memuat proporsi: ' + e.message, 'err');
             }
-            return list;
+        },
+        proporsiColumns() {
+            const edit = this.canEditProporsi();
+            const bulanMap = {};
+            for (let m = 1; m <= 12; m++) bulanMap[m] = this.bulanNama(m);
+            const cols = [
+                { title: 'Bulan', field: 'month', minWidth: 130, headerHozAlign: 'center',
+                  formatter: (c) => this.bulanNama(c.getValue()),
+                  editor: edit ? 'list' : false, editorParams: { values: bulanMap } },
+                { title: 'Tahun', field: 'year', minWidth: 100, hozAlign: 'left', headerHozAlign: 'center',
+                  editor: edit ? 'list' : false, editorParams: { values: [2025, 2026, 2027, 2028, 2029, 2030] } },
+                { title: 'Uraian', field: 'uraian', minWidth: 140, headerHozAlign: 'center',
+                  editor: edit ? 'list' : false, editorParams: { values: ['ABS Sawit', 'ABS Karet'] } },
+                { title: 'Total Nilai', field: 'total_nilai', hozAlign: 'right', headerHozAlign: 'center', minWidth: 170,
+                  formatter: this.numFmt.bind(this), editor: edit ? 'number' : false },
+                { title: 'Nilai Proporsi', field: 'nilai_proporsi', hozAlign: 'right', headerHozAlign: 'center', minWidth: 170,
+                  formatter: this.numFmt.bind(this), editor: edit ? 'number' : false },
+                { title: '% Proporsi', minWidth: 120, hozAlign: 'right', headerHozAlign: 'center',
+                  formatter: (c) => {
+                      const d = c.getRow().getData();
+                      const t = Number(d.total_nilai) || 0;
+                      return t === 0 ? '-' : (Number(d.nilai_proporsi) / t * 100).toLocaleString('id-ID', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + '%';
+                  } },
+            ];
+            if (edit) {
+                cols.push({ title: '', width: 46, hozAlign: 'center', headerSort: false,
+                    formatter: () => '<span style="color:#b3261e;cursor:pointer;font-weight:700">✕</span>',
+                    cellClick: (e, cell) => this.deleteProporsi(cell.getRow()) });
+            }
+            return cols;
+        },
+        addProporsiRow() {
+            // Baris baru berperiode filter aktif; tersimpan saat pertama kali diedit.
+            this.propRows.push({ id: null, year: Number(this.year) || 2026, month: Number(this.month) || 1, uraian: 'ABS Sawit', total_nilai: 0, nilai_proporsi: 0 });
+            this.render();
+        },
+        async saveProporsi(rowData, rowComponent) {
+            try {
+                const resp = await fetch(this.cfg.proporsi.saveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    },
+                    body: JSON.stringify({
+                        id: rowData.id || null,
+                        year: Number(rowData.year), month: Number(rowData.month), uraian: rowData.uraian,
+                        total_nilai: Number(rowData.total_nilai) || 0,
+                        nilai_proporsi: Number(rowData.nilai_proporsi) || 0,
+                    }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.message || ('HTTP ' + resp.status));
+                rowData.id = data.id;
+                if (window.lmToast) window.lmToast('Proporsi tersimpan', 'ok');
+            } catch (e) {
+                if (window.lmToast) window.lmToast(e.message, 'err');
+                await this.loadProporsi();
+                this.render();
+            }
+        },
+        async deleteProporsi(rowComponent) {
+            const d = rowComponent.getData();
+            this.propRows = this.propRows.filter(r => r !== d && (d.id == null || r.id !== d.id));
+            rowComponent.delete();
+            if (d.id == null) return; // belum pernah tersimpan
+            try {
+                const resp = await fetch(this.cfg.proporsi.deleteUrl + '/' + d.id, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    },
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                if (window.lmToast) window.lmToast('Baris dihapus', 'ok');
+            } catch (e) {
+                if (window.lmToast) window.lmToast('Gagal menghapus: ' + e.message, 'err');
+                await this.loadProporsi();
+                this.render();
+            }
         },
 
         // ===== Kolom per preset (label periode mengikuti dropdown) =====
@@ -244,7 +317,7 @@ function bebanUsahaApp(cfg) {
             if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
             const isProporsi = this.activeTab === 'proporsi';
             this.table = new window.Tabulator('#bu-table', {
-                data: isProporsi ? this.proporsiRows() : this.rows(),
+                data: isProporsi ? this.propRows : this.rows(),
                 columns: isProporsi ? this.proporsiColumns() : this.columns(),
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',
@@ -266,6 +339,13 @@ function bebanUsahaApp(cfg) {
                     });
                 },
             });
+            if (isProporsi && this.canEditProporsi()) {
+                this.table.on('cellEdited', (cell) => {
+                    const row = cell.getRow();
+                    row.reformat(); // segarkan kolom % Proporsi
+                    this.saveProporsi(row.getData(), row);
+                });
+            }
         },
 
         init() {

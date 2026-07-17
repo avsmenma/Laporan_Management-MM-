@@ -69,17 +69,6 @@ class BebanUsahaDataApiTest extends TestCase
         $this->assertSame(45, $v['kr'][24]['sd']);
         $this->assertSame(100, $v['kr'][29]['sd']);  // Jumlah KR
         $this->assertSame(0, $v['kr'][0]['bln']);    // p6 tanpa cc KR
-
-        // Tab PROPORSI: rasio pembagi per bulan.
-        $prop = $v['proporsi'];
-        $this->assertSame([5, 6], array_column($prop, 'month'));
-        $this->assertSame(2000, $prop[0]['total']);
-        $this->assertSame(100, $prop[0]['karet']);
-        $this->assertSame(1900, $prop[0]['sawit']);
-        $this->assertEqualsWithDelta(0.05, $prop[0]['pct_karet'], 1e-9);
-        $this->assertSame(750, $prop[1]['total']);
-        $this->assertSame(0, $prop[1]['karet']);
-        $this->assertEqualsWithDelta(1.0, $prop[1]['pct_sawit'], 1e-9);
     }
 
     public function test_bol_mapping_kodering_kso_dan_split_karet(): void
