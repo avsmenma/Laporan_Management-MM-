@@ -120,6 +120,8 @@ class SpreadsheetImportService
             'produksi_kebun' => 'Produksi Kebun',
             'pembelian_tbs' => 'Pembelian TBS',
             'penjualan_produk' => 'Penjualan Produk',
+            'beban_admin' => 'Beban Administrasi (GL)',
+            'beban_ops' => 'Beban Ops Lainnya (GL)',
             'pks_biaya' => 'Biaya PKS (LM16)',
             'investasi_wbs' => 'Investasi — Biaya (DB)',
             'investasi_asset' => 'Investasi — Aset (WS)',
@@ -169,6 +171,12 @@ class SpreadsheetImportService
         return $type === 'penjualan_produk';
     }
 
+    /** Jenis beban usaha (ekspor line-item GL SAP): Beban Administrasi / Beban Ops Lainnya. */
+    public static function isBebanUsaha(string $type): bool
+    {
+        return in_array($type, ['beban_admin', 'beban_ops'], true);
+    }
+
     /** Jenis yang memakai bulan sebagai penjaga periode (tanpa Batch). */
     public static function usesMonthGuard(string $type): bool
     {
@@ -176,7 +184,7 @@ class SpreadsheetImportService
         // berisi banyak periode sekaligus — importer memakai TAHUN sebagai penjaga &
         // mengimpor semua periode pada tahun itu (hapus-ganti per year+period).
         return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type)
-            || self::isPembelianTbs($type) || self::isPenjualanProduk($type);
+            || self::isPembelianTbs($type) || self::isPenjualanProduk($type) || self::isBebanUsaha($type);
     }
 
     /** Sumber budget (BKU/OHC/GC/PKS) untuk jenis anggaran rko & rkap, atau null. */
@@ -655,6 +663,28 @@ class SpreadsheetImportService
             $rows = [];
             $emitted = 0;
             foreach ($this->dataRowsSheet($path, 'Data') as $row) {
+                if ($this->isEmptyRow($row)) {
+                    continue;
+                }
+                $rows[] = array_map(fn ($i) => $row[$i] ?? null, $idx);
+                if (++$emitted >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
+        }
+
+        // Beban Usaha (ADMIN/BOL): sampel dari sheet tunggal (kolom kunci verifikasi mata).
+        if (self::isBebanUsaha($type)) {
+            $total = max(0, $this->totalDataRows($path));
+            $isAdmin = $type === 'beban_admin';
+            $headers = ['Posting Date', 'Period', 'Account', 'Profit Center', 'Description Prctr', 'Cost Center', 'Amount', $isAdmin ? 'Cost Element BPC Desc' : 'Kodering', $isAdmin ? '' : 'Klasifikasi LM HO'];
+            $headers = array_values(array_filter($headers, fn ($h) => $h !== ''));
+            $idx = $isAdmin ? [1, 2, 3, 8, 9, 28, 14, 38] : [1, 2, 3, 8, 9, 28, 14, 38, 39];
+            $rows = [];
+            $emitted = 0;
+            foreach ($this->dataRowsSheet($path, 'Sheet1') as $row) {
                 if ($this->isEmptyRow($row)) {
                     continue;
                 }
@@ -1566,6 +1596,101 @@ class SpreadsheetImportService
                     'customer_name' => $this->produksiText($v[$C['customer_name']] ?? null, 200),
                     'document_type' => $this->produksiText($v[$C['document_type']] ?? null, 10),
                     'reference' => $this->produksiText($v[$C['reference']] ?? null, 30),
+                ];
+                if (count($records) >= 500) {
+                    $flush();
+                }
+            }
+            $flush();
+        });
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /**
+     * Indeks kolom 0-based file GL Beban Usaha (ADMIN & BOL, sheet tunggal).
+     * Kolom klasifikasi berbeda per jenis:
+     *  - ADMIN: AL(37)=Cost Element BPC (kode 900216xx), AM(38)=Cost Element BPC Desc.
+     *  - BOL:   AM(38)=Kodering (A1xx), AN(39)=Klasifikasi LM HO.
+     */
+    private const BEBAN_USAHA_COLS = [
+        'document_number' => 0, 'posting_date' => 1, 'period' => 2, 'account' => 3,
+        'profit_center' => 8, 'profit_center_desc' => 9, 'amount' => 14, 'text' => 16,
+        'gl_account_desc' => 18, 'cost_center' => 28, 'cost_element' => 29,
+    ];
+
+    /**
+     * Impor file GL Beban Usaha → beban_usaha_gl (report_type ADMIN | BOL).
+     *
+     * Pola sama dgn importPenjualanProduk: file berisi banyak periode ("1 SD 6") →
+     * idempoten HAPUS-GANTI per (report_type, year, period) yang muncul di file;
+     * $year = penjaga tahun. Amount disimpan APA ADANYA (kredit negatif) — agregasi
+     * SUM per klasifikasi tervalidasi selisih 0 terhadap workbook LM BEBAN USAHA
+     * (kolom sd Bulan Mei 2026). Klasifikasi di-TRIM (ada label berspasi buntut).
+     */
+    public function importBebanUsaha(string $type, string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null): ImportResult
+    {
+        abort_unless(self::isBebanUsaha($type), 422, 'Jenis bukan beban usaha.');
+        $reportType = $type === 'beban_admin' ? 'ADMIN' : 'BOL';
+        [$codeIdx, $descIdx] = $type === 'beban_admin' ? [37, 38] : [38, 39];
+        $C = self::BEBAN_USAHA_COLS;
+        $inserted = 0;
+
+        DB::transaction(function () use ($path, $C, $codeIdx, $descIdx, $reportType, $year, $onProgress, &$inserted): void {
+            $records = [];
+            $cleared = []; // "year-period" yang sudah dihapus-ganti
+            $flush = function () use (&$records, &$inserted, $onProgress): void {
+                if ($records === []) {
+                    return;
+                }
+                DB::table('beban_usaha_gl')->insert($records);
+                $inserted += count($records);
+                $records = [];
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
+            };
+
+            foreach ($this->dataRowsSheet($path, 'Sheet1') as $v) {
+                if ($this->isEmptyRow($v)) {
+                    continue;
+                }
+                $date = $this->pembelianDate($v[$C['posting_date']] ?? null);
+                $period = is_numeric($v[$C['period']] ?? null) ? (int) $v[$C['period']] : null;
+                if ($date === null || $period === null || $period < 1 || $period > 12) {
+                    continue;
+                }
+                $rowYear = (int) substr($date, 0, 4);
+                // Penjaga tahun: hanya baris pada tahun terpilih yang diimpor.
+                if ($year !== null && $rowYear !== $year) {
+                    continue;
+                }
+
+                // Hapus-ganti data lama saat periode pertama kali dijumpai di file.
+                $key = "{$rowYear}-{$period}";
+                if (! isset($cleared[$key])) {
+                    DB::table('beban_usaha_gl')
+                        ->where('report_type', $reportType)
+                        ->where('year', $rowYear)->where('period', $period)->delete();
+                    $cleared[$key] = true;
+                }
+
+                $records[] = [
+                    'report_type' => $reportType,
+                    'document_number' => $this->produksiText($v[$C['document_number']] ?? null, 20),
+                    'posting_date' => $date,
+                    'year' => $rowYear,
+                    'period' => $period,
+                    'account' => $this->produksiText($v[$C['account']] ?? null, 20),
+                    'gl_account_desc' => $this->produksiText($v[$C['gl_account_desc']] ?? null, 255),
+                    'profit_center' => strtoupper((string) $this->produksiText($v[$C['profit_center']] ?? null, 20)),
+                    'profit_center_desc' => $this->produksiText($v[$C['profit_center_desc']] ?? null),
+                    'cost_center' => strtoupper((string) $this->produksiText($v[$C['cost_center']] ?? null, 30)) ?: null,
+                    'cost_element' => $this->produksiText($v[$C['cost_element']] ?? null, 20),
+                    'text' => $this->produksiText($v[$C['text']] ?? null, 255),
+                    'amount' => $this->produksiNum($v[$C['amount']] ?? null),
+                    'class_code' => $this->produksiText($v[$codeIdx] ?? null, 20),
+                    'class_desc' => $this->produksiText($v[$descIdx] ?? null, 200),
                 ];
                 if (count($records) >= 500) {
                     $flush();
