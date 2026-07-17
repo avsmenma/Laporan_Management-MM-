@@ -8,8 +8,8 @@
         <div class="filter-grid">
             <div class="filter-group">
                 <label class="filter-label">Bulan</label>
-                <select class="filter-select" x-model.number="month" @change="render()">
-                    <template x-for="m in 12" :key="m">
+                <select class="filter-select" x-model.number="month" @change="onPeriodChange()">
+                    <template x-for="m in months()" :key="m">
                         <option :value="m" x-text="bulanNama(m)"></option>
                     </template>
                 </select>
@@ -17,7 +17,7 @@
 
             <div class="filter-group">
                 <label class="filter-label">Tahun</label>
-                <select class="filter-select" x-model.number="year" @change="render()">
+                <select class="filter-select" x-model.number="year" @change="onPeriodChange()">
                     <template x-for="y in years()" :key="y">
                         <option :value="y" x-text="y"></option>
                     </template>
@@ -68,10 +68,12 @@
 function bebanUsahaApp(cfg) {
     return {
         cfg,
-        // Default mengikuti workbook acuan (Juni 2026); dropdown hanya mengubah
-        // label periode di header kolom karena sumber data belum ada.
+        // Default mengikuti workbook acuan (Juni 2026); bila halaman punya sumber
+        // data (cfg.dataUrl), periode & nilai dimuat dari API.
         month: 6,
         year: 2026,
+        periods: [],
+        values: null,
         activeTab: cfg.tabs[0].key,
         table: null,
 
@@ -79,12 +81,44 @@ function bebanUsahaApp(cfg) {
             return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
         },
         years() {
+            if (this.periods.length > 0) {
+                return [...new Set(this.periods.map(p => p.year))].sort((a, b) => b - a);
+            }
             return [2028, 2027, 2026, 2025];
+        },
+        months() {
+            if (this.periods.length > 0) {
+                return [...new Set(this.periods.filter(p => Number(p.year) === Number(this.year)).map(p => Number(p.month)))].sort((a, b) => a - b);
+            }
+            return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
         },
         setTab(key) {
             if (this.activeTab === key) return;
             this.activeTab = key;
             this.$nextTick(() => this.render());
+        },
+        onPeriodChange() {
+            if (this.cfg.dataUrl) {
+                this.load(false);
+            } else {
+                this.render();
+            }
+        },
+        async load(adopt) {
+            try {
+                const sep = this.cfg.dataUrl.includes('?') ? '&' : '?';
+                const url = this.cfg.dataUrl + (adopt ? '' : `${sep}year=${this.year}&month=${this.month}`);
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                this.periods = data.periods || [];
+                if (data.year != null) { this.year = data.year; this.month = data.month; }
+                this.values = data.values || null;
+            } catch (e) {
+                this.values = null;
+                if (window.lmToast) window.lmToast('Gagal memuat data: ' + e.message, 'err');
+            }
+            this.render();
         },
 
         // Nilai belum ada → semua sel angka '-' (negatif kelak dalam kurung, pola
@@ -144,8 +178,24 @@ function bebanUsahaApp(cfg) {
 
         rows() {
             const tab = this.cfg.tabs.find(t => t.key === this.activeTab) || this.cfg.tabs[0];
-            // Nilai belum ada → hanya struktur baris; field angka sengaja tak diisi ('-').
-            return tab.rows.map(r => ({ kode: r.k || '', uraian: r.u, _type: r.t || 'detail' }));
+            const vals = this.values ? (this.values[tab.key] || null) : null;
+            return tab.rows.map((r, i) => {
+                const row = { kode: r.k || '', uraian: r.u, _type: r.t || 'detail' };
+                const v = vals ? vals[i] : null;
+                if (!v) return row; // tanpa data → semua sel '-'
+                // RKAP & tahun lalu belum ada sumber → '-'; Selisih = Realisasi − RKAP(0)
+                // meniru rumus Excel (E6=C6-D6 dgn D kosong).
+                row.bln_r = v.bln;
+                row.sd_r = v.sd;
+                row.sdbl_r = v.sdbl;
+                row.selbln_v = v.bln;
+                row.selsd_v = v.sd;
+                if (this.cfg.preset === 'lain') {
+                    row.ro = v.ro;
+                    row.kp = v.kp;
+                }
+                return row;
+            });
         },
 
         render() {
@@ -176,7 +226,11 @@ function bebanUsahaApp(cfg) {
         },
 
         init() {
-            this.$nextTick(() => this.render());
+            if (this.cfg.dataUrl) {
+                this.load(true); // adopsi periode terbaru dari data
+            } else {
+                this.$nextTick(() => this.render());
+            }
         },
     };
 }

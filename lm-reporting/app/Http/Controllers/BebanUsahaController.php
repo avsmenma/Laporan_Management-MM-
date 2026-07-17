@@ -19,19 +19,20 @@ class BebanUsahaController extends Controller
             'subtitle' => 'Disajikan dalam Rupiah',
             'preset' => 'penjualan',
             'tabs' => [
-                ['key' => 'all', 'label' => 'SEMUA KOMODITI', 'rows' => $this->rowsBebanPenjualan()],
+                ['key' => 'all', 'label' => 'SEMUA KOMODITI', 'rows' => self::rowsBebanPenjualan()],
             ],
         ]]);
     }
 
     public function bebanAdministrasi(): View
     {
-        $rows = $this->rowsBebanAdministrasi();
+        $rows = self::rowsBebanAdministrasi();
 
         return view('laba-rugi.beban-usaha', ['cfg' => [
             'title' => 'BEBAN ADMINISTRASI',
             'subtitle' => 'Disajikan dalam Rupiah',
             'preset' => 'admin',
+            'dataUrl' => '/report-data/laba-rugi/beban-usaha?page=admin',
             'tabs' => [
                 ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => $rows],
                 ['key' => 'ks', 'label' => 'ADMI KS', 'rows' => $rows],
@@ -42,15 +43,16 @@ class BebanUsahaController extends Controller
 
     public function bebanOperasionalLainnya(): View
     {
-        $ksKr = $this->rowsBolKsKr();
+        $ksKr = self::rowsBolKsKr();
 
         return view('laba-rugi.beban-usaha', ['cfg' => [
             'title' => 'RINCIAN BEBAN LAIN-LAIN',
             'subtitle' => 'Disajikan dalam Rupiah',
             'preset' => 'lain',
             'kolomKedua' => 'Kebun dan Pabrik',
+            'dataUrl' => '/report-data/laba-rugi/beban-usaha?page=bol',
             'tabs' => [
-                ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => $this->rowsBolSummary()],
+                ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => self::rowsBolSummary()],
                 ['key' => 'ks', 'label' => 'KELAPA SAWIT', 'rows' => $ksKr],
                 ['key' => 'kr', 'label' => 'KARET', 'rows' => $ksKr],
             ],
@@ -59,7 +61,7 @@ class BebanUsahaController extends Controller
 
     public function pendapatanLainnya(): View
     {
-        $ksKr = $this->rowsPendapatanKsKr();
+        $ksKr = self::rowsPendapatanKsKr();
 
         return view('laba-rugi.beban-usaha', ['cfg' => [
             'title' => 'RINCIAN PENDAPATAN LAIN-LAIN',
@@ -67,7 +69,7 @@ class BebanUsahaController extends Controller
             'preset' => 'lain',
             'kolomKedua' => 'Kebun & Pabrik',
             'tabs' => [
-                ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => $this->rowsPendapatanSummary()],
+                ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => self::rowsPendapatanSummary()],
                 ['key' => 'ks', 'label' => 'KELAPA SAWIT', 'rows' => $ksKr],
                 ['key' => 'kr', 'label' => 'KARET', 'rows' => $ksKr],
             ],
@@ -81,7 +83,7 @@ class BebanUsahaController extends Controller
      *
      * @return array<int, array<string, string>>
      */
-    private function rowsBebanPenjualan(): array
+    public static function rowsBebanPenjualan(): array
     {
         $detail = fn (string $k, string $u): array => ['k' => $k, 'u' => $u];
 
@@ -122,7 +124,7 @@ class BebanUsahaController extends Controller
      *
      * @return array<int, array<string, string>>
      */
-    private function rowsBebanAdministrasi(): array
+    public static function rowsBebanAdministrasi(): array
     {
         $details = [
             'Beban Gaji, Tunjangan & Beban Sosial Karyawan',
@@ -171,7 +173,7 @@ class BebanUsahaController extends Controller
      * @param  array<int, string>  $kso
      * @return array<int, array<string, string>>
      */
-    private function withKso(array $details, string $jumlahKso, array $kso): array
+    public static function withKso(array $details, string $jumlahKso, array $kso): array
     {
         $rows = array_map(fn (string $u): array => ['u' => $u], $details);
         $rows[] = ['u' => 'Jumlah', 't' => 'subtotal'];
@@ -185,9 +187,9 @@ class BebanUsahaController extends Controller
     }
 
     /** @return array<int, array<string, string>> */
-    private function rowsBolSummary(): array
+    public static function rowsBolSummary(): array
     {
-        return $this->withKso([
+        return self::withKso([
             'Biaya Operasional PT. Agrinas Palma Nusantara',
             'Kantor Akuntan Publik',
             'Piutang Tidak Tertagih',
@@ -230,9 +232,9 @@ class BebanUsahaController extends Controller
     }
 
     /** @return array<int, array<string, string>> */
-    private function rowsBolKsKr(): array
+    public static function rowsBolKsKr(): array
     {
-        return $this->withKso([
+        return self::withKso([
             'Biaya Operasional PT. Agrinas Palma Nusantara',
             'Kantor Akuntan Publik',
             'Piutang Tidak Tertagih',
@@ -275,9 +277,9 @@ class BebanUsahaController extends Controller
     }
 
     /** @return array<int, array<string, string>> */
-    private function rowsPendapatanSummary(): array
+    public static function rowsPendapatanSummary(): array
     {
-        return $this->withKso([
+        return self::withKso([
             'Penjualan Bahan Baku dan Pelengkap',
             'Penjualan Aktiva Tetap Non Produktif',
             'Penjualan Dokumen Tender',
@@ -312,9 +314,9 @@ class BebanUsahaController extends Controller
     }
 
     /** @return array<int, array<string, string>> */
-    private function rowsPendapatanKsKr(): array
+    public static function rowsPendapatanKsKr(): array
     {
-        return $this->withKso([
+        return self::withKso([
             'Penjualan Bahan Baku dan Pelengkap',
             'Penjualan Aktiva Tetap Non Produktif',
             'Penjualan Dokumen Tender',
