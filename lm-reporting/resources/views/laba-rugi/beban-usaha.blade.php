@@ -153,6 +153,14 @@ function bebanUsahaApp(cfg) {
         canEditProporsi() {
             return !!(this.cfg.proporsi && this.cfg.proporsi.canEdit);
         },
+        // Terima ketikan bebas: "20140018352", "20.140.018.352", atau "1.234,56"
+        // (titik = pemisah ribuan gaya Indonesia, koma = desimal).
+        parseAngka(v) {
+            if (typeof v === 'number') return isFinite(v) ? v : 0;
+            const t = String(v ?? '').trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+            const n = Number(t);
+            return isFinite(n) ? n : 0;
+        },
         async loadProporsi() {
             if (!this.cfg.proporsi) return;
             try {
@@ -177,10 +185,12 @@ function bebanUsahaApp(cfg) {
                   editor: edit ? 'list' : false, editorParams: { values: [2025, 2026, 2027, 2028, 2029, 2030] } },
                 { title: 'Uraian', field: 'uraian', minWidth: 140, headerHozAlign: 'center',
                   editor: edit ? 'list' : false, editorParams: { values: ['ABS Sawit', 'ABS Karet'] } },
+                // Editor teks bebas (bukan spinner 'number') agar angka besar mudah
+                // diketik/ditempel; nilai diparse jadi angka saat selesai edit.
                 { title: 'Total Nilai', field: 'total_nilai', hozAlign: 'right', headerHozAlign: 'center', minWidth: 170,
-                  formatter: this.numFmt.bind(this), editor: edit ? 'number' : false },
+                  formatter: this.numFmt.bind(this), editor: edit ? 'input' : false, editorParams: { selectContents: true } },
                 { title: 'Nilai Proporsi', field: 'nilai_proporsi', hozAlign: 'right', headerHozAlign: 'center', minWidth: 170,
-                  formatter: this.numFmt.bind(this), editor: edit ? 'number' : false },
+                  formatter: this.numFmt.bind(this), editor: edit ? 'input' : false, editorParams: { selectContents: true } },
                 { title: '% Proporsi', minWidth: 120, hozAlign: 'right', headerHozAlign: 'center',
                   formatter: (c) => {
                       const d = c.getRow().getData();
@@ -342,6 +352,10 @@ function bebanUsahaApp(cfg) {
             if (isProporsi && this.canEditProporsi()) {
                 this.table.on('cellEdited', (cell) => {
                     const row = cell.getRow();
+                    const f = cell.getField();
+                    if (f === 'total_nilai' || f === 'nilai_proporsi') {
+                        row.update({ [f]: this.parseAngka(cell.getValue()) });
+                    }
                     row.reformat(); // segarkan kolom % Proporsi
                     this.saveProporsi(row.getData(), row);
                 });
