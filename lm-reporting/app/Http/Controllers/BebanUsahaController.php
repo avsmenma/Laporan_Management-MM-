@@ -49,7 +49,8 @@ class BebanUsahaController extends Controller
             'title' => 'RINCIAN BEBAN LAIN-LAIN',
             'subtitle' => 'Disajikan dalam Rupiah',
             'preset' => 'lain',
-            'kolomKedua' => 'Kebun dan Pabrik',
+            // Kolom Regional Office & Kebun dan Pabrik dihapus atas permintaan user
+            // (nilai bulan berjalan cukup di kolom Realisasi) → 'kolomKedua' tidak diisi.
             'dataUrl' => '/report-data/laba-rugi/beban-usaha?page=bol',
             'tabs' => [
                 ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => self::rowsBolSummary()],
