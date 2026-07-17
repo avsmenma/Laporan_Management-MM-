@@ -39,7 +39,6 @@
                     <div class="bu-title" x-text="cfg.title"></div>
                     <div class="bu-subtitle">(<span x-text="cfg.subtitle"></span>)</div>
                 </div>
-                <div class="bu-note">Sumber data belum tersedia — seluruh nilai tampil “-”</div>
             </div>
             <div id="bu-table" class="lm-report-table"></div>
         </div>
@@ -61,7 +60,6 @@
     .bu-title-strip { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); background: #fff; }
     .bu-title { font-weight: 700; color: var(--green-900, #0f4c3a); letter-spacing: .02em; }
     .bu-subtitle { font-size: .8rem; color: #667; }
-    .bu-note { font-size: .78rem; color: #8a6d1a; background: #fdf6e3; border: 1px solid #f0e3b8; border-radius: 8px; padding: 4px 10px; white-space: nowrap; }
 </style>
 @endsection
 
