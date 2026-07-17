@@ -37,6 +37,8 @@ class BebanUsahaController extends Controller
                 ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => $rows],
                 ['key' => 'ks', 'label' => 'ADMI KS', 'rows' => $rows],
                 ['key' => 'kr', 'label' => 'ADMI KR', 'rows' => $rows],
+                // Tabel rasio pembagi KS/KR per bulan (kolomnya khusus, baris dari API).
+                ['key' => 'proporsi', 'label' => 'PROPORSI', 'rows' => []],
             ],
         ]]);
     }

@@ -134,6 +134,46 @@ function bebanUsahaApp(cfg) {
         num(title, field, minWidth = 110) {
             return { title, field, hozAlign: 'right', headerHozAlign: 'center', formatter: this.numFmt.bind(this), minWidth };
         },
+        // Persentase rasio proporsi (porsi karet kecil → 4 desimal).
+        pctFmt(cell) {
+            const v = cell.getValue();
+            if (v == null) return '-';
+            return (Number(v) * 100).toLocaleString('id-ID', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + '%';
+        },
+
+        // ===== Tab PROPORSI (khusus halaman Beban Administrasi) =====
+        // Rasio pembagi ADMI KS/KR per bulan: porsi karet = Σ amount cost center
+        // akhiran 'KR' ÷ total beban admin bulan itu; KS = baris × % sawit.
+        proporsiColumns() {
+            return [
+                { title: 'Bulan', field: 'bulan', frozen: true, minWidth: 140 },
+                this.num('Total Beban Administrasi', 'total', 170),
+                this.num('Porsi Karet (Cost Center *KR)', 'karet', 170),
+                this.num('Porsi Sawit', 'sawit', 170),
+                { title: '% Karet', field: 'pctk', hozAlign: 'right', headerHozAlign: 'center', formatter: this.pctFmt.bind(this), minWidth: 110 },
+                { title: '% Sawit', field: 'pcts', hozAlign: 'right', headerHozAlign: 'center', formatter: this.pctFmt.bind(this), minWidth: 110 },
+            ];
+        },
+        proporsiRows() {
+            const src = (this.values && this.values.proporsi) ? this.values.proporsi : [];
+            const list = src.map(p => ({
+                bulan: this.bulanNama(p.month) + ' ' + this.year,
+                total: p.total, karet: p.karet, sawit: p.sawit,
+                pctk: p.pct_karet, pcts: p.pct_sawit,
+                _type: 'detail',
+            }));
+            if (list.length > 0) {
+                const tTotal = src.reduce((a, p) => a + Number(p.total), 0);
+                const tKaret = src.reduce((a, p) => a + Number(p.karet), 0);
+                list.push({
+                    bulan: 'Kumulatif', total: tTotal, karet: tKaret, sawit: tTotal - tKaret,
+                    pctk: tTotal !== 0 ? tKaret / tTotal : 0,
+                    pcts: tTotal !== 0 ? 1 - tKaret / tTotal : 1,
+                    _type: 'total',
+                });
+            }
+            return list;
+        },
 
         // ===== Kolom per preset (label periode mengikuti dropdown) =====
 
@@ -202,9 +242,10 @@ function bebanUsahaApp(cfg) {
 
         render() {
             if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
+            const isProporsi = this.activeTab === 'proporsi';
             this.table = new window.Tabulator('#bu-table', {
-                data: this.rows(),
-                columns: this.columns(),
+                data: isProporsi ? this.proporsiRows() : this.rows(),
+                columns: isProporsi ? this.proporsiColumns() : this.columns(),
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',
                 maxHeight: 'calc(100vh - 250px)',

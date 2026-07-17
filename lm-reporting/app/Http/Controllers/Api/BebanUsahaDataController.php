@@ -163,6 +163,23 @@ class BebanUsahaDataController extends Controller
             }
             $tab = $this->roundRows($tab);
         }
+        unset($tab);
+
+        // Tab PROPORSI: rasio pembagi KS/KR per bulan (transparansi perhitungan).
+        $proporsi = [];
+        ksort($totPerPeriod);
+        foreach ($totPerPeriod as $p => $tot) {
+            $karet = $krPerPeriod[$p] ?? 0.0;
+            $proporsi[] = [
+                'month' => (int) $p,
+                'total' => round($tot),
+                'karet' => round($karet),
+                'sawit' => round($tot - $karet),
+                'pct_karet' => $tot != 0.0 ? $karet / $tot : 0.0,
+                'pct_sawit' => $tot != 0.0 ? 1.0 - ($karet / $tot) : 1.0,
+            ];
+        }
+        $tabs['proporsi'] = $proporsi;
 
         return $tabs;
     }
