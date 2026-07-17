@@ -75,8 +75,9 @@ class BebanUsahaController extends Controller
     }
 
     /**
-     * Baris sheet LM PENJUALAN: seksi Karet (rekg 860) + Kelapa Sawit (860.1000)
-     * + Jumlah Seluruh. 'k' = kolom Rekg., 't' = header|subtotal|total (default detail).
+     * Baris sheet LM PENJUALAN: seksi Karet (rekg 860.0) + Kelapa Sawit (860.1)
+     * + Jumlah Seluruh. 'k' = kolom Rekg. persis tampilan Excel (dua digit,
+     * mis. '00'), 't' = header|subtotal|total (default detail).
      *
      * @return array<int, array<string, string>>
      */
@@ -85,25 +86,25 @@ class BebanUsahaController extends Controller
         $detail = fn (string $k, string $u): array => ['k' => $k, 'u' => $u];
 
         return [
-            ['k' => '860', 'u' => 'Karet', 't' => 'header'],
-            $detail('0', 'Gaji dan Bisos Karyawan Pelaksana'),
-            $detail('1', 'Pengangkutan ke Pelabuhan'),
-            $detail('2', 'Sewa Gudang'),
-            $detail('4', 'Pelabuhan / EMKL'),
-            $detail('5', 'Analisa Mutu'),
-            $detail('6', 'Klaim Mutu'),
-            $detail('8', 'Bank'),
+            ['k' => '860.0', 'u' => 'Karet', 't' => 'header'],
+            $detail('00', 'Gaji dan Bisos Karyawan Pelaksana'),
+            $detail('01', 'Pengangkutan ke Pelabuhan'),
+            $detail('02', 'Sewa Gudang'),
+            $detail('04', 'Pelabuhan / EMKL'),
+            $detail('05', 'Analisa Mutu'),
+            $detail('06', 'Klaim Mutu'),
+            $detail('08', 'Bank'),
             $detail('23', 'Imbalan Jasa Pemasaran'),
             ['u' => 'Jumlah', 't' => 'subtotal'],
-            ['k' => '860.1000', 'u' => 'Kelapa Sawit', 't' => 'header'],
-            $detail('0', 'Gaji dan Bisos Karyawan Pelaksana'),
-            $detail('1', 'Pengiriman dan Pengangkutan'),
-            $detail('2', 'Sewa Gudang'),
-            $detail('3', 'Instalasi Pompa'),
-            $detail('4', 'Pelabuhan / EMKL'),
-            $detail('5', 'Analisa Mutu'),
-            $detail('6', 'Klaim Mutu'),
-            $detail('8', 'Bank'),
+            ['k' => '860.1', 'u' => 'Kelapa Sawit', 't' => 'header'],
+            $detail('00', 'Gaji dan Bisos Karyawan Pelaksana'),
+            $detail('01', 'Pengiriman dan Pengangkutan'),
+            $detail('02', 'Sewa Gudang'),
+            $detail('03', 'Instalasi Pompa'),
+            $detail('04', 'Pelabuhan / EMKL'),
+            $detail('05', 'Analisa Mutu'),
+            $detail('06', 'Klaim Mutu'),
+            $detail('08', 'Bank'),
             $detail('10', 'Komisi'),
             $detail('11', 'Penyusutan Aktiva Tetap'),
             $detail('14', 'Bahan dan Perlengkapan'),
