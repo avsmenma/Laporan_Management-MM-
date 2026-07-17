@@ -217,6 +217,21 @@ class PembelianTbsController extends Controller
             foreach ($codes as $code) {
                 $b = $biVend[$code] ?? null;
                 $s = $sdVend[$code] ?? null;
+                // Record tanpa kode vendor (sel vendor kosong pada ekspor SAP) tidak
+                // ditampilkan sebagai baris supplier — pivot RINCIAN acuan juga tidak
+                // menampilkannya — tetapi nilainya tetap dihitung ke subtotal & Grand
+                // Total agar angka konsisten dengan tab Summary.
+                if (trim((string) $code) === '') {
+                    foreach (array_keys(self::PLANTS) as $pc) {
+                        foreach (['bi' => $b, 'sd' => $s] as $key => $src) {
+                            [$q, $v] = $src['plants'][$pc] ?? [0.0, 0.0];
+                            $sub[$key][$pc][0] += $q;
+                            $sub[$key][$pc][1] += $v;
+                        }
+                    }
+
+                    continue;
+                }
                 $row = [
                     'vendor_code' => (string) $code,
                     'vendor_name' => (string) ($s['name'] ?? $b['name'] ?? ''),
