@@ -34,8 +34,8 @@ class BebanUsahaController extends Controller
             'preset' => 'admin',
             'tabs' => [
                 ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => $rows],
-                ['key' => 'ks', 'label' => 'KELAPA SAWIT', 'rows' => $rows],
-                ['key' => 'kr', 'label' => 'KARET', 'rows' => $rows],
+                ['key' => 'ks', 'label' => 'ADMI KS', 'rows' => $rows],
+                ['key' => 'kr', 'label' => 'ADMI KR', 'rows' => $rows],
             ],
         ]]);
     }
