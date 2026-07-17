@@ -23,6 +23,13 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::redirect('/laba-rugi', '/laba-rugi/penjualan');
     Route::view('/laba-rugi/penjualan', 'laba-rugi.penjualan')->name('laba-rugi.penjualan');
 
+    // Laba Rugi — LM Beban Usaha (satu halaman per sheet workbook "LM BEBAN USAHA";
+    // UI dulu, sumber data menyusul).
+    Route::get('/laba-rugi/beban-penjualan', [\App\Http\Controllers\BebanUsahaController::class, 'bebanPenjualan'])->name('laba-rugi.beban-penjualan');
+    Route::get('/laba-rugi/beban-administrasi', [\App\Http\Controllers\BebanUsahaController::class, 'bebanAdministrasi'])->name('laba-rugi.beban-administrasi');
+    Route::get('/laba-rugi/beban-operasional-lainnya', [\App\Http\Controllers\BebanUsahaController::class, 'bebanOperasionalLainnya'])->name('laba-rugi.beban-operasional-lainnya');
+    Route::get('/laba-rugi/pendapatan-lainnya', [\App\Http\Controllers\BebanUsahaController::class, 'pendapatanLainnya'])->name('laba-rugi.pendapatan-lainnya');
+
     // Halaman Kebun & Pabrik — submenu LM Eksploitasi (halaman saat ini) & LM Investasi (segera hadir)
     Route::get('/kebun', function () {
         return view('kebun.index');

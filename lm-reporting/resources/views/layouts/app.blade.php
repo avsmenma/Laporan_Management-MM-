@@ -418,6 +418,10 @@
                         </button>
                         <ul class="sidebar-subnav" data-flyout="LABA RUGI" x-show="open" x-cloak>
                             <li><a href="{{ route('laba-rugi.penjualan') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.penjualan') ? 'active' : '' }}"><span class="tree-ico">📄</span> PENJUALAN</a></li>
+                            <li><a href="{{ route('laba-rugi.beban-penjualan') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.beban-penjualan') ? 'active' : '' }}"><span class="tree-ico">📄</span> BEBAN PENJUALAN</a></li>
+                            <li><a href="{{ route('laba-rugi.beban-administrasi') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.beban-administrasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> BEBAN ADMINISTRASI</a></li>
+                            <li><a href="{{ route('laba-rugi.beban-operasional-lainnya') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.beban-operasional-lainnya') ? 'active' : '' }}"><span class="tree-ico">📄</span> BEBAN OPS LAINNYA</a></li>
+                            <li><a href="{{ route('laba-rugi.pendapatan-lainnya') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.pendapatan-lainnya') ? 'active' : '' }}"><span class="tree-ico">📄</span> PENDAPATAN LAINNYA</a></li>
                         </ul>
                     </li>
                     <li class="sidebar-nav-item" x-data="{ open: {{ request()->routeIs('kebun*') ? 'true' : 'false' }} }">
