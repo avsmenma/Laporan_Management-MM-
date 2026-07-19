@@ -16,9 +16,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Aturan (tervalidasi selisih 0 vs workbook "LM BEBAN USAHA", kolom sd Bulan Mei 2026):
  *  - ADMIN : baris = SUM(amount) per Cost Element BPC Desc (persis label baris).
- *            Tab ADMI KS/KR = alokasi PROPORSIONAL per bulan; porsi karet bulan itu =
- *            SUM(amount cost center akhiran 'KR') / total bulan; KS = ROUND(baris × porsi
- *            sawit), KR = baris − KS (meniru rumus workbook).
+ *            Tab ADMI KS/KR SENGAJA tanpa nilai (semua sel '-') — logika alokasi
+ *            proporsional lama dihapus; cara tampil baru menyusul.
  *  - BOL   : baris = pemetaan Kodering→posisi baris; KSO dipecah per profit center
  *            (A119@5E12→KSO Kumai, @5E09→KSO Kembayan Noyan, @5E14→KSO Kebun Pamukan SDE;
  *            A124@5F11→Batubara Danau Salak). Kodering/profit center di luar peta →
@@ -96,9 +95,10 @@ class BebanUsahaDataController extends Controller
     }
 
     /**
-     * Nilai halaman Beban Administrasi per tab, sejajar indeks dengan
+     * Nilai halaman Beban Administrasi, sejajar indeks dengan
      * BebanUsahaController::rowsBebanAdministrasi() (29 rincian + Jumlah +
-     * Depresiasi + Total). Tiap sel: {bln, sd, sdbl}.
+     * Depresiasi + Total). Tiap sel: {bln, sd, sdbl}. Hanya tab 'summary' yang
+     * diisi — tab ADMI KS/KR tidak dikembalikan sehingga UI merender '-'.
      */
     private function adminValues(int $year, int $month): array
     {
@@ -115,55 +115,27 @@ class BebanUsahaDataController extends Controller
         $iDepre = $idxByLabel['Beban Depresiasi dan Amortisasi'];
 
         // Agregat per periode × klasifikasi (label di-TRIM saat impor).
-        $sumPerPeriod = [];   // [period][rowIndex] => nilai
-        $totPerPeriod = [];   // [period] => total semua klasifikasi
+        $summary = array_fill(0, count($rows), ['bln' => 0.0, 'sd' => 0.0, 'sdbl' => 0.0]);
         $agg = DB::table('beban_usaha_gl')
             ->where('report_type', 'ADMIN')->where('year', $year)
             ->selectRaw('period, class_desc, SUM(amount) AS v')
             ->groupBy('period', 'class_desc')->get();
         foreach ($agg as $r) {
-            $p = (int) $r->period;
             $i = $idxByLabel[trim((string) $r->class_desc)] ?? $iLain;
-            $sumPerPeriod[$p][$i] = ($sumPerPeriod[$p][$i] ?? 0.0) + (float) $r->v;
-            $totPerPeriod[$p] = ($totPerPeriod[$p] ?? 0.0) + (float) $r->v;
-        }
-
-        // Porsi karet per bulan = Σ amount cost center akhiran 'KR' / total bulan itu.
-        $krPerPeriod = DB::table('beban_usaha_gl')
-            ->where('report_type', 'ADMIN')->where('year', $year)
-            ->where('cost_center', 'like', '%KR')
-            ->selectRaw('period, SUM(amount) AS v')->groupBy('period')
-            ->pluck('v', 'period')->map(fn ($v) => (float) $v)->all();
-
-        $n = count($rows);
-        $mk = fn (): array => array_fill(0, $n, ['bln' => 0.0, 'sd' => 0.0, 'sdbl' => 0.0]);
-        $tabs = ['summary' => $mk(), 'ks' => $mk(), 'kr' => $mk()];
-
-        foreach ($sumPerPeriod as $p => $perRow) {
-            $tot = $totPerPeriod[$p] ?? 0.0;
-            $shareSawit = $tot != 0.0 ? 1.0 - (($krPerPeriod[$p] ?? 0.0) / $tot) : 1.0;
-            foreach ($perRow as $i => $val) {
-                $ks = round($val * $shareSawit);
-                $per = ['summary' => $val, 'ks' => $ks, 'kr' => $val - $ks];
-                foreach ($per as $tab => $v) {
-                    $this->accumulate($tabs[$tab][$i], $p, $month, $v);
-                }
-            }
+            $this->accumulate($summary[$i], (int) $r->period, $month, (float) $r->v);
         }
 
         // Jumlah = Σ rincian (sebelum baris subtotal); Total = Jumlah + Depresiasi.
-        foreach ($tabs as &$tab) {
-            foreach (['bln', 'sd', 'sdbl'] as $f) {
-                $jml = 0.0;
-                for ($i = 0; $i < $iJumlah; $i++) {
-                    $jml += $tab[$i][$f];
-                }
-                $tab[$iJumlah][$f] = $jml;
-                $tab[$iTotal][$f] = $jml + $tab[$iDepre][$f];
+        foreach (['bln', 'sd', 'sdbl'] as $f) {
+            $jml = 0.0;
+            for ($i = 0; $i < $iJumlah; $i++) {
+                $jml += $summary[$i][$f];
             }
-            $tab = $this->roundRows($tab);
+            $summary[$iJumlah][$f] = $jml;
+            $summary[$iTotal][$f] = $jml + $summary[$iDepre][$f];
         }
-        return $tabs;
+
+        return ['summary' => $this->roundRows($summary)];
     }
 
     /**

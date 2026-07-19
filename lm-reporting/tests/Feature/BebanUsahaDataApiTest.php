@@ -34,14 +34,13 @@ class BebanUsahaDataApiTest extends TestCase
         ], $extra);
     }
 
-    public function test_admin_summary_dan_split_ks_kr_proporsional(): void
+    public function test_admin_summary_tanpa_split_ks_kr(): void
     {
         DB::table('beban_usaha_gl')->insert([
-            // p5: total 2000, porsi KR (cc akhiran KR) = 100 → share sawit 0,95.
             $this->glRow('ADMIN', 5, 1000, ['class_desc' => 'Beban Gaji, Tunjangan & Beban Sosial Karyawan']),
             $this->glRow('ADMIN', 5, 100, ['class_desc' => 'Beban Gaji, Tunjangan & Beban Sosial Karyawan', 'cost_center' => '5E11AU18KR', 'profit_center' => '5E11000001']),
             $this->glRow('ADMIN', 5, 900, ['class_desc' => 'Beban Rapat', 'cost_center' => '5E02AU01KS', 'profit_center' => '5E02000001']),
-            // p6: tanpa KR → share sawit 1. Klasifikasi asing → baris Lain-Lain.
+            // Klasifikasi asing → baris Lain-Lain.
             $this->glRow('ADMIN', 6, 500, ['class_desc' => 'Beban Gaji, Tunjangan & Beban Sosial Karyawan']),
             $this->glRow('ADMIN', 6, 200, ['class_desc' => 'Beban Depresiasi dan Amortisasi']),
             $this->glRow('ADMIN', 6, 50, ['class_desc' => 'Klasifikasi Di Luar Peta']),
@@ -52,7 +51,7 @@ class BebanUsahaDataApiTest extends TestCase
         $resp->assertOk();
         $v = $resp->json('values');
 
-        // Indeks baris: 0=Gaji, 24=Rapat, 28=Lain-Lain, 29=Jumlah, 30=Depresiasi, 31=Total.
+        // Indeks baris: 0=Gaji, 28=Lain-Lain, 29=Jumlah, 30=Depresiasi, 31=Total.
         $sum = $v['summary'];
         $this->assertSame(500, $sum[0]['bln']);
         $this->assertSame(1600, $sum[0]['sd']);
@@ -62,13 +61,9 @@ class BebanUsahaDataApiTest extends TestCase
         $this->assertSame(200, $sum[30]['bln']);
         $this->assertSame(2750, $sum[31]['sd']);  // Total = Jumlah + Depresiasi
 
-        // KS = ROUND(baris × share bulan itu); KR = baris − KS (per bulan, diakumulasi).
-        $this->assertSame(1545, $v['ks'][0]['sd']);  // round(1100×0,95)+500
-        $this->assertSame(55, $v['kr'][0]['sd']);
-        $this->assertSame(855, $v['ks'][24]['sd']);  // round(900×0,95)
-        $this->assertSame(45, $v['kr'][24]['sd']);
-        $this->assertSame(100, $v['kr'][29]['sd']);  // Jumlah KR
-        $this->assertSame(0, $v['kr'][0]['bln']);    // p6 tanpa cc KR
+        // Tab ADMI KS/KR sengaja tanpa nilai — UI merender seluruh sel '-'.
+        $this->assertArrayNotHasKey('ks', $v);
+        $this->assertArrayNotHasKey('kr', $v);
     }
 
     public function test_bol_mapping_kodering_kso_dan_split_karet(): void
