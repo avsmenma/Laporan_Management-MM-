@@ -46,6 +46,8 @@
         <div style="font-size:3rem;margin-bottom:1rem">💰</div>
         <h3 style="color:#666;font-weight:500">Pilih bulan &amp; tahun untuk melihat Penjualan Produk</h3>
     </div>
+
+    @include('laba-rugi._drill-popup')
 </div>
 
 <style>
@@ -66,6 +68,7 @@
 <script>
 function penjualanApp() {
     return {
+        ...lmLrDrillMixin(),
         periods: [],
         year: '',
         month: '',
@@ -184,14 +187,57 @@ function penjualanApp() {
             ];
         },
 
-        // Blok {QTY, RP/KG, NILAI} untuk satu prefix field.
+        // Blok {QTY, RP/KG, NILAI} untuk satu prefix field. QTY & NILAI bisa dirinci
+        // (drill-down sumber GL); RP/KG turunan → tidak. Blok RKAP tanpa sumber.
         qrnCols(prefix) {
             const fmt = this.numFmt.bind(this);
+            const drillable = ['bl', 'bi', 'sd', 'jml'].includes(prefix) || prefix.startsWith('p_');
+            const mk = (title, suffix, measure, minWidth) => {
+                const col = { title, field: `${prefix}_${suffix}`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth };
+                if (measure && drillable) {
+                    col.cssClass = 'lm-cell-drill';
+                    col.cellClick = (e, cell) => this.cellDrill(cell, prefix, measure);
+                }
+                return col;
+            };
             return [
-                { title: 'QTY', field: `${prefix}_q`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 100 },
-                { title: 'RP/KG', field: `${prefix}_r`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 75 },
-                { title: 'NILAI', field: `${prefix}_n`, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth: 140 },
+                mk('QTY', 'q', 'qty', 100),
+                mk('RP/KG', 'r', null, 75),
+                mk('NILAI', 'n', 'nilai', 140),
             ];
+        },
+
+        // Klik sel QTY/NILAI → popup sumber data (tahap 1 pivot, tahap 2 mentah).
+        cellDrill(cell, blok, measure) {
+            const d = cell.getRow().getData();
+            if (!d._rt) return; // baris judul grup produk
+            const v = Number(cell.getValue() ?? 0);
+            if (!v) return;
+            let blokLabel;
+            if (blok === 'bl') blokLabel = 'BULAN LALU';
+            else if (blok === 'bi') blokLabel = 'BULAN INI';
+            else if (blok === 'sd') blokLabel = 'SD BULAN INI';
+            else if (blok === 'jml') blokLabel = 'BULAN INI — JUMLAH';
+            else {
+                const p = this.plants.find(x => `p_${x.code}` === blok);
+                blokLabel = 'BULAN INI — ' + (p ? (p.nama || p.code) : blok.slice(2));
+            }
+            const title = d._rt === 'total'
+                ? 'Total Seluruh Produk'
+                : d._mat + ' — ' + (d._rt === 'jumlah'
+                    ? 'Jumlah'
+                    : (((d.code && d.code !== '—') ? d.code + ' ' : '') + ((d.name && d.name !== '—') ? d.name : '(Tanpa Keterangan)')));
+            this.openDrill({
+                title,
+                columnLabel: `${blokLabel} — ${measure === 'qty' ? 'QTY' : 'NILAI'} · ${this.bulanNama(this.month)} ${this.year}`,
+                unit: measure === 'qty' ? '' : 'Rp',
+                value: v,
+                params: {
+                    page: 'penjualan', tab: this.activeTab,
+                    mat: d._mat || '', code: d._code || '', rowType: d._rt,
+                    blok, measure, year: this.year, month: this.month,
+                },
+            });
         },
 
         // ===== Tab BUYER / PLANT (identik temp Buyer / temp Plant) =====
@@ -245,12 +291,12 @@ function penjualanApp() {
                 // Baris judul grup produk (spt B5=CPO di template, tanpa angka).
                 list.push({ product: g.material, code: '', name: '', _section: true });
                 g.rows.forEach(r => {
-                    list.push(fill({ product: '', code: r.code || '—', name: r.name || '—' }, r));
+                    list.push(fill({ product: '', code: r.code || '—', name: r.name || '—', _mat: g.material, _code: r.code || '', _rt: 'detail' }, r));
                 });
-                list.push(fill({ product: 'Jumlah', code: '', name: '', _jumlah: true }, g.jumlah));
+                list.push(fill({ product: 'Jumlah', code: '', name: '', _jumlah: true, _mat: g.material, _rt: 'jumlah' }, g.jumlah));
             });
             if (src.total) {
-                list.push(fill({ product: 'Total', code: '', name: '', _grand: true }, src.total));
+                list.push(fill({ product: 'Total', code: '', name: '', _grand: true, _rt: 'total' }, src.total));
             }
             return list;
         },
@@ -288,12 +334,12 @@ function penjualanApp() {
             this.all.groups.forEach(g => {
                 list.push({ product: g.material, code: '', name: '', _section: true });
                 g.rows.forEach(r => {
-                    list.push(fill({ product: '', code: r.code || '—', name: r.name || '—' }, r));
+                    list.push(fill({ product: '', code: r.code || '—', name: r.name || '—', _mat: g.material, _code: r.code || '', _rt: 'detail' }, r));
                 });
-                list.push(fill({ product: 'Jumlah', code: '', name: '', _jumlah: true }, g.jumlah));
+                list.push(fill({ product: 'Jumlah', code: '', name: '', _jumlah: true, _mat: g.material, _rt: 'jumlah' }, g.jumlah));
             });
             if (this.all.total) {
-                list.push(fill({ product: 'Total', code: '', name: '', _grand: true }, this.all.total));
+                list.push(fill({ product: 'Total', code: '', name: '', _grand: true, _rt: 'total' }, this.all.total));
             }
             return list;
         },

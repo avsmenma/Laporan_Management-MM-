@@ -30,7 +30,7 @@ class BebanUsahaDataController extends Controller
     use AuthorizesReportRequests;
 
     /** Kodering BOL → posisi baris rincian (indeks 0-based pada daftar rincian). */
-    private const BOL_DETAIL_BY_CODE = [
+    public const BOL_DETAIL_BY_CODE = [
         'A154' => 4,   // Beban Rugi Penurunan Nilai Aset Tetap
         'A123' => 6,   // Biaya Operasional Pabrik Kebun / Diluar Harga Pokok
         'A136' => 8,   // Selisih Kas Opname/Gudang
@@ -42,17 +42,17 @@ class BebanUsahaDataController extends Controller
     ];
 
     /** Posisi baris Lain - Lain (tampungan kodering/profit center di luar peta). */
-    private const BOL_DETAIL_LAIN = 17;
+    public const BOL_DETAIL_LAIN = 17;
 
     /** A119 (KSO) → posisi baris KSO per prefiks profit center. */
-    private const BOL_KSO_A119_BY_PC = [
+    public const BOL_KSO_A119_BY_PC = [
         '5E12' => 5,   // Biaya KSO Kumai - CV. Murutuwu Putra
         '5E09' => 6,   // Biaya KSO Kembayan - CV Noyan Persada Jaya
         '5E14' => 10,  // Biaya KSO Kebun Pamukan - PT Sumber Daya Energi (SDE)
     ];
 
     /** A124 → posisi baris KSO Biaya Operasional Batubara Danau Salak (PT.MAS). */
-    private const BOL_KSO_A124 = 2;
+    public const BOL_KSO_A124 = 2;
 
     public function index(Request $request): JsonResponse
     {

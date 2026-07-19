@@ -83,6 +83,8 @@ Route::prefix('report-data')->group(function () {
     Route::get('/produksi/pembelian', [\App\Http\Controllers\Api\PembelianTbsController::class, 'index']);
     Route::get('/laba-rugi/penjualan', [\App\Http\Controllers\Api\PenjualanProdukController::class, 'index']);
     Route::get('/laba-rugi/beban-usaha', [\App\Http\Controllers\Api\BebanUsahaDataController::class, 'index']);
+    Route::get('/laba-rugi/drilldown', [\App\Http\Controllers\Api\LabaRugiDrilldownController::class, 'pivot']);
+    Route::get('/laba-rugi/drilldown-deep', [\App\Http\Controllers\Api\LabaRugiDrilldownController::class, 'deep']);
     Route::get('/alokasi-biaya-olah', [\App\Http\Controllers\Api\AlokasiBiayaOlahController::class, 'index']);
 });
 

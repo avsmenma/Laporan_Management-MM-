@@ -46,6 +46,8 @@
             <div id="bu-table" class="lm-report-table"></div>
         </div>
     </div>
+
+    @include('laba-rugi._drill-popup')
 </div>
 
 <style>
@@ -70,6 +72,7 @@
 <script>
 function bebanUsahaApp(cfg) {
     return {
+        ...lmLrDrillMixin(),
         cfg,
         // Default mengikuti workbook acuan (Juni 2026); bila halaman punya sumber
         // data (cfg.dataUrl), periode & nilai dimuat dari API.
@@ -140,7 +143,36 @@ function bebanUsahaApp(cfg) {
         },
 
         num(title, field, minWidth = 110) {
-            return { title, field, hozAlign: 'right', headerHozAlign: 'center', formatter: this.numFmt.bind(this), minWidth };
+            const col = { title, field, hozAlign: 'right', headerHozAlign: 'center', formatter: this.numFmt.bind(this), minWidth };
+            // Kolom Realisasi bisa dirinci (drill-down) bila halaman punya sumber data.
+            const drillField = { bln_r: 'bln', sd_r: 'sd', sdbl_r: 'sdbl' }[field];
+            if (drillField && this.cfg.dataUrl) {
+                col.cssClass = 'lm-cell-drill';
+                col.cellClick = (e, cell) => this.cellDrill(cell, drillField);
+            }
+            return col;
+        },
+
+        // Klik sel Realisasi → popup sumber data (tahap 1 pivot, tahap 2 mentah).
+        cellDrill(cell, field) {
+            if (this.activeTab === 'proporsi') return;
+            const d = cell.getRow().getData();
+            const v = Number(cell.getValue() ?? 0);
+            if (!v || d._i == null) return;
+            const page = (this.cfg.dataUrl.match(/page=(\w+)/) || [])[1];
+            if (!page) return;
+            const labels = {
+                bln: `Bulan ${this.bulanNama(this.month)} ${this.year} — Realisasi`,
+                sd: `sd Bulan ${this.bulanNama(this.month)} ${this.year} — Realisasi`,
+                sdbl: 'sd Bulan Lalu — Realisasi',
+            };
+            this.openDrill({
+                title: d.uraian,
+                columnLabel: labels[field] || field,
+                unit: 'Rp',
+                value: v,
+                params: { page, tab: this.activeTab, row: d._i, field, year: this.year, month: this.month },
+            });
         },
         // Persentase rasio proporsi (porsi karet kecil → 4 desimal).
         pctFmt(cell) {
@@ -205,12 +237,15 @@ function bebanUsahaApp(cfg) {
             }
             return cols;
         },
-        addProporsiRow() {
-            // Baris baru berperiode filter aktif; tersimpan saat pertama kali diedit.
-            this.propRows.push({ id: null, year: Number(this.year) || 2026, month: Number(this.month) || 1, uraian: 'ABS Sawit', total_nilai: 0, nilai_proporsi: 0 });
+        async addProporsiRow() {
+            // Baris baru berperiode filter aktif — LANGSUNG disimpan supaya tidak
+            // hilang saat halaman di-refresh sebelum sempat diedit.
+            const row = { id: null, year: Number(this.year) || 2026, month: Number(this.month) || 1, uraian: 'ABS Sawit', total_nilai: 0, nilai_proporsi: 0 };
+            this.propRows.push(row);
+            await this.saveProporsi(row);
             this.render();
         },
-        async saveProporsi(rowData, rowComponent) {
+        async saveProporsi(rowData) {
             try {
                 const resp = await fetch(this.cfg.proporsi.saveUrl, {
                     method: 'POST',
@@ -231,13 +266,15 @@ function bebanUsahaApp(cfg) {
                 rowData.id = data.id;
                 if (window.lmToast) window.lmToast('Proporsi tersimpan', 'ok');
             } catch (e) {
-                if (window.lmToast) window.lmToast(e.message, 'err');
-                await this.loadProporsi();
-                this.render();
+                // Baris tetap ditampilkan (jangan hapus ketikan user) — perbaiki isian
+                // (mis. periode+uraian kembar) lalu edit lagi untuk menyimpan ulang.
+                if (window.lmToast) window.lmToast('BELUM tersimpan: ' + e.message, 'err');
             }
         },
         async deleteProporsi(rowComponent) {
             const d = rowComponent.getData();
+            const label = this.bulanNama(d.month) + ' ' + d.year + ' — ' + d.uraian;
+            if (!window.confirm('Hapus baris proporsi ' + label + '?')) return;
             this.propRows = this.propRows.filter(r => r !== d && (d.id == null || r.id !== d.id));
             rowComponent.delete();
             if (d.id == null) return; // belum pernah tersimpan
@@ -305,7 +342,7 @@ function bebanUsahaApp(cfg) {
             const tab = this.cfg.tabs.find(t => t.key === this.activeTab) || this.cfg.tabs[0];
             const vals = this.values ? (this.values[tab.key] || null) : null;
             return tab.rows.map((r, i) => {
-                const row = { kode: r.k || '', uraian: r.u, _type: r.t || 'detail' };
+                const row = { kode: r.k || '', uraian: r.u, _type: r.t || 'detail', _i: i };
                 const v = vals ? vals[i] : null;
                 if (!v) return row; // tanpa data → semua sel '-'
                 // RKAP & tahun lalu belum ada sumber → '-'; Selisih = Realisasi − RKAP(0)
