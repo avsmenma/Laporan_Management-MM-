@@ -514,6 +514,198 @@
         </div>
     </div>
     <style>@keyframes lmspin{to{transform:rotate(360deg)}}</style>
+
+    {{-- Pencarian tabel (Ctrl+F). Ctrl+F bawaan browser tidak menemukan baris yang
+         di-virtualisasi Tabulator (di luar viewport tidak ada di DOM) — bar ini
+         mencari di DATA tabel lalu menggulung + menyorot barisnya. --}}
+    <div id="lm-find" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex:none;color:#6a756f"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="lm-find-input" type="text" placeholder="Cari uraian di tabel…" autocomplete="off" spellcheck="false">
+        <span id="lm-find-count">0/0</span>
+        <button type="button" id="lm-find-prev" title="Sebelumnya (Shift+Enter)">▲</button>
+        <button type="button" id="lm-find-next" title="Berikutnya (Enter)">▼</button>
+        <button type="button" id="lm-find-close" title="Tutup (Esc)">✕</button>
+    </div>
+    <style>
+        #lm-find {
+            position: fixed; top: 70px; right: 24px; z-index: 120;
+            display: flex; align-items: center; gap: 8px;
+            background: #fff; border: 1px solid var(--line-strong, #cdd6d1); border-radius: 10px;
+            padding: 8px 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+        }
+        body.lm-focus #lm-find { top: 52px; }
+        #lm-find-input {
+            width: 230px; height: 30px; padding: 0 10px; border: 1px solid var(--line, #dfe5e1);
+            border-radius: 7px; font-family: inherit; font-size: 13px; color: var(--ink-800, #1f2a26);
+        }
+        #lm-find-input:focus { outline: none; border-color: var(--g-600, #1a7a56); box-shadow: 0 0 0 3px var(--g-50, #eaf4ee); }
+        #lm-find.lm-find-empty #lm-find-input { border-color: #c0392b; box-shadow: 0 0 0 3px rgba(192, 57, 43, .12); }
+        #lm-find-count { font-size: 12px; font-weight: 600; color: var(--ink-500, #6a756f); min-width: 42px; text-align: center; white-space: nowrap; }
+        #lm-find button {
+            width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer;
+            background: var(--surface-2, #f4f7f5); border: 1px solid var(--line, #dfe5e1); border-radius: 7px;
+            font-size: 11px; color: var(--ink-600, #54625c); font-family: inherit;
+        }
+        #lm-find button:hover { background: var(--g-50, #eaf4ee); color: var(--g-800, #0f4c3a); border-color: var(--g-100, #cfe6db); }
+        /* Baris hasil aktif — outline digambar DI ATAS latar sel (subtotal/total berwarna). */
+        .tabulator-row.lm-find-hit { outline: 3px solid #f59e0b; outline-offset: -3px; }
+        @media print { #lm-find { display: none !important; } }
+    </style>
+    <script>
+        // Pencarian Ctrl+F untuk tabel Tabulator — aktif hanya saat dipanggil user.
+        (function () {
+            var bar, input, countEl;
+            var matches = [];   // [{table, row}]
+            var cur = -1;
+            var hiRow = null;
+            var debTimer = null;
+
+            function el(id) { return document.getElementById(id); }
+            function visible(node) { return !!node && (node.offsetWidth > 0 || node.offsetHeight > 0); }
+
+            // Tabel Tabulator yang sedang terlihat (tab aktif halaman).
+            function visibleTables() {
+                var out = [];
+                if (!window.Tabulator || !window.Tabulator.findTable) return out;
+                document.querySelectorAll('.tabulator').forEach(function (node) {
+                    if (!visible(node)) return;
+                    try {
+                        var found = window.Tabulator.findTable(node);
+                        if (found && found[0]) out.push(found[0]);
+                    } catch (e) {}
+                });
+                return out;
+            }
+
+            function clearHighlight() {
+                if (!hiRow) return;
+                try {
+                    var rowEl = hiRow.getElement();
+                    if (rowEl) rowEl.classList.remove('lm-find-hit');
+                } catch (e) {}
+                hiRow = null;
+            }
+
+            function updateCount() {
+                countEl.textContent = matches.length ? (cur + 1) + '/' + matches.length : '0/0';
+                bar.classList.toggle('lm-find-empty', !matches.length && input.value.trim() !== '');
+            }
+
+            // Cari di DATA baris (bukan DOM) — kolom teks saja, field internal (_*) dilewati.
+            function computeMatches(query) {
+                matches = [];
+                var needle = query.toLowerCase();
+                visibleTables().forEach(function (table) {
+                    var rows;
+                    try { rows = table.getRows('active'); } catch (e) { rows = []; }
+                    rows.forEach(function (row) {
+                        var d = row.getData();
+                        for (var k in d) {
+                            if (k.charAt(0) === '_') continue;
+                            var v = d[k];
+                            if (typeof v === 'string' && v && v.toLowerCase().indexOf(needle) !== -1) {
+                                matches.push({ table: table, row: row });
+                                break;
+                            }
+                        }
+                    });
+                });
+            }
+
+            function jumpTo(index) {
+                if (!matches.length) { updateCount(); return; }
+                cur = ((index % matches.length) + matches.length) % matches.length;
+                updateCount();
+                var m = matches[cur];
+                clearHighlight();
+                try {
+                    var p = m.table.scrollToRow(m.row, 'center', false);
+                    var mark = function () {
+                        try {
+                            var rowEl = m.row.getElement();
+                            if (rowEl) { rowEl.classList.add('lm-find-hit'); hiRow = m.row; }
+                        } catch (e) {}
+                    };
+                    (p && p.then) ? p.then(mark).catch(function () {}) : mark();
+                } catch (e) {}
+            }
+
+            function runSearch(keepPosition) {
+                var q = input.value.trim();
+                clearHighlight();
+                if (!q) { matches = []; cur = -1; updateCount(); return; }
+                var prev = cur;
+                computeMatches(q);
+                jumpTo(keepPosition && prev >= 0 && prev < matches.length ? prev : 0);
+            }
+
+            // Tabel bisa dibangun ulang (ganti tab/filter) → referensi baris kedaluwarsa.
+            function matchesStillValid() {
+                if (!matches.length) return false;
+                try { return !!(matches[0].table.element && matches[0].table.element.isConnected); } catch (e) { return false; }
+            }
+
+            function step(dir) {
+                if (!matchesStillValid()) { runSearch(false); return; }
+                jumpTo(cur + dir);
+            }
+
+            function openBar() {
+                bar.style.display = 'flex';
+                input.focus();
+                input.select();
+                if (input.value.trim()) runSearch(false);
+            }
+
+            function closeBar() {
+                clearHighlight();
+                matches = [];
+                cur = -1;
+                bar.style.display = 'none';
+                input.blur();
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                bar = el('lm-find');
+                input = el('lm-find-input');
+                countEl = el('lm-find-count');
+                if (!bar) return;
+
+                input.addEventListener('input', function () {
+                    clearTimeout(debTimer);
+                    debTimer = setTimeout(function () { runSearch(false); }, 160);
+                });
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        step(e.shiftKey ? -1 : 1);
+                    }
+                });
+                el('lm-find-prev').addEventListener('click', function () { step(-1); });
+                el('lm-find-next').addEventListener('click', function () { step(1); });
+                el('lm-find-close').addEventListener('click', closeBar);
+
+                // Fase capture agar Esc menutup bar TANPA ikut menutup mode layar penuh.
+                document.addEventListener('keydown', function (e) {
+                    var isFind = (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F');
+                    if (isFind) {
+                        // Biarkan Ctrl+F bawaan browser bila popup drill-down terbuka
+                        // (tabel popup HTML biasa) atau halaman tanpa tabel Tabulator.
+                        var ddOpen = Array.prototype.some.call(
+                            document.querySelectorAll('.lm-dd-overlay'), visible);
+                        if (ddOpen || !visibleTables().length) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openBar();
+                    } else if (e.key === 'Escape' && bar.style.display !== 'none') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeBar();
+                    }
+                }, true);
+            });
+        })();
+    </script>
     <script>
         window.lmToast = function (message, type) {
             var wrap = document.getElementById('lm-toasts');
