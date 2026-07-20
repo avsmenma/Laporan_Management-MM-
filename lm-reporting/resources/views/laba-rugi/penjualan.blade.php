@@ -87,22 +87,21 @@ function penjualanApp() {
             { key: 'all', title: 'ALL' },
         ],
 
-        // Angka apa adanya dari GL (penjualan = kredit → negatif): negatif dirender
-        // dalam tanda kurung seperti pivot Excel (warna tetap normal); 0/null → '-'.
+        // Nilai GL penjualan tersimpan kredit (negatif) — SELURUH angka dirender
+        // positif (nilai absolut, tanpa tanda kurung) per permintaan user;
+        // 0/null → '-'. Data asli tetap bertanda (drill-down tampil apa adanya).
         numFmt(cell) {
             const v = cell.getValue();
             if (v == null || Number(v) === 0) return '-';
-            const n = Number(v);
-            const s = Math.abs(n).toLocaleString('id-ID', { maximumFractionDigits: 0 });
-            return n < 0 ? '(' + s + ')' : s;
+            return Math.abs(Number(v)).toLocaleString('id-ID', { maximumFractionDigits: 0 });
         },
 
-        // Rasio → persen; 0/null → '-' (pola aman IFERROR, sama dgn halaman Pembelian).
+        // Rasio → persen positif; 0/null → '-' (pola aman IFERROR, sama dgn halaman Pembelian).
         pctFmt(cell) {
             const v = cell.getValue();
             return (v == null || Number(v) === 0)
                 ? '-'
-                : (Number(v) * 100).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+                : Math.abs(Number(v) * 100).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
         },
 
         bulanNama(m) {
