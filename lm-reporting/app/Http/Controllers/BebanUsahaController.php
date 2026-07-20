@@ -80,7 +80,8 @@ class BebanUsahaController extends Controller
             'title' => 'RINCIAN PENDAPATAN LAIN-LAIN',
             'subtitle' => 'Disajikan dalam Rupiah',
             'preset' => 'lain',
-            'kolomKedua' => 'Kebun & Pabrik',
+            // Kolom Regional Office & Kebun dan Pabrik dihapus atas permintaan user
+            // (sama seperti Beban Ops Lainnya) → 'kolomKedua' tidak diisi.
             'tabs' => [
                 ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => self::rowsPendapatanSummary()],
                 ['key' => 'ks', 'label' => 'KELAPA SAWIT', 'rows' => $ksKr],

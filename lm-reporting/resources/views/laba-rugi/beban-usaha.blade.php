@@ -328,8 +328,9 @@ function bebanUsahaApp(cfg) {
             // Uraian [Regional Office, Kebun & Pabrik] | Bulan (Real, RKAP) | Selisih |
             // sd Bulan (Real, RKAP) | sd thn lalu | Selisih | sd Bulan Lalu (Real, RKAP).
             const cols = [{ title: 'U R A I A N', field: 'uraian', frozen: true, minWidth: 360 }];
-            // Kolom RO/Kebun&Pabrik hanya bila cfg.kolomKedua diisi (Pendapatan Lainnya;
-            // di Beban Ops Lainnya dihapus atas permintaan user).
+            // Kolom RO/Kebun&Pabrik hanya bila cfg.kolomKedua diisi (saat ini tak ada
+            // halaman yang memakainya; di BOL & Pendapatan Lainnya dihapus atas
+            // permintaan user).
             if (this.cfg.preset === 'lain' && this.cfg.kolomKedua) {
                 cols.push(this.num('Regional Office', 'ro', 120));
                 cols.push(this.num(this.cfg.kolomKedua, 'kp', 120));
