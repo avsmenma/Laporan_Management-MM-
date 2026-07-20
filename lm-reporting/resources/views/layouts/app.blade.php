@@ -456,6 +456,7 @@
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
                         <ul class="sidebar-subnav" data-flyout="PRODUKSI" x-show="open" x-cloak>
+                            <li><a href="{{ route('produksi.rekap') }}" class="sidebar-sublink {{ request()->routeIs('produksi.rekap') ? 'active' : '' }}"><span class="tree-ico">📄</span> REKAP PRODUKSI</a></li>
                             <li><a href="{{ route('produksi.pks') }}" class="sidebar-sublink {{ request()->routeIs('produksi.pks') ? 'active' : '' }}"><span class="tree-ico">📄</span> PKS</a></li>
                             <li><a href="{{ route('produksi.kebun') }}" class="sidebar-sublink {{ request()->routeIs('produksi.kebun') ? 'active' : '' }}"><span class="tree-ico">📄</span> KEBUN</a></li>
                             <li><a href="{{ route('produksi.pembelian') }}" class="sidebar-sublink {{ request()->routeIs('produksi.pembelian') ? 'active' : '' }}"><span class="tree-ico">📄</span> PEMBELIAN</a></li>

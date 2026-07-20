@@ -51,8 +51,9 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
 
     Route::view('/areal', 'areal.index')->name('areal');
 
-    // Produksi punya submenu: PKS, Kebun, dan Pembelian (TBS).
+    // Produksi punya submenu: Rekap Produksi, PKS, Kebun, dan Pembelian (TBS).
     Route::redirect('/produksi', '/produksi/pks');
+    Route::view('/produksi/rekap', 'produksi.rekap')->name('produksi.rekap');
     Route::view('/produksi/pks', 'produksi.index')->name('produksi.pks');
     Route::view('/produksi/kebun', 'produksi.kebun')->name('produksi.kebun');
     Route::view('/produksi/pembelian', 'produksi.pembelian')->name('produksi.pembelian');
@@ -79,6 +80,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/areal', [\App\Http\Controllers\Api\ArealController::class, 'index']);
     Route::get('/areal/ringkasan', [\App\Http\Controllers\Api\ArealController::class, 'ringkasan']);
     Route::get('/produksi', [\App\Http\Controllers\Api\ProduksiController::class, 'index']);
+    Route::get('/produksi/rekap', [\App\Http\Controllers\Api\ProduksiRekapController::class, 'index']);
     Route::get('/produksi/kebun', [\App\Http\Controllers\Api\ProduksiKebunController::class, 'index']);
     Route::get('/produksi/pembelian', [\App\Http\Controllers\Api\PembelianTbsController::class, 'index']);
     Route::get('/laba-rugi/penjualan', [\App\Http\Controllers\Api\PenjualanProdukController::class, 'index']);
