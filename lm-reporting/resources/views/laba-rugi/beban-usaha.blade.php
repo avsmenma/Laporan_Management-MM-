@@ -142,11 +142,19 @@ function bebanUsahaApp(cfg) {
             return n < 0 ? '(' + s + ')' : s;
         },
 
+        // Tab aktif bisa dirinci? Tab ADMI KS/KR hasil perhitungan (Summary ×
+        // %Proporsi), bukan agregat GL langsung — rinciannya lihat tab SUMMARY.
+        tabDrillable() {
+            if (!this.cfg.dataUrl || this.activeTab === 'proporsi') return false;
+            const page = (this.cfg.dataUrl.match(/page=(\w+)/) || [])[1];
+            return !(page === 'admin' && (this.activeTab === 'ks' || this.activeTab === 'kr'));
+        },
+
         num(title, field, minWidth = 110) {
             const col = { title, field, hozAlign: 'right', headerHozAlign: 'center', formatter: this.numFmt.bind(this), minWidth };
             // Kolom Realisasi bisa dirinci (drill-down) bila halaman punya sumber data.
             const drillField = { bln_r: 'bln', sd_r: 'sd', sdbl_r: 'sdbl' }[field];
-            if (drillField && this.cfg.dataUrl) {
+            if (drillField && this.tabDrillable()) {
                 col.cssClass = 'lm-cell-drill';
                 col.cellClick = (e, cell) => this.cellDrill(cell, drillField);
             }
@@ -155,7 +163,7 @@ function bebanUsahaApp(cfg) {
 
         // Klik sel Realisasi → popup sumber data (tahap 1 pivot, tahap 2 mentah).
         cellDrill(cell, field) {
-            if (this.activeTab === 'proporsi') return;
+            if (!this.tabDrillable()) return;
             const d = cell.getRow().getData();
             const v = Number(cell.getValue() ?? 0);
             if (!v || d._i == null) return;

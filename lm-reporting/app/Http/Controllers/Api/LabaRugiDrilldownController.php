@@ -159,7 +159,9 @@ class LabaRugiDrilldownController extends Controller
     /** @return array{0: Builder, 1: array<string, mixed>} */
     private function scopeAdmin(Request $request, int $year, int $month): array
     {
-        abort_unless((string) $request->query('tab', 'summary') === 'summary', 422, 'Tab ADMI KS/ADMI KR belum memiliki nilai untuk dirinci.');
+        // Tab ADMI KS/KR = hasil perhitungan (Summary × %Proporsi), bukan agregat GL
+        // langsung — rincian sumber mentahnya ada di tab SUMMARY.
+        abort_unless((string) $request->query('tab', 'summary') === 'summary', 422, 'Tab ADMI KS/ADMI KR adalah hasil perhitungan Summary × %Proporsi — rincian sumber ada di tab SUMMARY.');
         $field = (string) $request->query('field');
         abort_unless(in_array($field, ['bln', 'sd', 'sdbl'], true), 422, 'Parameter field tidak dikenal.');
 

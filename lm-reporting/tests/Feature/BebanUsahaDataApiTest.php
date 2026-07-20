@@ -34,7 +34,7 @@ class BebanUsahaDataApiTest extends TestCase
         ], $extra);
     }
 
-    public function test_admin_summary_tanpa_split_ks_kr(): void
+    public function test_admin_ks_kr_dari_persen_proporsi(): void
     {
         DB::table('beban_usaha_gl')->insert([
             $this->glRow('ADMIN', 5, 1000, ['class_desc' => 'Beban Gaji, Tunjangan & Beban Sosial Karyawan']),
@@ -44,6 +44,13 @@ class BebanUsahaDataApiTest extends TestCase
             $this->glRow('ADMIN', 6, 500, ['class_desc' => 'Beban Gaji, Tunjangan & Beban Sosial Karyawan']),
             $this->glRow('ADMIN', 6, 200, ['class_desc' => 'Beban Depresiasi dan Amortisasi']),
             $this->glRow('ADMIN', 6, 50, ['class_desc' => 'Klasifikasi Di Luar Peta']),
+        ]);
+        // %Proporsi per bulan (tab PROPORSI): Mei 90%/10%, Juni 80%/20%.
+        DB::table('beban_usaha_proporsi')->insert([
+            ['year' => 2026, 'month' => 5, 'uraian' => 'ABS Sawit', 'total_nilai' => 1000, 'nilai_proporsi' => 900],
+            ['year' => 2026, 'month' => 5, 'uraian' => 'ABS Karet', 'total_nilai' => 1000, 'nilai_proporsi' => 100],
+            ['year' => 2026, 'month' => 6, 'uraian' => 'ABS Sawit', 'total_nilai' => 1000, 'nilai_proporsi' => 800],
+            ['year' => 2026, 'month' => 6, 'uraian' => 'ABS Karet', 'total_nilai' => 1000, 'nilai_proporsi' => 200],
         ]);
 
         $resp = $this->actingAs($this->actingViewer())
@@ -61,9 +68,41 @@ class BebanUsahaDataApiTest extends TestCase
         $this->assertSame(200, $sum[30]['bln']);
         $this->assertSame(2750, $sum[31]['sd']);  // Total = Jumlah + Depresiasi
 
-        // Tab ADMI KS/KR sengaja tanpa nilai — UI merender seluruh sel '-'.
-        $this->assertArrayNotHasKey('ks', $v);
-        $this->assertArrayNotHasKey('kr', $v);
+        // ADMI KS = summary × %Sawit per bulan; kumulatif memakai % bulan masing-masing:
+        // Gaji sd = 1100×90% (Mei) + 500×80% (Juni) = 990 + 400.
+        $ks = $v['ks'];
+        $this->assertSame(400, $ks[0]['bln']);
+        $this->assertSame(1390, $ks[0]['sd']);
+        $this->assertSame(990, $ks[0]['sdbl']);
+        $this->assertSame(2240, $ks[29]['sd']);   // 1390 + 900×90% + 50×80%
+        $this->assertSame(160, $ks[30]['bln']);   // Depresiasi 200×80%
+        $this->assertSame(2400, $ks[31]['sd']);
+
+        // ADMI KR = summary × %Karet per bulan (KS + KR = Summary).
+        $kr = $v['kr'];
+        $this->assertSame(100, $kr[0]['bln']);
+        $this->assertSame(210, $kr[0]['sd']);
+        $this->assertSame(110, $kr[0]['sdbl']);
+        $this->assertSame(310, $kr[29]['sd']);
+        $this->assertSame(40, $kr[30]['bln']);
+        $this->assertSame(350, $kr[31]['sd']);
+    }
+
+    public function test_admin_ks_kr_nol_bila_proporsi_kosong(): void
+    {
+        DB::table('beban_usaha_gl')->insert([
+            $this->glRow('ADMIN', 6, 500, ['class_desc' => 'Beban Gaji, Tunjangan & Beban Sosial Karyawan']),
+        ]);
+
+        $resp = $this->actingAs($this->actingViewer())
+            ->getJson('/report-data/laba-rugi/beban-usaha?page=admin&year=2026&month=6');
+        $resp->assertOk();
+        $v = $resp->json('values');
+
+        // Tanpa baris proporsi → %=0: summary tetap terisi, KS/KR 0 (UI merender '-').
+        $this->assertSame(500, $v['summary'][0]['bln']);
+        $this->assertSame(0, $v['ks'][0]['bln']);
+        $this->assertSame(0, $v['kr'][0]['sd']);
     }
 
     public function test_bol_mapping_kodering_kso_dan_split_karet(): void

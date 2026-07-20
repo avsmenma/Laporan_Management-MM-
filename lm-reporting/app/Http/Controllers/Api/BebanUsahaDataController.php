@@ -16,8 +16,11 @@ use Illuminate\Support\Facades\DB;
  *
  * Aturan (tervalidasi selisih 0 vs workbook "LM BEBAN USAHA", kolom sd Bulan Mei 2026):
  *  - ADMIN : baris = SUM(amount) per Cost Element BPC Desc (persis label baris).
- *            Tab ADMI KS/KR SENGAJA tanpa nilai (semua sel '-') — logika alokasi
- *            proporsional lama dihapus; cara tampil baru menyusul.
+ *            Tab ADMI KS = Summary × %Proporsi ABS Sawit; ADMI KR = Summary ×
+ *            %Proporsi ABS Karet — %Proporsi per bulan dari tab PROPORSI
+ *            (beban_usaha_proporsi, input manual; % = nilai_proporsi/total_nilai).
+ *            Kumulatif = Σ (nilai bulan × %proporsi bulan itu); bulan tanpa baris
+ *            proporsi dianggap 0%.
  *  - BOL   : baris = pemetaan Kodering→posisi baris; KSO dipecah per profit center
  *            (A119@5E12→KSO Kumai, @5E09→KSO Kembayan Noyan, @5E14→KSO Kebun Pamukan SDE;
  *            A124@5F11→Batubara Danau Salak). Kodering/profit center di luar peta →
@@ -95,10 +98,11 @@ class BebanUsahaDataController extends Controller
     }
 
     /**
-     * Nilai halaman Beban Administrasi, sejajar indeks dengan
+     * Nilai halaman Beban Administrasi per tab, sejajar indeks dengan
      * BebanUsahaController::rowsBebanAdministrasi() (29 rincian + Jumlah +
-     * Depresiasi + Total). Tiap sel: {bln, sd, sdbl}. Hanya tab 'summary' yang
-     * diisi — tab ADMI KS/KR tidak dikembalikan sehingga UI merender '-'.
+     * Depresiasi + Total). Tiap sel: {bln, sd, sdbl}. Tab ks/kr = nilai summary
+     * per periode × %Proporsi ABS Sawit/Karet bulan itu (tab PROPORSI);
+     * bulan tanpa baris proporsi → 0%.
      */
     private function adminValues(int $year, int $month): array
     {
@@ -114,28 +118,47 @@ class BebanUsahaDataController extends Controller
         $iTotal = $this->findIndex($rows, 'total');
         $iDepre = $idxByLabel['Beban Depresiasi dan Amortisasi'];
 
+        // %Proporsi per bulan: ks = ABS Sawit, kr = ABS Karet (nilai/total, aman 0).
+        $pct = []; // [period => ['ks' => .., 'kr' => ..]]
+        $prop = DB::table('beban_usaha_proporsi')->where('year', $year)
+            ->get(['month', 'uraian', 'total_nilai', 'nilai_proporsi']);
+        foreach ($prop as $r) {
+            $total = (float) $r->total_nilai;
+            $key = trim((string) $r->uraian) === 'ABS Karet' ? 'kr' : 'ks';
+            $pct[(int) $r->month][$key] = $total == 0.0 ? 0.0 : (float) $r->nilai_proporsi / $total;
+        }
+
         // Agregat per periode × klasifikasi (label di-TRIM saat impor).
-        $summary = array_fill(0, count($rows), ['bln' => 0.0, 'sd' => 0.0, 'sdbl' => 0.0]);
+        $mk = fn (): array => array_fill(0, count($rows), ['bln' => 0.0, 'sd' => 0.0, 'sdbl' => 0.0]);
+        $tabs = ['summary' => $mk(), 'ks' => $mk(), 'kr' => $mk()];
         $agg = DB::table('beban_usaha_gl')
             ->where('report_type', 'ADMIN')->where('year', $year)
             ->selectRaw('period, class_desc, SUM(amount) AS v')
             ->groupBy('period', 'class_desc')->get();
         foreach ($agg as $r) {
             $i = $idxByLabel[trim((string) $r->class_desc)] ?? $iLain;
-            $this->accumulate($summary[$i], (int) $r->period, $month, (float) $r->v);
+            $p = (int) $r->period;
+            $v = (float) $r->v;
+            $this->accumulate($tabs['summary'][$i], $p, $month, $v);
+            $this->accumulate($tabs['ks'][$i], $p, $month, $v * ($pct[$p]['ks'] ?? 0.0));
+            $this->accumulate($tabs['kr'][$i], $p, $month, $v * ($pct[$p]['kr'] ?? 0.0));
         }
 
         // Jumlah = Σ rincian (sebelum baris subtotal); Total = Jumlah + Depresiasi.
-        foreach (['bln', 'sd', 'sdbl'] as $f) {
-            $jml = 0.0;
-            for ($i = 0; $i < $iJumlah; $i++) {
-                $jml += $summary[$i][$f];
+        foreach ($tabs as &$tab) {
+            foreach (['bln', 'sd', 'sdbl'] as $f) {
+                $jml = 0.0;
+                for ($i = 0; $i < $iJumlah; $i++) {
+                    $jml += $tab[$i][$f];
+                }
+                $tab[$iJumlah][$f] = $jml;
+                $tab[$iTotal][$f] = $jml + $tab[$iDepre][$f];
             }
-            $summary[$iJumlah][$f] = $jml;
-            $summary[$iTotal][$f] = $jml + $summary[$iDepre][$f];
+            $tab = $this->roundRows($tab);
         }
+        unset($tab);
 
-        return ['summary' => $this->roundRows($summary)];
+        return $tabs;
     }
 
     /**
