@@ -172,7 +172,9 @@ function rekapProduksiApp() {
         rows() {
             const out = [];
             const flat = (r, extra = {}) => {
-                const o = { no: '', kode: r.code || '', nama: r.nama || '', ...(r.sub ? { _sub: true } : {}), ...extra };
+                // r.group (induk Plasma/Pihak III) dirender sebagai band seksi:
+                // gaya hijau + seluruh angka disembunyikan (rincian di sub-baris).
+                const o = { no: '', kode: r.code || '', nama: r.nama || '', ...(r.sub ? { _sub: true } : {}), ...(r.group ? { _section: true } : {}), ...extra };
                 ['bl', 'bi', 'sd', 'rkap_bi', 'rkap_sd'].forEach(b => {
                     const blk = r[b] || {};
                     ['tbs_diterima', 'tbs_diolah', 'ms', 'is', 'rend_ms', 'rend_is'].forEach(m => {
@@ -203,15 +205,11 @@ function rekapProduksiApp() {
                 height: '72vh',
                 rowFormatter: (row) => {
                     const d = row.getData();
-                    // Sub-baris per PKS (di bawah Plasma/Pihak III): menjorok + warna redup.
+                    // Sub-baris per PKS (di bawah Plasma/Pihak III): hanya menjorok,
+                    // warna sama dengan baris data lain.
                     if (d._sub) {
-                        const mute = '#5b6f66';
-                        row.getElement().style.color = mute;
-                        row.getCells().forEach((c) => {
-                            const ce = c.getElement();
-                            ce.style.color = mute;
-                            if (c.getField() === 'nama') ce.style.paddingLeft = '1.75rem';
-                        });
+                        const namaCell = row.getCells().find((c) => c.getField() === 'nama');
+                        if (namaCell) namaCell.getElement().style.paddingLeft = '1.75rem';
                         return;
                     }
                     let bg = null, fw = null, italic = false;

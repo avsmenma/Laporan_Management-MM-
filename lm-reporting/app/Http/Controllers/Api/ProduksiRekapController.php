@@ -26,8 +26,9 @@ use Illuminate\Support\Facades\DB;
  * ikut kedua mode (pola Lm16Service). Anggaran per-kebun tidak tersedia → 0.
  *
  * Baris Plasma (PLSM) & Pihak III (PHTG) dipecah sub-baris per PKS penerima
- * (produksi_pks memang menyimpan baris per plant). Sub-baris tidak ikut JUMLAH
- * (induknya sudah mencakup) dan blok RKAP-nya kosong: anggaran U3/U4/U7/U8
+ * (produksi_pks memang menyimpan baris per plant). Induknya diberi flag `group`
+ * (judul kelompok — nilai disembunyikan di UI tapi tetap ikut JUMLAH seksi);
+ * sub-baris tidak ikut JUMLAH dan blok RKAP-nya kosong: anggaran U3/U4/U7/U8
  * adalah total per plant, tidak terpecah per pemilik TBS.
  */
 class ProduksiRekapController extends Controller
@@ -244,9 +245,16 @@ class ProduksiRekapController extends Controller
                     $totals[$b][$m] += $raw[$b][$m];
                 }
             }
-            $rows[] = $this->emitRow($e['code'], $e['nama'], $raw);
+            $row = $this->emitRow($e['code'], $e['nama'], $raw);
+            $kids = $children[$e['code']] ?? [];
+            if ($kids !== []) {
+                // Induk yang punya sub-baris jadi judul kelompok: UI menyembunyikan
+                // nilainya (rinciannya di sub-baris); JUMLAH tetap dari agregat induk.
+                $row['group'] = true;
+            }
+            $rows[] = $row;
 
-            foreach ($children[$e['code']] ?? [] as $c) {
+            foreach ($kids as $c) {
                 $craw = [];
                 foreach ($blocks as $b) {
                     $src = str_starts_with($b, 'rkap_') ? [] : ($c['agg'][$b] ?? []);
