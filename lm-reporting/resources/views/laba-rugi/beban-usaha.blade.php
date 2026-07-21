@@ -311,10 +311,10 @@ function bebanUsahaApp(cfg) {
             const sdLalu = `sd Bulan ${this.bulanNama(this.month)} ${this.year - 1}`;
 
             if (this.cfg.preset === 'penjualan') {
-                // Sheet LM PENJUALAN: Rekg./Uraian | Bulan (Real, Anggaran) |
+                // Sheet LM PENJUALAN: Uraian | Bulan (Real, Anggaran) |
                 // sd Bulan (Real, Anggaran) | sd thn lalu | Selisih (+/-, %Tase) | sd Bulan Lalu.
+                // Kolom Rekg. dihapus atas permintaan user (tidak dibutuhkan lagi).
                 return [
-                    { title: 'Rekg.', field: 'kode', frozen: true, minWidth: 90 },
                     { title: 'Uraian', field: 'uraian', frozen: true, minWidth: 300 },
                     { title: bln, columns: [this.num('Realisasi', 'bln_r'), this.num('Anggaran', 'bln_a')] },
                     { title: sd, columns: [this.num('Realisasi', 'sd_r'), this.num('Anggaran', 'sd_a')] },
