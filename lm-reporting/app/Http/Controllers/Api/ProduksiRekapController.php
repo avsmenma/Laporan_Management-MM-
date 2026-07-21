@@ -24,6 +24,11 @@ use Illuminate\Support\Facades\DB;
  * RKAP (khusus seksi PKS, per plant) = budget_rkap report_type LM16,
  * kode U3 (TBS masuk), U4 (TBS diolah), U7 (MS), U8 (IS); period NULL = tahunan
  * ikut kedua mode (pola Lm16Service). Anggaran per-kebun tidak tersedia → 0.
+ *
+ * Baris Plasma (PLSM) & Pihak III (PHTG) dipecah sub-baris per PKS penerima
+ * (produksi_pks memang menyimpan baris per plant). Sub-baris tidak ikut JUMLAH
+ * (induknya sudah mencakup) dan blok RKAP-nya kosong: anggaran U3/U4/U7/U8
+ * adalah total per plant, tidak terpecah per pemilik TBS.
  */
 class ProduksiRekapController extends Controller
 {
@@ -94,27 +99,39 @@ class ProduksiRekapController extends Controller
         // Seksi Kebun dikunci kebun_code (Σ lintas plant); seksi PKS dikunci plant_code.
         $aggKebun = [];
         $aggPks = [];
+        $aggSub = []; // sub-baris per PKS utk PLSM/PHTG, kunci "kebun|plant"
         $add = function (&$agg, string $key, string $block, object $r, int $ci): void {
             foreach (self::MEASURES as $m => $cols) {
                 $agg[$key][$block][$m] = ($agg[$key][$block][$m] ?? 0.0) + (float) $r->{$cols[$ci]};
             }
         };
         foreach ($rows as $r) {
-            if ((string) $r->kebun_code !== '') {
-                $add($aggKebun, (string) $r->kebun_code, 'bi', $r, 0);
-                $add($aggKebun, (string) $r->kebun_code, 'sd', $r, 1);
+            $k = (string) $r->kebun_code;
+            $p = (string) $r->plant_code;
+            if ($k !== '') {
+                $add($aggKebun, $k, 'bi', $r, 0);
+                $add($aggKebun, $k, 'sd', $r, 1);
             }
-            if ((string) $r->plant_code !== '') {
-                $add($aggPks, (string) $r->plant_code, 'bi', $r, 0);
-                $add($aggPks, (string) $r->plant_code, 'sd', $r, 1);
+            if ($p !== '') {
+                $add($aggPks, $p, 'bi', $r, 0);
+                $add($aggPks, $p, 'sd', $r, 1);
+            }
+            if ($p !== '' && isset(self::KEBUN_ALIAS[$k])) {
+                $add($aggSub, $k.'|'.$p, 'bi', $r, 0);
+                $add($aggSub, $k.'|'.$p, 'sd', $r, 1);
             }
         }
         foreach ($prevRows as $r) {
-            if ((string) $r->kebun_code !== '') {
-                $add($aggKebun, (string) $r->kebun_code, 'bl', $r, 0);
+            $k = (string) $r->kebun_code;
+            $p = (string) $r->plant_code;
+            if ($k !== '') {
+                $add($aggKebun, $k, 'bl', $r, 0);
             }
-            if ((string) $r->plant_code !== '') {
-                $add($aggPks, (string) $r->plant_code, 'bl', $r, 0);
+            if ($p !== '') {
+                $add($aggPks, $p, 'bl', $r, 0);
+            }
+            if ($p !== '' && isset(self::KEBUN_ALIAS[$k])) {
+                $add($aggSub, $k.'|'.$p, 'bl', $r, 0);
             }
         }
 
@@ -170,8 +187,17 @@ class ProduksiRekapController extends Controller
             'nama' => $unitNames[$p] ?? $p,
         ], $pksCodes);
 
+        // Sub-baris per PKS di bawah Plasma/Pihak III (urut natural per plant).
+        $childrenKebun = []; // [kebun_code][] => {code, nama, agg}
+        $subKeys = array_keys($aggSub);
+        sort($subKeys, SORT_NATURAL);
+        foreach ($subKeys as $sk) {
+            [$k, $p] = explode('|', $sk, 2);
+            $childrenKebun[$k][] = ['code' => $p, 'nama' => $unitNames[$p] ?? $p, 'agg' => $aggSub[$sk]];
+        }
+
         $sections = [
-            $this->buildSection('kebun', 'I. Kebun', $kebunList, $aggKebun, []),
+            $this->buildSection('kebun', 'I. Kebun', $kebunList, $aggKebun, [], $childrenKebun),
             $this->buildSection('pks', 'II. PKS', $pksList, $aggPks, $rkap),
         ];
 
@@ -189,11 +215,16 @@ class ProduksiRekapController extends Controller
      * Susun satu seksi: baris per entitas + baris JUMLAH (round-of-sum: total
      * dihitung dari agregat mentah, rasio & rendemen dari jumlah mentah).
      *
+     * Sub-baris ($children, per kode entitas) diemit tepat di bawah induknya
+     * dengan flag `sub`; nilainya TIDAK ditambahkan ke JUMLAH (induk sudah mencakup)
+     * dan blok RKAP-nya 0 (tidak ada anggaran per pemilik TBS).
+     *
      * @param  array<int, array{code: string, nama: string}>  $entities
      * @param  array<string, array<string, array<string, float>>>  $agg  [entity][block][measure]
      * @param  array<string, array<string, array<string, float>>>  $rkap  [entity][rkap_bi|rkap_sd][measure]
+     * @param  array<string, array<int, array{code: string, nama: string, agg: array<string, array<string, float>>}>>  $children
      */
-    private function buildSection(string $key, string $title, array $entities, array $agg, array $rkap): array
+    private function buildSection(string $key, string $title, array $entities, array $agg, array $rkap, array $children = []): array
     {
         $blocks = ['bl', 'bi', 'sd', 'rkap_bi', 'rkap_sd'];
         $totals = [];
@@ -214,6 +245,17 @@ class ProduksiRekapController extends Controller
                 }
             }
             $rows[] = $this->emitRow($e['code'], $e['nama'], $raw);
+
+            foreach ($children[$e['code']] ?? [] as $c) {
+                $craw = [];
+                foreach ($blocks as $b) {
+                    $src = str_starts_with($b, 'rkap_') ? [] : ($c['agg'][$b] ?? []);
+                    foreach (array_keys(self::MEASURES) as $m) {
+                        $craw[$b][$m] = (float) ($src[$m] ?? 0.0);
+                    }
+                }
+                $rows[] = $this->emitRow($c['code'], $c['nama'], $craw, true);
+            }
         }
 
         return [
@@ -233,7 +275,7 @@ class ProduksiRekapController extends Controller
      *
      * @param  array<string, array<string, float>>  $raw  [block][measure] mentah
      */
-    private function emitRow(string $code, string $nama, array $raw): array
+    private function emitRow(string $code, string $nama, array $raw, bool $sub = false): array
     {
         $rend = fn (array $b, string $m): float => ($b['tbs_diolah'] ?? 0.0) > 0
             ? ($b[$m] ?? 0.0) / $b['tbs_diolah']
@@ -241,6 +283,9 @@ class ProduksiRekapController extends Controller
         $pct = fn (float $n, float $d): float => $d > 0.0 ? round($n / $d * 100, 2) : 0.0;
 
         $out = ['code' => $code, 'nama' => $nama];
+        if ($sub) {
+            $out['sub'] = true;
+        }
         foreach ($raw as $block => $vals) {
             $out[$block] = [
                 'tbs_diterima' => round($vals['tbs_diterima']),
