@@ -15,16 +15,17 @@ use Illuminate\Support\Facades\DB;
  *  - Tahap 1 (pivot)  : GET /report-data/laba-rugi/drilldown
  *  - Tahap 2 (mentah) : GET /report-data/laba-rugi/drilldown-deep
  *
- * Parameter umum: page=penjualan|admin|bol, year, month.
- *  - admin/bol   : tab, row (indeks baris di BebanUsahaController), field=bln|sd|sdbl.
- *  - penjualan   : tab=buyer|plant|all, mat, code, rowType=detail|jumlah|total,
- *                  blok=bl|bi|sd|jml|p_<plant>, measure=qty|nilai.
+ * Parameter umum: page=penjualan|admin|bol|penj, year, month.
+ *  - admin/bol/penj : tab, row (indeks baris di BebanUsahaController), field=bln|sd|sdbl.
+ *  - penjualan      : tab=buyer|plant|all, mat, code, rowType=detail|jumlah|total,
+ *                     blok=bl|bi|sd|jml|p_<plant>, measure=qty|nilai.
  * Deep menambah kunci sel pivot: g (grup), r (baris), c (periode, opsional).
  *
  * Dimensi pivot per halaman:
  *  - penjualan : grup=Produk (material_desc), baris=Plant / Customer (dimensi lawan tab).
  *  - admin     : grup=Profit Center, baris=Cost Center.
  *  - bol       : grup=Kodering (class_code), baris=Profit Center.
+ *  - penj      : grup=Cost Center (R5OBPJ101 CPO / R5OBPJ102 PK), baris=Akun GL.
  * Kolom kategori pivot = bulan-bulan pada cakupan sel yang diklik.
  */
 class LabaRugiDrilldownController extends Controller
@@ -136,12 +137,13 @@ class LabaRugiDrilldownController extends Controller
         $page = (string) $request->query('page');
         $year = $request->integer('year');
         $month = $request->integer('month');
-        abort_unless(in_array($page, ['penjualan', 'admin', 'bol'], true), 422, 'Parameter page tidak dikenal.');
+        abort_unless(in_array($page, ['penjualan', 'admin', 'bol', 'penj'], true), 422, 'Parameter page tidak dikenal.');
         abort_unless($year >= 2000 && $year <= 2100 && $month >= 1 && $month <= 12, 422, 'Periode tidak valid.');
 
         return match ($page) {
             'penjualan' => $this->scopePenjualan($request, $year, $month),
             'admin' => $this->scopeAdmin($request, $year, $month),
+            'penj' => $this->scopePenj($request, $year, $month),
             default => $this->scopeBol($request, $year, $month),
         };
     }
@@ -203,6 +205,47 @@ class LabaRugiDrilldownController extends Controller
             'r' => 'cost_center', 'rDesc' => null, 'rLabel' => 'Cost Center',
             'val' => 'amount',
             'sectionLabel' => 'beban_usaha_gl — GL SAP (ADMIN)',
+            'columns' => self::GL_COLUMNS,
+            'qtyField' => '',
+        ]];
+    }
+
+    /** @return array{0: Builder, 1: array<string, mixed>} */
+    private function scopePenj(Request $request, int $year, int $month): array
+    {
+        abort_unless((string) $request->query('tab', 'all') === 'all', 422, 'Parameter tab tidak dikenal.');
+        $field = (string) $request->query('field');
+        abort_unless(in_array($field, ['bln', 'sd', 'sdbl'], true), 422, 'Parameter field tidak dikenal.');
+
+        // Struktur baris sama persis dengan BebanUsahaDataController::penjValues().
+        [$meta, $sawitByLabel, $subtotals, $iTotal] = BebanUsahaDataController::penjRowLayout();
+        $i = $request->integer('row', -1);
+        abort_unless(isset($meta[$i]), 422, 'Baris tidak dikenal.');
+
+        $known = array_keys(array_diff_key($sawitByLabel, ['Lain - Lain' => 0]));
+
+        $q = DB::table('beban_usaha_gl')->where('report_type', 'PENJ')->where('year', $year);
+        $this->applyPeriodField($q, $field, $month);
+
+        $m = $meta[$i];
+        if ($i === $iTotal || $i === ($subtotals['860.1'] ?? -1)) {
+            // Jumlah Sawit & Jumlah Seluruh: seluruh baris PENJ (semuanya sawit).
+        } elseif ($m['sec'] === '860.0') {
+            $q->whereRaw('1 = 0'); // seksi Karet tak punya sumber di file ini
+        } elseif ($m['t'] === 'detail' && $m['u'] !== 'Lain - Lain') {
+            $q->whereRaw('TRIM(class_desc) = ?', [$m['u']]);
+        } else {
+            // Lain - Lain: klasifikasi bernama itu + seluruh klasifikasi di luar peta.
+            $q->where(function ($w) use ($known): void {
+                $w->whereNull('class_desc')->orWhereNotIn(DB::raw('TRIM(class_desc)'), $known);
+            });
+        }
+
+        return [$q, [
+            'g' => 'cost_center', 'gDesc' => null, 'gLabel' => 'Cost Center',
+            'r' => 'account', 'rDesc' => 'gl_account_desc', 'rLabel' => 'Akun GL',
+            'val' => 'amount',
+            'sectionLabel' => 'beban_usaha_gl — GL SAP (PENJ)',
             'columns' => self::GL_COLUMNS,
             'qtyField' => '',
         ]];

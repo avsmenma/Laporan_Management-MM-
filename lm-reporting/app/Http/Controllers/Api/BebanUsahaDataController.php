@@ -10,7 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Data halaman Beban Administrasi (page=admin) & Beban Ops Lainnya (page=bol).
+ * Data halaman Beban Administrasi (page=admin), Beban Ops Lainnya (page=bol) &
+ * Beban Penjualan (page=penj).
  * Sumber: beban_usaha_gl (ekspor line-item GL SAP). Nilai per baris dikembalikan
  * SEJAJAR INDEKS dengan daftar baris di BebanUsahaController (satu sumber struktur).
  *
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\DB;
  *            (beban_usaha_proporsi, input manual; % = nilai_proporsi/total_nilai).
  *            Kumulatif = Σ (nilai bulan × %proporsi bulan itu); bulan tanpa baris
  *            proporsi dianggap 0%.
+ *  - PENJ  : baris = SUM(amount) per Klasifikasi LM Induk (persis label baris) —
+ *            seluruh nilai masuk seksi 860.1 Kelapa Sawit (data = biaya penjualan
+ *            CPO/PK); klasifikasi di luar peta → baris Lain - Lain Sawit; seksi
+ *            Karet tetap kosong (tak ada sumber).
  *  - BOL   : baris = pemetaan Kodering→posisi baris; KSO dipecah per profit center
  *            (A119@5E12→KSO Kumai, @5E09→KSO Kembayan Noyan, @5E14→KSO Kebun Pamukan SDE;
  *            A124@5F11→Batubara Danau Salak). Kodering/profit center di luar peta →
@@ -62,8 +67,12 @@ class BebanUsahaDataController extends Controller
         $this->authenticateReportRequest($request);
 
         $page = (string) $request->query('page');
-        abort_unless(in_array($page, ['admin', 'bol'], true), 422, 'Parameter page tidak dikenal.');
-        $reportType = $page === 'admin' ? 'ADMIN' : 'BOL';
+        abort_unless(in_array($page, ['admin', 'bol', 'penj'], true), 422, 'Parameter page tidak dikenal.');
+        $reportType = match ($page) {
+            'admin' => 'ADMIN',
+            'bol' => 'BOL',
+            default => 'PENJ',
+        };
 
         $periods = DB::table('beban_usaha_gl')
             ->where('report_type', $reportType)
@@ -93,8 +102,84 @@ class BebanUsahaDataController extends Controller
             'periods' => $periods,
             'year' => $year,
             'month' => $month,
-            'values' => $page === 'admin' ? $this->adminValues($year, $month) : $this->bolValues($year, $month),
+            'values' => match ($page) {
+                'admin' => $this->adminValues($year, $month),
+                'bol' => $this->bolValues($year, $month),
+                default => $this->penjValues($year, $month),
+            },
         ]);
+    }
+
+    /**
+     * Peta struktur baris Beban Penjualan (dipakai juga drill-down):
+     * [0] meta per indeks {t, sec ('860.0' Karet | '860.1' Sawit), u},
+     * [1] label rincian Sawit → indeks, [2] indeks subtotal per seksi, [3] indeks total.
+     *
+     * @return array{0: array<int, array{t: string, sec: ?string, u: string}>, 1: array<string, int>, 2: array<string, int>, 3: int}
+     */
+    public static function penjRowLayout(): array
+    {
+        $rows = BebanUsahaController::rowsBebanPenjualan();
+        $sec = null;
+        $meta = [];
+        $sawitByLabel = [];
+        $subtotals = [];
+        $iTotal = -1;
+        foreach ($rows as $i => $r) {
+            $t = $r['t'] ?? 'detail';
+            if ($t === 'header') {
+                $sec = $r['k'];
+            }
+            $meta[$i] = ['t' => $t, 'sec' => $sec, 'u' => $r['u']];
+            if ($t === 'subtotal') {
+                $subtotals[(string) $sec] = $i;
+            } elseif ($t === 'total') {
+                $iTotal = $i;
+            } elseif ($t === 'detail' && $sec === '860.1') {
+                $sawitByLabel[$r['u']] = $i;
+            }
+        }
+
+        return [$meta, $sawitByLabel, $subtotals, $iTotal];
+    }
+
+    /**
+     * Nilai halaman Beban Penjualan (tab tunggal 'all'), sejajar indeks dengan
+     * BebanUsahaController::rowsBebanPenjualan(). Tiap sel: {bln, sd, sdbl}.
+     * Seluruh klasifikasi masuk seksi Kelapa Sawit; di luar peta → Lain - Lain.
+     */
+    private function penjValues(int $year, int $month): array
+    {
+        [$meta, $sawitByLabel, $subtotals, $iTotal] = self::penjRowLayout();
+        $iLain = $sawitByLabel['Lain - Lain'];
+
+        $tab = array_fill(0, count($meta), ['bln' => 0.0, 'sd' => 0.0, 'sdbl' => 0.0]);
+        $agg = DB::table('beban_usaha_gl')
+            ->where('report_type', 'PENJ')->where('year', $year)
+            ->selectRaw('period, class_desc, SUM(amount) AS v')
+            ->groupBy('period', 'class_desc')->get();
+        foreach ($agg as $r) {
+            $i = $sawitByLabel[trim((string) $r->class_desc)] ?? $iLain;
+            $this->accumulate($tab[$i], (int) $r->period, $month, (float) $r->v);
+        }
+
+        // Subtotal per seksi = Σ rincian seksi itu; Jumlah Seluruh = Σ subtotal.
+        foreach (['bln', 'sd', 'sdbl'] as $f) {
+            $all = 0.0;
+            foreach ($subtotals as $sec => $iSub) {
+                $sum = 0.0;
+                foreach ($meta as $i => $m) {
+                    if ($m['t'] === 'detail' && $m['sec'] === $sec) {
+                        $sum += $tab[$i][$f];
+                    }
+                }
+                $tab[$iSub][$f] = $sum;
+                $all += $sum;
+            }
+            $tab[$iTotal][$f] = $all;
+        }
+
+        return ['all' => $this->roundRows($tab)];
     }
 
     /**

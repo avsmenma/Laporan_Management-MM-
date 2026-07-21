@@ -22,6 +22,9 @@ class BebanUsahaController extends Controller
             'title' => 'BEBAN PENJUALAN',
             'subtitle' => 'Disajikan dalam Rupiah',
             'preset' => 'penjualan',
+            // Realisasi dari beban_usaha_gl report_type PENJ (file "DB PENJUALAN",
+            // seluruhnya biaya penjualan CPO/PK → seksi Kelapa Sawit).
+            'dataUrl' => '/report-data/laba-rugi/beban-usaha?page=penj',
             'tabs' => [
                 ['key' => 'all', 'label' => 'SEMUA KOMODITI', 'rows' => self::rowsBebanPenjualan()],
             ],

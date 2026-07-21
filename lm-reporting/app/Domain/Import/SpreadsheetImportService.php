@@ -122,6 +122,7 @@ class SpreadsheetImportService
             'penjualan_produk' => 'Penjualan Produk',
             'beban_admin' => 'Beban Administrasi (GL)',
             'beban_ops' => 'Beban Ops Lainnya (GL)',
+            'beban_penjualan' => 'Beban Penjualan (GL)',
             'pks_biaya' => 'Biaya PKS (LM16)',
             'investasi_wbs' => 'Investasi — Biaya (DB)',
             'investasi_asset' => 'Investasi — Aset (WS)',
@@ -171,10 +172,10 @@ class SpreadsheetImportService
         return $type === 'penjualan_produk';
     }
 
-    /** Jenis beban usaha (ekspor line-item GL SAP): Beban Administrasi / Beban Ops Lainnya. */
+    /** Jenis beban usaha (ekspor line-item GL SAP): Beban Administrasi / Beban Ops Lainnya / Beban Penjualan. */
     public static function isBebanUsaha(string $type): bool
     {
-        return in_array($type, ['beban_admin', 'beban_ops'], true);
+        return in_array($type, ['beban_admin', 'beban_ops', 'beban_penjualan'], true);
     }
 
     /** Jenis yang memakai bulan sebagai penjaga periode (tanpa Batch). */
@@ -1608,10 +1609,11 @@ class SpreadsheetImportService
     }
 
     /**
-     * Indeks kolom 0-based file GL Beban Usaha (ADMIN & BOL, sheet tunggal).
+     * Indeks kolom 0-based file GL Beban Usaha (ADMIN, BOL & PENJ, sheet tunggal).
      * Kolom klasifikasi berbeda per jenis:
      *  - ADMIN: AL(37)=Cost Element BPC (kode 900216xx), AM(38)=Cost Element BPC Desc.
      *  - BOL:   AM(38)=Kodering (A1xx), AN(39)=Klasifikasi LM HO.
+     *  - PENJ:  AL(37)=Klasifikasi LM Induk (nama baris; tanpa kolom kode).
      */
     private const BEBAN_USAHA_COLS = [
         'document_number' => 0, 'posting_date' => 1, 'period' => 2, 'account' => 3,
@@ -1620,7 +1622,7 @@ class SpreadsheetImportService
     ];
 
     /**
-     * Impor file GL Beban Usaha → beban_usaha_gl (report_type ADMIN | BOL).
+     * Impor file GL Beban Usaha → beban_usaha_gl (report_type ADMIN | BOL | PENJ).
      *
      * Pola sama dgn importPenjualanProduk: file berisi banyak periode ("1 SD 6") →
      * idempoten HAPUS-GANTI per (report_type, year, period) yang muncul di file;
@@ -1631,8 +1633,16 @@ class SpreadsheetImportService
     public function importBebanUsaha(string $type, string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null): ImportResult
     {
         abort_unless(self::isBebanUsaha($type), 422, 'Jenis bukan beban usaha.');
-        $reportType = $type === 'beban_admin' ? 'ADMIN' : 'BOL';
-        [$codeIdx, $descIdx] = $type === 'beban_admin' ? [37, 38] : [38, 39];
+        $reportType = match ($type) {
+            'beban_admin' => 'ADMIN',
+            'beban_ops' => 'BOL',
+            default => 'PENJ',
+        };
+        [$codeIdx, $descIdx] = match ($type) {
+            'beban_admin' => [37, 38],
+            'beban_ops' => [38, 39],
+            default => [null, 37], // PENJ: tanpa kolom kode
+        };
         $C = self::BEBAN_USAHA_COLS;
         $inserted = 0;
 
@@ -1689,7 +1699,7 @@ class SpreadsheetImportService
                     'cost_element' => $this->produksiText($v[$C['cost_element']] ?? null, 20),
                     'text' => $this->produksiText($v[$C['text']] ?? null, 255),
                     'amount' => $this->produksiNum($v[$C['amount']] ?? null),
-                    'class_code' => $this->produksiText($v[$codeIdx] ?? null, 20),
+                    'class_code' => $codeIdx === null ? null : $this->produksiText($v[$codeIdx] ?? null, 20),
                     'class_desc' => $this->produksiText($v[$descIdx] ?? null, 200),
                 ];
                 if (count($records) >= 500) {

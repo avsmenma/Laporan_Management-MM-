@@ -361,6 +361,12 @@ function bebanUsahaApp(cfg) {
                 row.sdbl_r = v.sdbl;
                 row.selbln_v = v.bln;
                 row.selsd_v = v.sd;
+                if (this.cfg.preset === 'penjualan') {
+                    // Rumus sheet LM PENJUALAN: Selisih J = G − H (sd Realisasi −
+                    // sd Anggaran; anggaran belum ada sumber → J = sd Realisasi),
+                    // % Tase = J/H → penyebut 0 → '-'.
+                    row.sel_v = v.sd;
+                }
                 if (this.cfg.preset === 'lain') {
                     row.ro = v.ro;
                     row.kp = v.kp;
