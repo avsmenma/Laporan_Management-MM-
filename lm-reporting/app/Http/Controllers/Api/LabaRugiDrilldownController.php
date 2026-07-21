@@ -15,8 +15,9 @@ use Illuminate\Support\Facades\DB;
  *  - Tahap 1 (pivot)  : GET /report-data/laba-rugi/drilldown
  *  - Tahap 2 (mentah) : GET /report-data/laba-rugi/drilldown-deep
  *
- * Parameter umum: page=penjualan|admin|bol|penj, year, month.
- *  - admin/bol/penj : tab, row (indeks baris di BebanUsahaController), field=bln|sd|sdbl.
+ * Parameter umum: page=penjualan|admin|bol|penj|pendapatan, year, month.
+ *  - admin/bol/penj/pendapatan : tab, row (indeks baris di BebanUsahaController),
+ *                                field=bln|sd|sdbl.
  *  - penjualan      : tab=buyer|plant|all, mat, code, rowType=detail|jumlah|total,
  *                     blok=bl|bi|sd|jml|p_<plant>, measure=qty|nilai.
  * Deep menambah kunci sel pivot: g (grup), r (baris), c (periode, opsional).
@@ -26,6 +27,8 @@ use Illuminate\Support\Facades\DB;
  *  - admin     : grup=Profit Center, baris=Cost Center.
  *  - bol       : grup=Kodering (class_code), baris=Profit Center.
  *  - penj      : grup=Cost Center (R5OBPJ101 CPO / R5OBPJ102 PK), baris=Akun GL.
+ *  - pendapatan: grup=Profit Center, baris=Akun GL (cost center kosong di file ini);
+ *                nilai pivot dibalik tanda agar sejalan dengan sel (pendapatan kredit).
  * Kolom kategori pivot = bulan-bulan pada cakupan sel yang diklik.
  */
 class LabaRugiDrilldownController extends Controller
@@ -137,13 +140,14 @@ class LabaRugiDrilldownController extends Controller
         $page = (string) $request->query('page');
         $year = $request->integer('year');
         $month = $request->integer('month');
-        abort_unless(in_array($page, ['penjualan', 'admin', 'bol', 'penj'], true), 422, 'Parameter page tidak dikenal.');
+        abort_unless(in_array($page, ['penjualan', 'admin', 'bol', 'penj', 'pendapatan'], true), 422, 'Parameter page tidak dikenal.');
         abort_unless($year >= 2000 && $year <= 2100 && $month >= 1 && $month <= 12, 422, 'Periode tidak valid.');
 
         return match ($page) {
             'penjualan' => $this->scopePenjualan($request, $year, $month),
             'admin' => $this->scopeAdmin($request, $year, $month),
             'penj' => $this->scopePenj($request, $year, $month),
+            'pendapatan' => $this->scopePendapatan($request, $year, $month),
             default => $this->scopeBol($request, $year, $month),
         };
     }
@@ -246,6 +250,57 @@ class LabaRugiDrilldownController extends Controller
             'r' => 'account', 'rDesc' => 'gl_account_desc', 'rLabel' => 'Akun GL',
             'val' => 'amount',
             'sectionLabel' => 'beban_usaha_gl — GL SAP (PENJ)',
+            'columns' => self::GL_COLUMNS,
+            'qtyField' => '',
+        ]];
+    }
+
+    /** @return array{0: Builder, 1: array<string, mixed>} */
+    private function scopePendapatan(Request $request, int $year, int $month): array
+    {
+        // Baru tab SUMMARY yang punya data (tab KS/KR belum diisi).
+        abort_unless((string) $request->query('tab', 'summary') === 'summary', 422, 'Baru tab SUMMARY yang punya sumber data.');
+        $field = (string) $request->query('field');
+        abort_unless(in_array($field, ['bln', 'sd', 'sdbl'], true), 422, 'Parameter field tidak dikenal.');
+
+        // Struktur baris sama persis dengan BebanUsahaDataController::pendapatanValues().
+        [$idxByLabel, $ksoByLabel, $iJumlah, $iJumlahKso, $iTotal] = BebanUsahaDataController::pendapatanRowLayout();
+        $rows = BebanUsahaController::rowsPendapatanSummary();
+        $i = $request->integer('row', -1);
+        abort_unless(isset($rows[$i]), 422, 'Baris tidak dikenal.');
+
+        $ksoLabels = array_keys($ksoByLabel);
+        $known = array_keys(array_diff_key($idxByLabel, ['Lain - Lain' => 0]));
+
+        $q = DB::table('beban_usaha_gl')->where('report_type', 'PENDPT')->where('year', $year);
+        $this->applyPeriodField($q, $field, $month);
+
+        $label = $rows[$i]['u'];
+        if ($i === $iTotal) {
+            // Total: seluruh baris — tanpa filter.
+        } elseif ($i === $iJumlah) {
+            // Jumlah rincian = semua di luar baris KSO (termasuk tampungan Lain - Lain).
+            $q->where(function ($w) use ($ksoLabels): void {
+                $w->whereNull('class_desc')->orWhereNotIn(DB::raw('TRIM(class_desc)'), $ksoLabels);
+            });
+        } elseif ($i === $iJumlahKso) {
+            $q->whereIn(DB::raw('TRIM(class_desc)'), $ksoLabels);
+        } elseif ($label !== 'Lain - Lain') {
+            $q->whereRaw('TRIM(class_desc) = ?', [$label]);
+        } else {
+            // Lain - Lain: klasifikasi bernama itu + seluruh klasifikasi di luar peta.
+            $q->where(function ($w) use ($known): void {
+                $w->whereNull('class_desc')->orWhereNotIn(DB::raw('TRIM(class_desc)'), $known);
+            });
+        }
+
+        return [$q, [
+            'g' => 'profit_center', 'gDesc' => 'profit_center_desc', 'gLabel' => 'Profit Center',
+            'r' => 'account', 'rDesc' => 'gl_account_desc', 'rLabel' => 'Akun GL',
+            // Pendapatan tersimpan minus (kredit) → pivot dibalik tanda agar sama
+            // dengan sel halaman; tahap 2 (mentah) tetap apa adanya.
+            'val' => '-amount',
+            'sectionLabel' => 'beban_usaha_gl — GL SAP (PENDPT)',
             'columns' => self::GL_COLUMNS,
             'qtyField' => '',
         ]];

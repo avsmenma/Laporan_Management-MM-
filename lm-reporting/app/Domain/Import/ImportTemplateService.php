@@ -254,6 +254,20 @@ class ImportTemplateService
                     'Reversed With', 'WBS Element', 'Descripition Cctr', 'Klasifikasi LM Induk',
                 ],
             ],
+            'pendapatan_lain' => [
+                'sheet' => 'Sheet1',
+                'note' => 'Pendapatan Lainnya (ekspor line-item GL SAP). Kolom kunci: B=Posting Date, C=Posting Period, I=Profit Center, O=Amount in Local Currency (pendapatan tersimpan minus/kredit), AL=Klasifikasi (nama baris laporan tab SUMMARY). Satu file boleh berisi banyak periode; seluruh periode pada tahun terpilih diimpor (hapus-ganti per periode). Isi mulai baris ke-2.',
+                'headers' => [
+                    'Document Number', 'Posting Date', 'Posting Period', 'Account', 'Assignment', 'Reference',
+                    'Supplier', 'Vendor Name', 'Profit Center', 'Description Prctr',
+                    'Offsetting Account in General Ledger', 'Name of offsetting account', 'Document Type',
+                    'Posting Key', 'Amount in Local Currency', 'Clearing Document', 'Text', 'User Name',
+                    'GL Account Desc', 'Entry Date', 'Time of Entry', 'Year/Month', 'Reference Key',
+                    'Purchasing Document', 'Material', 'Material Description', 'Quantity', 'Base Unit of Measure',
+                    'Cost Center', 'Cost Element', 'Reference Key 3', 'Customer', 'Customer Name', 'Asset',
+                    'Reversed With', 'WBS Element', 'Descripition Cctr', 'Klasifikasi',
+                ],
+            ],
             'investasi_wbs' => [
                 'sheet' => 'DB',
                 'note' => 'Biaya investasi TBM (sheet harus bernama "DB"). Baca posisional; data mulai baris pertama yang kolom A berkode kebun (5Exx).',

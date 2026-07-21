@@ -10,8 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Data halaman Beban Administrasi (page=admin), Beban Ops Lainnya (page=bol) &
- * Beban Penjualan (page=penj).
+ * Data halaman Beban Administrasi (page=admin), Beban Ops Lainnya (page=bol),
+ * Beban Penjualan (page=penj) & Pendapatan Lainnya (page=pendapatan).
  * Sumber: beban_usaha_gl (ekspor line-item GL SAP). Nilai per baris dikembalikan
  * SEJAJAR INDEKS dengan daftar baris di BebanUsahaController (satu sumber struktur).
  *
@@ -26,6 +26,9 @@ use Illuminate\Support\Facades\DB;
  *            seluruh nilai masuk seksi 860.1 Kelapa Sawit (data = biaya penjualan
  *            CPO/PK); klasifikasi di luar peta → baris Lain - Lain Sawit; seksi
  *            Karet tetap kosong (tak ada sumber).
+ *  - PENDPT: baris = SUM(amount) per Klasifikasi (persis label baris, termasuk
+ *            baris KSO); tanda dibalik (pendapatan kredit → tampil positif);
+ *            baru tab SUMMARY yang diisi — tab KS/KR '-' (belum ada aturan pisah).
  *  - BOL   : baris = pemetaan Kodering→posisi baris; KSO dipecah per profit center
  *            (A119@5E12→KSO Kumai, @5E09→KSO Kembayan Noyan, @5E14→KSO Kebun Pamukan SDE;
  *            A124@5F11→Batubara Danau Salak). Kodering/profit center di luar peta →
@@ -67,11 +70,12 @@ class BebanUsahaDataController extends Controller
         $this->authenticateReportRequest($request);
 
         $page = (string) $request->query('page');
-        abort_unless(in_array($page, ['admin', 'bol', 'penj'], true), 422, 'Parameter page tidak dikenal.');
+        abort_unless(in_array($page, ['admin', 'bol', 'penj', 'pendapatan'], true), 422, 'Parameter page tidak dikenal.');
         $reportType = match ($page) {
             'admin' => 'ADMIN',
             'bol' => 'BOL',
-            default => 'PENJ',
+            'penj' => 'PENJ',
+            default => 'PENDPT',
         };
 
         $periods = DB::table('beban_usaha_gl')
@@ -105,7 +109,8 @@ class BebanUsahaDataController extends Controller
             'values' => match ($page) {
                 'admin' => $this->adminValues($year, $month),
                 'bol' => $this->bolValues($year, $month),
-                default => $this->penjValues($year, $month),
+                'penj' => $this->penjValues($year, $month),
+                default => $this->pendapatanValues($year, $month),
             },
         ]);
     }
@@ -180,6 +185,80 @@ class BebanUsahaDataController extends Controller
         }
 
         return ['all' => $this->roundRows($tab)];
+    }
+
+    /**
+     * Peta struktur baris Pendapatan Lainnya tab SUMMARY (dipakai juga drill-down):
+     * [0] label rincian (termasuk rincian KSO) → indeks, [1] label rincian KSO → indeks,
+     * [2] indeks 'Jumlah', [3] indeks 'Jumlah Pendapatan KSO', [4] indeks 'Total'.
+     *
+     * @return array{0: array<string, int>, 1: array<string, int>, 2: int, 3: int, 4: int}
+     */
+    public static function pendapatanRowLayout(): array
+    {
+        $rows = BebanUsahaController::rowsPendapatanSummary();
+        $idxByLabel = [];
+        $ksoByLabel = [];
+        $iJumlah = -1;
+        $iJumlahKso = -1;
+        $iTotal = -1;
+        foreach ($rows as $i => $r) {
+            $t = $r['t'] ?? 'detail';
+            if ($t === 'subtotal') {
+                $iJumlah === -1 ? $iJumlah = $i : $iJumlahKso = $i;
+            } elseif ($t === 'total') {
+                $iTotal = $i;
+            } else {
+                $idxByLabel[$r['u']] = $i;
+                if ($iJumlah !== -1) {
+                    $ksoByLabel[$r['u']] = $i; // rincian setelah 'Jumlah' = seksi KSO
+                }
+            }
+        }
+
+        return [$idxByLabel, $ksoByLabel, $iJumlah, $iJumlahKso, $iTotal];
+    }
+
+    /**
+     * Nilai halaman Pendapatan Lainnya — BARU TAB 'summary' (permintaan user;
+     * tab KS/KR belum diisi → seluruh sel '-'). Sejajar indeks dengan
+     * BebanUsahaController::rowsPendapatanSummary(). Tiap sel: {bln, sd, sdbl}.
+     * Baris = SUM(amount) per Klasifikasi (persis label baris, termasuk baris KSO);
+     * di luar peta → Lain - Lain. Pendapatan tersimpan minus (kredit) → tanda
+     * DIBALIK agar tampil positif seperti sheet LM PENDAPATAN LAINNYA.
+     */
+    private function pendapatanValues(int $year, int $month): array
+    {
+        [$idxByLabel, $ksoByLabel, $iJumlah, $iJumlahKso, $iTotal] = self::pendapatanRowLayout();
+        $iLain = $idxByLabel['Lain - Lain'];
+        $ksoBase = $iJumlah + 1;
+
+        $tab = array_fill(0, count(BebanUsahaController::rowsPendapatanSummary()), ['bln' => 0.0, 'sd' => 0.0, 'sdbl' => 0.0]);
+        $agg = DB::table('beban_usaha_gl')
+            ->where('report_type', 'PENDPT')->where('year', $year)
+            ->selectRaw('period, class_desc, SUM(amount) AS v')
+            ->groupBy('period', 'class_desc')->get();
+        foreach ($agg as $r) {
+            $i = $idxByLabel[trim((string) $r->class_desc)] ?? $iLain;
+            $this->accumulate($tab[$i], (int) $r->period, $month, -(float) $r->v);
+        }
+
+        // Jumlah = Σ rincian; Jumlah Pendapatan KSO = Σ baris KSO; Total = keduanya.
+        foreach (['bln', 'sd', 'sdbl'] as $f) {
+            $jml = 0.0;
+            for ($i = 0; $i < $iJumlah; $i++) {
+                $jml += $tab[$i][$f];
+            }
+            $kso = 0.0;
+            for ($i = $ksoBase; $i < $iJumlahKso; $i++) {
+                $kso += $tab[$i][$f];
+            }
+            $tab[$iJumlah][$f] = $jml;
+            $tab[$iJumlahKso][$f] = $kso;
+            $tab[$iTotal][$f] = $jml + $kso;
+        }
+
+        return ['summary' => $this->roundRows($tab)];
     }
 
     /**

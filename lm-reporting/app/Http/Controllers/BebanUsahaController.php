@@ -85,6 +85,9 @@ class BebanUsahaController extends Controller
             'preset' => 'lain',
             // Kolom Regional Office & Kebun dan Pabrik dihapus atas permintaan user
             // (sama seperti Beban Ops Lainnya) → 'kolomKedua' tidak diisi.
+            // Realisasi dari beban_usaha_gl report_type PENDPT (file "DP PENDAPATAN");
+            // baru tab SUMMARY yang diisi — tab KS/KR menyusul (belum ada aturan pisah).
+            'dataUrl' => '/report-data/laba-rugi/beban-usaha?page=pendapatan',
             'tabs' => [
                 ['key' => 'summary', 'label' => 'SUMMARY', 'rows' => self::rowsPendapatanSummary()],
                 ['key' => 'ks', 'label' => 'KELAPA SAWIT', 'rows' => $ksKr],

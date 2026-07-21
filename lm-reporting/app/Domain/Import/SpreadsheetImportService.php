@@ -123,6 +123,7 @@ class SpreadsheetImportService
             'beban_admin' => 'Beban Administrasi (GL)',
             'beban_ops' => 'Beban Ops Lainnya (GL)',
             'beban_penjualan' => 'Beban Penjualan (GL)',
+            'pendapatan_lain' => 'Pendapatan Lainnya (GL)',
             'pks_biaya' => 'Biaya PKS (LM16)',
             'investasi_wbs' => 'Investasi — Biaya (DB)',
             'investasi_asset' => 'Investasi — Aset (WS)',
@@ -172,10 +173,13 @@ class SpreadsheetImportService
         return $type === 'penjualan_produk';
     }
 
-    /** Jenis beban usaha (ekspor line-item GL SAP): Beban Administrasi / Beban Ops Lainnya / Beban Penjualan. */
+    /**
+     * Jenis beban usaha (ekspor line-item GL SAP): Beban Administrasi / Beban Ops
+     * Lainnya / Beban Penjualan / Pendapatan Lainnya (satu tabel beban_usaha_gl).
+     */
     public static function isBebanUsaha(string $type): bool
     {
-        return in_array($type, ['beban_admin', 'beban_ops', 'beban_penjualan'], true);
+        return in_array($type, ['beban_admin', 'beban_ops', 'beban_penjualan', 'pendapatan_lain'], true);
     }
 
     /** Jenis yang memakai bulan sebagai penjaga periode (tanpa Batch). */
@@ -676,13 +680,16 @@ class SpreadsheetImportService
             return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
         }
 
-        // Beban Usaha (ADMIN/BOL): sampel dari sheet tunggal (kolom kunci verifikasi mata).
+        // Beban Usaha (ADMIN/BOL/PENJ/PENDPT): sampel dari sheet tunggal (kolom kunci verifikasi mata).
         if (self::isBebanUsaha($type)) {
             $total = max(0, $this->totalDataRows($path));
-            $isAdmin = $type === 'beban_admin';
-            $headers = ['Posting Date', 'Period', 'Account', 'Profit Center', 'Description Prctr', 'Cost Center', 'Amount', $isAdmin ? 'Cost Element BPC Desc' : 'Kodering', $isAdmin ? '' : 'Klasifikasi LM HO'];
-            $headers = array_values(array_filter($headers, fn ($h) => $h !== ''));
-            $idx = $isAdmin ? [1, 2, 3, 8, 9, 28, 14, 38] : [1, 2, 3, 8, 9, 28, 14, 38, 39];
+            [$classHeaders, $classIdx] = match ($type) {
+                'beban_admin' => [['Cost Element BPC Desc'], [38]],
+                'beban_ops' => [['Kodering', 'Klasifikasi LM HO'], [38, 39]],
+                default => [['Klasifikasi'], [37]], // PENJ & PENDPT
+            };
+            $headers = array_merge(['Posting Date', 'Period', 'Account', 'Profit Center', 'Description Prctr', 'Cost Center', 'Amount'], $classHeaders);
+            $idx = array_merge([1, 2, 3, 8, 9, 28, 14], $classIdx);
             $rows = [];
             $emitted = 0;
             foreach ($this->dataRowsSheet($path, 'Sheet1') as $row) {
@@ -1609,11 +1616,12 @@ class SpreadsheetImportService
     }
 
     /**
-     * Indeks kolom 0-based file GL Beban Usaha (ADMIN, BOL & PENJ, sheet tunggal).
+     * Indeks kolom 0-based file GL Beban Usaha (ADMIN, BOL, PENJ & PENDPT, sheet tunggal).
      * Kolom klasifikasi berbeda per jenis:
-     *  - ADMIN: AL(37)=Cost Element BPC (kode 900216xx), AM(38)=Cost Element BPC Desc.
-     *  - BOL:   AM(38)=Kodering (A1xx), AN(39)=Klasifikasi LM HO.
-     *  - PENJ:  AL(37)=Klasifikasi LM Induk (nama baris; tanpa kolom kode).
+     *  - ADMIN : AL(37)=Cost Element BPC (kode 900216xx), AM(38)=Cost Element BPC Desc.
+     *  - BOL   : AM(38)=Kodering (A1xx), AN(39)=Klasifikasi LM HO.
+     *  - PENJ  : AL(37)=Klasifikasi LM Induk (nama baris; tanpa kolom kode).
+     *  - PENDPT: AL(37)=Klasifikasi (nama baris Pendapatan Lainnya; tanpa kolom kode).
      */
     private const BEBAN_USAHA_COLS = [
         'document_number' => 0, 'posting_date' => 1, 'period' => 2, 'account' => 3,
@@ -1622,7 +1630,7 @@ class SpreadsheetImportService
     ];
 
     /**
-     * Impor file GL Beban Usaha → beban_usaha_gl (report_type ADMIN | BOL | PENJ).
+     * Impor file GL Beban Usaha → beban_usaha_gl (report_type ADMIN | BOL | PENJ | PENDPT).
      *
      * Pola sama dgn importPenjualanProduk: file berisi banyak periode ("1 SD 6") →
      * idempoten HAPUS-GANTI per (report_type, year, period) yang muncul di file;
@@ -1636,12 +1644,13 @@ class SpreadsheetImportService
         $reportType = match ($type) {
             'beban_admin' => 'ADMIN',
             'beban_ops' => 'BOL',
-            default => 'PENJ',
+            'beban_penjualan' => 'PENJ',
+            default => 'PENDPT', // pendapatan_lain
         };
         [$codeIdx, $descIdx] = match ($type) {
             'beban_admin' => [37, 38],
             'beban_ops' => [38, 39],
-            default => [null, 37], // PENJ: tanpa kolom kode
+            default => [null, 37], // PENJ & PENDPT: tanpa kolom kode
         };
         $C = self::BEBAN_USAHA_COLS;
         $inserted = 0;
