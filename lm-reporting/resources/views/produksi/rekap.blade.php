@@ -83,14 +83,16 @@ function rekapProduksiApp() {
         },
 
         qtyFmt(cell) {
-            if (cell.getRow().getData()._section) return '';
+            const d = cell.getRow().getData();
+            if (d._section || d._group) return '';
             const v = cell.getValue();
             return (v == null || Number(v) === 0)
                 ? '-'
                 : Number(v).toLocaleString('id-ID', { maximumFractionDigits: 0 });
         },
         pctFmt(cell) {
-            if (cell.getRow().getData()._section) return '';
+            const d = cell.getRow().getData();
+            if (d._section || d._group) return '';
             const v = cell.getValue();
             return (v == null || Number(v) === 0)
                 ? '-'
@@ -168,13 +170,13 @@ function rekapProduksiApp() {
             ];
         },
 
-        // ---- Baris: band seksi (I. Kebun / II. PKS) → detail → JUMLAH per seksi ----
+        // ---- Baris: band seksi (I. Kebun / II. Plasma/Pihak III / III. PKS) → detail → JUMLAH ----
         rows() {
             const out = [];
             const flat = (r, extra = {}) => {
-                // r.group (induk Plasma/Pihak III) dirender sebagai band seksi:
-                // gaya hijau + seluruh angka disembunyikan (rincian di sub-baris).
-                const o = { no: '', kode: r.code || '', nama: r.nama || '', ...(r.sub ? { _sub: true } : {}), ...(r.group ? { _section: true } : {}), ...extra };
+                // r.group = judul kelompok per PKS di seksi II (kode + nama tampil,
+                // seluruh angka disembunyikan); r.subtotal = JUMLAH per PKS.
+                const o = { no: '', kode: r.code || '', nama: r.nama || '', ...(r.group ? { _group: true } : {}), ...(r.subtotal ? { _subtotal: true } : {}), ...extra };
                 ['bl', 'bi', 'sd', 'rkap_bi', 'rkap_sd'].forEach(b => {
                     const blk = r[b] || {};
                     ['tbs_diterima', 'tbs_diolah', 'ms', 'is', 'rend_ms', 'rend_is'].forEach(m => {
@@ -205,16 +207,13 @@ function rekapProduksiApp() {
                 height: '72vh',
                 rowFormatter: (row) => {
                     const d = row.getData();
-                    // Sub-baris per PKS (di bawah Plasma/Pihak III): hanya menjorok,
-                    // warna sama dengan baris data lain.
-                    if (d._sub) {
-                        const namaCell = row.getCells().find((c) => c.getField() === 'nama');
-                        if (namaCell) namaCell.getElement().style.paddingLeft = '1.75rem';
-                        return;
-                    }
                     let bg = null, fw = null, italic = false;
                     if (d._section) { bg = '#d7e9df'; fw = '700'; italic = true; }
                     else if (d._total) { bg = '#eef5f1'; fw = '700'; }
+                    // JUMLAH per PKS (seksi Plasma/Pihak III): tebal + latar lebih muda.
+                    else if (d._subtotal) { bg = '#f4f9f6'; fw = '700'; }
+                    // Judul kelompok per PKS: tebal saja, tanpa latar (nilai kosong).
+                    else if (d._group) { fw = '600'; }
                     if (!bg && !fw) return;
                     const el = row.getElement();
                     if (fw) el.style.fontWeight = fw;

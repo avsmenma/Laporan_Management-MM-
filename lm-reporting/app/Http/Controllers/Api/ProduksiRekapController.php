@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * REKAP PRODUKSI (menu Produksi → Rekap Produksi).
  *
- * Satu tabel dua seksi (I. Kebun, II. PKS) mengikuti template
- * docs/produksi/rekap_produksi/REKAP PRODUKSI.xlsx:
+ * Satu tabel TIGA seksi (I. Kebun, II. Plasma/Pihak III, III. PKS) mengikuti
+ * template docs/produksi/rekap_produksi/REKAP PRODUKSI.xlsx:
  * blok BULAN LALU / BULAN INI / S.D BULAN INI / RKAP BULAN INI / RKAP S.D BULAN INI
  * (masing-masing: TBS Diterima, TBS Diolah, MS, IS, Rend MS, Rend IS)
  * + blok rasio BI/BL, BI/RKAP, S.D BI/RKAP (TBS, RMS, RIS).
@@ -25,11 +25,11 @@ use Illuminate\Support\Facades\DB;
  * kode U3 (TBS masuk), U4 (TBS diolah), U7 (MS), U8 (IS); period NULL = tahunan
  * ikut kedua mode (pola Lm16Service). Anggaran per-kebun tidak tersedia → 0.
  *
- * Baris Plasma (PLSM) & Pihak III (PHTG) dipecah sub-baris per PKS penerima
- * (produksi_pks memang menyimpan baris per plant). Induknya diberi flag `group`
- * (judul kelompok — nilai disembunyikan di UI tapi tetap ikut JUMLAH seksi);
- * sub-baris tidak ikut JUMLAH dan blok RKAP-nya kosong: anggaran U3/U4/U7/U8
- * adalah total per plant, tidak terpecah per pemilik TBS.
+ * Seksi II. Plasma/Pihak III (kebun_code PLSM/PHTG) dikelompokkan per PKS
+ * penerima: baris judul kelompok (kode + nama PKS, flag `group`, tanpa nilai),
+ * baris PLASMA, baris PIHAK 3, lalu JUMLAH per PKS (flag `subtotal`).
+ * Blok RKAP seksi ini kosong: anggaran U3/U4/U7/U8 adalah total per plant,
+ * tidak terpecah per pemilik TBS.
  */
 class ProduksiRekapController extends Controller
 {
@@ -46,8 +46,8 @@ class ProduksiRekapController extends Controller
     /** Kode anggaran LM16 (U{urutan}) => measure rekap. */
     private const RKAP_CODES = ['U3' => 'tbs_diterima', 'U4' => 'tbs_diolah', 'U7' => 'ms', 'U8' => 'is'];
 
-    /** Nama tampilan khusus kode kebun non-5E. */
-    private const KEBUN_ALIAS = ['PLSM' => 'Plasma', 'PHTG' => 'Pihak III'];
+    /** Kode kebun pemilik TBS seksi II => label baris tampilan. */
+    private const PLASMA_OWNERS = ['PLSM' => 'PLASMA', 'PHTG' => 'PIHAK 3'];
 
     public function index(Request $request): JsonResponse
     {
@@ -100,7 +100,7 @@ class ProduksiRekapController extends Controller
         // Seksi Kebun dikunci kebun_code (Σ lintas plant); seksi PKS dikunci plant_code.
         $aggKebun = [];
         $aggPks = [];
-        $aggSub = []; // sub-baris per PKS utk PLSM/PHTG, kunci "kebun|plant"
+        $aggSub = []; // seksi Plasma/Pihak III: kunci "kebun|plant" (PLSM/PHTG per PKS)
         $add = function (&$agg, string $key, string $block, object $r, int $ci): void {
             foreach (self::MEASURES as $m => $cols) {
                 $agg[$key][$block][$m] = ($agg[$key][$block][$m] ?? 0.0) + (float) $r->{$cols[$ci]};
@@ -117,7 +117,7 @@ class ProduksiRekapController extends Controller
                 $add($aggPks, $p, 'bi', $r, 0);
                 $add($aggPks, $p, 'sd', $r, 1);
             }
-            if ($p !== '' && isset(self::KEBUN_ALIAS[$k])) {
+            if ($p !== '' && isset(self::PLASMA_OWNERS[$k])) {
                 $add($aggSub, $k.'|'.$p, 'bi', $r, 0);
                 $add($aggSub, $k.'|'.$p, 'sd', $r, 1);
             }
@@ -131,7 +131,7 @@ class ProduksiRekapController extends Controller
             if ($p !== '') {
                 $add($aggPks, $p, 'bl', $r, 0);
             }
-            if ($p !== '' && isset(self::KEBUN_ALIAS[$k])) {
+            if ($p !== '' && isset(self::PLASMA_OWNERS[$k])) {
                 $add($aggSub, $k.'|'.$p, 'bl', $r, 0);
             }
         }
@@ -155,23 +155,21 @@ class ProduksiRekapController extends Controller
 
         // ---- Daftar baris ----
         // Kebun: distinct kebun_code seluruh data produksi_pks (semua periode) agar baris
-        // stabil antar-periode; urut 5E natural → PLSM → PHTG → lainnya. Nama dari ref_unit.
+        // stabil antar-periode; PLSM/PHTG dipisah ke seksi II. Urut 5E natural → lainnya.
         $kebunCodes = DB::table('produksi_pks')->distinct()->pluck('kebun_code')
-            ->map(fn ($k) => (string) $k)->filter(fn ($k) => $k !== '')->values()->all();
+            ->map(fn ($k) => (string) $k)
+            ->filter(fn ($k) => $k !== '' && ! isset(self::PLASMA_OWNERS[$k]))->values()->all();
         $k5e = array_values(array_filter($kebunCodes, fn ($k) => preg_match('/^5E/i', $k)));
         sort($k5e, SORT_NATURAL);
         $tail = array_values(array_filter($kebunCodes, fn ($k) => ! preg_match('/^5E/i', $k)));
-        usort($tail, function ($a, $b) {
-            $ord = ['PLSM' => 0, 'PHTG' => 1];
-            return ($ord[$a] ?? 9) <=> ($ord[$b] ?? 9) ?: strnatcasecmp($a, $b);
-        });
+        sort($tail, SORT_NATURAL);
         $kebunCodes = array_merge($k5e, $tail);
 
         $unitNames = DB::table('ref_unit')->pluck('name', 'code')->all();
         $dataNames = DB::table('produksi_pks')->distinct()->pluck('nama_kebun', 'kebun_code')->all();
         $kebunList = array_map(fn ($k) => [
             'code' => $k,
-            'nama' => self::KEBUN_ALIAS[$k] ?? ($unitNames[$k] ?? ($dataNames[$k] ?? $k)),
+            'nama' => $unitNames[$k] ?? ($dataNames[$k] ?? $k),
         ], $kebunCodes);
 
         // PKS: master ref_unit PABRIK komoditi KS (PKR di luar lingkup) — semua baris
@@ -188,18 +186,18 @@ class ProduksiRekapController extends Controller
             'nama' => $unitNames[$p] ?? $p,
         ], $pksCodes);
 
-        // Sub-baris per PKS di bawah Plasma/Pihak III (urut natural per plant).
-        $childrenKebun = []; // [kebun_code][] => {code, nama, agg}
-        $subKeys = array_keys($aggSub);
-        sort($subKeys, SORT_NATURAL);
-        foreach ($subKeys as $sk) {
+        // Seksi II: kelompok per PKS penerima TBS Plasma/Pihak III (urut natural).
+        $plasmaPlants = []; // [plant][owner(PLSM|PHTG)] => agg [block][measure]
+        foreach ($aggSub as $sk => $agg) {
             [$k, $p] = explode('|', $sk, 2);
-            $childrenKebun[$k][] = ['code' => $p, 'nama' => $unitNames[$p] ?? $p, 'agg' => $aggSub[$sk]];
+            $plasmaPlants[$p][$k] = $agg;
         }
+        ksort($plasmaPlants, SORT_NATURAL);
 
         $sections = [
-            $this->buildSection('kebun', 'I. Kebun', $kebunList, $aggKebun, [], $childrenKebun),
-            $this->buildSection('pks', 'II. PKS', $pksList, $aggPks, $rkap),
+            $this->buildSection('kebun', 'I. Kebun', $kebunList, $aggKebun, []),
+            $this->buildPlasmaSection($plasmaPlants, $unitNames),
+            $this->buildSection('pks', 'III. PKS', $pksList, $aggPks, $rkap),
         ];
 
         return response()->json([
@@ -216,16 +214,11 @@ class ProduksiRekapController extends Controller
      * Susun satu seksi: baris per entitas + baris JUMLAH (round-of-sum: total
      * dihitung dari agregat mentah, rasio & rendemen dari jumlah mentah).
      *
-     * Sub-baris ($children, per kode entitas) diemit tepat di bawah induknya
-     * dengan flag `sub`; nilainya TIDAK ditambahkan ke JUMLAH (induk sudah mencakup)
-     * dan blok RKAP-nya 0 (tidak ada anggaran per pemilik TBS).
-     *
      * @param  array<int, array{code: string, nama: string}>  $entities
      * @param  array<string, array<string, array<string, float>>>  $agg  [entity][block][measure]
      * @param  array<string, array<string, array<string, float>>>  $rkap  [entity][rkap_bi|rkap_sd][measure]
-     * @param  array<string, array<int, array{code: string, nama: string, agg: array<string, array<string, float>>}>>  $children
      */
-    private function buildSection(string $key, string $title, array $entities, array $agg, array $rkap, array $children = []): array
+    private function buildSection(string $key, string $title, array $entities, array $agg, array $rkap): array
     {
         $blocks = ['bl', 'bi', 'sd', 'rkap_bi', 'rkap_sd'];
         $totals = [];
@@ -245,30 +238,67 @@ class ProduksiRekapController extends Controller
                     $totals[$b][$m] += $raw[$b][$m];
                 }
             }
-            $row = $this->emitRow($e['code'], $e['nama'], $raw);
-            $kids = $children[$e['code']] ?? [];
-            if ($kids !== []) {
-                // Induk yang punya sub-baris jadi judul kelompok: UI menyembunyikan
-                // nilainya (rinciannya di sub-baris); JUMLAH tetap dari agregat induk.
-                $row['group'] = true;
-            }
-            $rows[] = $row;
-
-            foreach ($kids as $c) {
-                $craw = [];
-                foreach ($blocks as $b) {
-                    $src = str_starts_with($b, 'rkap_') ? [] : ($c['agg'][$b] ?? []);
-                    foreach (array_keys(self::MEASURES) as $m) {
-                        $craw[$b][$m] = (float) ($src[$m] ?? 0.0);
-                    }
-                }
-                $rows[] = $this->emitRow($c['code'], $c['nama'], $craw, true);
-            }
+            $rows[] = $this->emitRow($e['code'], $e['nama'], $raw);
         }
 
         return [
             'key' => $key,
             'title' => $title,
+            'rows' => $rows,
+            'total' => $this->emitRow('', 'JUMLAH', $totals),
+        ];
+    }
+
+    /**
+     * Seksi II. Plasma/Pihak III — kelompok per PKS penerima, mengikuti contoh
+     * Excel user: baris judul (kode + nama PKS, flag `group`, tanpa nilai),
+     * baris PLASMA, baris PIHAK 3, lalu JUMLAH per PKS (flag `subtotal`,
+     * round-of-sum dari agregat mentah kedua pemilik). JUMLAH seksi = Σ semua
+     * kelompok. Blok RKAP kosong (anggaran tidak terpecah per pemilik TBS).
+     *
+     * @param  array<string, array<string, array<string, array<string, float>>>>  $plants  [plant][owner][block][measure]
+     * @param  array<string, string>  $unitNames
+     */
+    private function buildPlasmaSection(array $plants, array $unitNames): array
+    {
+        $blocks = ['bl', 'bi', 'sd', 'rkap_bi', 'rkap_sd'];
+        $zeros = [];
+        foreach ($blocks as $b) {
+            $zeros[$b] = array_fill_keys(array_keys(self::MEASURES), 0.0);
+        }
+        $totals = $zeros;
+
+        $rows = [];
+        foreach ($plants as $p => $byOwner) {
+            $head = $this->emitRow($p, $unitNames[$p] ?? $p, $zeros);
+            $head['group'] = true;
+            $rows[] = $head;
+
+            $sum = $zeros;
+            foreach (self::PLASMA_OWNERS as $owner => $label) {
+                $raw = $zeros;
+                foreach ($blocks as $b) {
+                    if (str_starts_with($b, 'rkap_')) {
+                        continue;
+                    }
+                    foreach (array_keys(self::MEASURES) as $m) {
+                        $v = (float) ($byOwner[$owner][$b][$m] ?? 0.0);
+                        $raw[$b][$m] = $v;
+                        $sum[$b][$m] += $v;
+                        $totals[$b][$m] += $v;
+                    }
+                }
+                $rows[] = $this->emitRow('', $label, $raw);
+            }
+
+            $sub = $this->emitRow('', 'JUMLAH', $sum);
+            $sub['subtotal'] = true;
+            $rows[] = $sub;
+        }
+
+        return [
+            'key' => 'plasma',
+            'title' => 'II. Plasma/Pihak III',
             'rows' => $rows,
             'total' => $this->emitRow('', 'JUMLAH', $totals),
         ];
@@ -283,7 +313,7 @@ class ProduksiRekapController extends Controller
      *
      * @param  array<string, array<string, float>>  $raw  [block][measure] mentah
      */
-    private function emitRow(string $code, string $nama, array $raw, bool $sub = false): array
+    private function emitRow(string $code, string $nama, array $raw): array
     {
         $rend = fn (array $b, string $m): float => ($b['tbs_diolah'] ?? 0.0) > 0
             ? ($b[$m] ?? 0.0) / $b['tbs_diolah']
@@ -291,9 +321,6 @@ class ProduksiRekapController extends Controller
         $pct = fn (float $n, float $d): float => $d > 0.0 ? round($n / $d * 100, 2) : 0.0;
 
         $out = ['code' => $code, 'nama' => $nama];
-        if ($sub) {
-            $out['sub'] = true;
-        }
         foreach ($raw as $block => $vals) {
             $out[$block] = [
                 'tbs_diterima' => round($vals['tbs_diterima']),
