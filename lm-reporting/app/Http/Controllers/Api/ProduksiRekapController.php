@@ -253,9 +253,10 @@ class ProduksiRekapController extends Controller
      * Seksi II. Plasma/Pihak III — kelompok per PKS penerima, mengikuti contoh
      * Excel user: baris judul (kode + nama PKS, flag `group`, tanpa nilai),
      * baris "- Plasma", baris "- Pihak III", lalu JUMLAH per PKS (flag `subtotal`,
-     * round-of-sum dari agregat mentah kedua pemilik). Penutup seksi diberi
-     * label TOTAL (bukan JUMLAH — sudah dipakai subtotal per PKS) = Σ semua
-     * kelompok. Blok RKAP kosong (anggaran tidak terpecah per pemilik TBS).
+     * round-of-sum dari agregat mentah kedua pemilik). Penutup seksi DIPISAH
+     * per pemilik (revisi user): baris "Total Plasma" & "Total Pihak III"
+     * (kunci `totals`, Σ lintas PKS per pemilik — bukan JUMLAH, sudah dipakai
+     * subtotal). Blok RKAP kosong (anggaran tidak terpecah per pemilik TBS).
      *
      * @param  array<string, array<string, array<string, array<string, float>>>>  $plants  [plant][owner][block][measure]
      * @param  array<string, string>  $unitNames
@@ -267,7 +268,7 @@ class ProduksiRekapController extends Controller
         foreach ($blocks as $b) {
             $zeros[$b] = array_fill_keys(array_keys(self::MEASURES), 0.0);
         }
-        $totals = $zeros;
+        $totals = array_fill_keys(array_keys(self::PLASMA_OWNERS), $zeros);
 
         $rows = [];
         foreach ($plants as $p => $byOwner) {
@@ -286,7 +287,7 @@ class ProduksiRekapController extends Controller
                         $v = (float) ($byOwner[$owner][$b][$m] ?? 0.0);
                         $raw[$b][$m] = $v;
                         $sum[$b][$m] += $v;
-                        $totals[$b][$m] += $v;
+                        $totals[$owner][$b][$m] += $v;
                     }
                 }
                 $rows[] = $this->emitRow('', $label, $raw);
@@ -297,11 +298,16 @@ class ProduksiRekapController extends Controller
             $rows[] = $sub;
         }
 
+        $totalRows = [];
+        foreach (self::PLASMA_OWNERS as $owner => $label) {
+            $totalRows[] = $this->emitRow('', 'Total '.ltrim($label, '- '), $totals[$owner]);
+        }
+
         return [
             'key' => 'plasma',
             'title' => 'II. Plasma/Pihak III',
             'rows' => $rows,
-            'total' => $this->emitRow('', 'TOTAL', $totals),
+            'totals' => $totalRows,
         ];
     }
 

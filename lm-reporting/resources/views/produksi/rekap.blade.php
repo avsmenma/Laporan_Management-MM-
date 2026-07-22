@@ -192,7 +192,9 @@ function rekapProduksiApp() {
             (this.payload?.sections || []).forEach(sec => {
                 out.push({ no: '', kode: '', nama: sec.title, _section: true });
                 (sec.rows || []).forEach(r => out.push(flat(r)));
-                if (sec.total) out.push(flat(sec.total, { _total: true }));
+                // Penutup seksi: `total` (satu baris) atau `totals` (seksi
+                // Plasma/Pihak III: Total Plasma & Total Pihak III terpisah).
+                (sec.totals || (sec.total ? [sec.total] : [])).forEach(t => out.push(flat(t, { _total: true })));
             });
             return out;
         },
