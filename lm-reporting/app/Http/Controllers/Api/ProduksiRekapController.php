@@ -253,7 +253,8 @@ class ProduksiRekapController extends Controller
      * Seksi II. Plasma/Pihak III — kelompok per PKS penerima, mengikuti contoh
      * Excel user: baris judul (kode + nama PKS, flag `group`, tanpa nilai),
      * baris PLASMA, baris PIHAK 3, lalu JUMLAH per PKS (flag `subtotal`,
-     * round-of-sum dari agregat mentah kedua pemilik). JUMLAH seksi = Σ semua
+     * round-of-sum dari agregat mentah kedua pemilik). Penutup seksi diberi
+     * label TOTAL (bukan JUMLAH — sudah dipakai subtotal per PKS) = Σ semua
      * kelompok. Blok RKAP kosong (anggaran tidak terpecah per pemilik TBS).
      *
      * @param  array<string, array<string, array<string, array<string, float>>>>  $plants  [plant][owner][block][measure]
@@ -300,7 +301,7 @@ class ProduksiRekapController extends Controller
             'key' => 'plasma',
             'title' => 'II. Plasma/Pihak III',
             'rows' => $rows,
-            'total' => $this->emitRow('', 'JUMLAH', $totals),
+            'total' => $this->emitRow('', 'TOTAL', $totals),
         ];
     }
 
