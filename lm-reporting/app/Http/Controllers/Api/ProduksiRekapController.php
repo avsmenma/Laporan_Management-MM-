@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * REKAP PRODUKSI (menu Produksi → Rekap Produksi).
  *
- * Satu tabel TIGA seksi (I. Kebun, II. Plasma/Pihak III, III. PKS) mengikuti
+ * Satu tabel TIGA seksi (I. Kebun Inti, II. Plasma/Pihak III, III. PKS) mengikuti
  * template docs/produksi/rekap_produksi/REKAP PRODUKSI.xlsx:
  * blok BULAN LALU / BULAN INI / S.D BULAN INI / RKAP BULAN INI / RKAP S.D BULAN INI
  * (masing-masing: TBS Diterima, TBS Diolah, MS, IS, Rend MS, Rend IS)
@@ -195,7 +195,7 @@ class ProduksiRekapController extends Controller
         ksort($plasmaPlants, SORT_NATURAL);
 
         $sections = [
-            $this->buildSection('kebun', 'I. Kebun', $kebunList, $aggKebun, []),
+            $this->buildSection('kebun', 'I. Kebun Inti', $kebunList, $aggKebun, []),
             $this->buildPlasmaSection($plasmaPlants, $unitNames),
             $this->buildSection('pks', 'III. PKS', $pksList, $aggPks, $rkap),
         ];
