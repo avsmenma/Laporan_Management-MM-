@@ -46,8 +46,8 @@ class ProduksiRekapController extends Controller
     /** Kode anggaran LM16 (U{urutan}) => measure rekap. */
     private const RKAP_CODES = ['U3' => 'tbs_diterima', 'U4' => 'tbs_diolah', 'U7' => 'ms', 'U8' => 'is'];
 
-    /** Kode kebun pemilik TBS seksi II => label baris tampilan. */
-    private const PLASMA_OWNERS = ['PLSM' => 'PLASMA', 'PHTG' => 'PIHAK 3'];
+    /** Kode kebun pemilik TBS seksi II => label baris tampilan (strip, bukan uppercase — permintaan user). */
+    private const PLASMA_OWNERS = ['PLSM' => '- Plasma', 'PHTG' => '- Pihak III'];
 
     public function index(Request $request): JsonResponse
     {
@@ -252,7 +252,7 @@ class ProduksiRekapController extends Controller
     /**
      * Seksi II. Plasma/Pihak III — kelompok per PKS penerima, mengikuti contoh
      * Excel user: baris judul (kode + nama PKS, flag `group`, tanpa nilai),
-     * baris PLASMA, baris PIHAK 3, lalu JUMLAH per PKS (flag `subtotal`,
+     * baris "- Plasma", baris "- Pihak III", lalu JUMLAH per PKS (flag `subtotal`,
      * round-of-sum dari agregat mentah kedua pemilik). Penutup seksi diberi
      * label TOTAL (bukan JUMLAH — sudah dipakai subtotal per PKS) = Σ semua
      * kelompok. Blok RKAP kosong (anggaran tidak terpecah per pemilik TBS).
