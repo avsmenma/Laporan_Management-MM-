@@ -6,21 +6,22 @@
 <div x-data="lm34App()" x-init="init()" class="lm34-page">
     <div class="filter-bar">
         <div class="filter-grid">
+            {{-- Opsi dirender server (bukan x-for) supaya nilai awal Juni 2026 langsung terpilih --}}
             <div class="filter-group">
                 <label class="filter-label">Bulan</label>
                 <select class="filter-select" x-model.number="month" @change="render()">
-                    <template x-for="m in months()" :key="m">
-                        <option :value="m" x-text="bulanNama(m)"></option>
-                    </template>
+                    @foreach (['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'] as $i => $nm)
+                        <option value="{{ $i + 1 }}">{{ $nm }}</option>
+                    @endforeach
                 </select>
             </div>
 
             <div class="filter-group">
                 <label class="filter-label">Tahun</label>
                 <select class="filter-select" x-model.number="year" @change="render()">
-                    <template x-for="y in years()" :key="y">
-                        <option :value="y" x-text="y"></option>
-                    </template>
+                    @foreach ([2028, 2027, 2026, 2025] as $y)
+                        <option value="{{ $y }}">{{ $y }}</option>
+                    @endforeach
                 </select>
             </div>
         </div>
@@ -28,12 +29,18 @@
 
     <div class="lm34-frame">
         <div class="report-card">
-            <div class="lm34-title-strip">
-                <div>
-                    <div class="lm34-title">DAFTAR PENJUALAN EKSPOR DAN LOKAL</div>
-                    <div class="lm34-subtitle">s.d. bulan : <span x-text="bulanNama(month) + ' ' + year"></span></div>
+            {{-- Kepala laporan persis Excel: identitas perusahaan | judul | periode, label LM - 34 di kanan atas --}}
+            <div class="lm34-head">
+                <div class="lm34-head-code">LM - 34</div>
+                <div class="lm34-head-box">
+                    <div class="lm34-head-left">
+                        <div>PT PERKEBUNAN NUSANTARA IV REG V</div>
+                        <div>KANTOR REGIONAL</div>
+                        <div>PONTIANAK - KALIMANTAN BARAT</div>
+                    </div>
+                    <div class="lm34-head-title">DAFTAR PENJUALAN EKSPOR DAN LOKAL</div>
+                    <div class="lm34-head-right">s.d. bulan : <span x-text="bulanNama(month) + ' ' + year"></span></div>
                 </div>
-                <div class="lm34-badge">LM - 34</div>
             </div>
             <div id="lm34-table" class="lm-report-table"></div>
         </div>
@@ -45,10 +52,13 @@
     body.lm-focus .lm34-page .filter-bar { top: 0; }
     .lm34-frame .lm-report-table { border-top: 0; }
 
-    .lm34-title-strip { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); background: #fff; }
-    .lm34-title { font-weight: 700; color: var(--green-900, #0f4c3a); letter-spacing: .02em; }
-    .lm34-subtitle { font-size: .8rem; color: #667; }
-    .lm34-badge { font-weight: 700; font-size: .8rem; color: var(--green-900, #0f4c3a); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; background: #eef5f1; }
+    .lm34-head { padding: 8px 14px 12px; background: #fff; border-bottom: 1px solid var(--line); }
+    .lm34-head-code { text-align: right; font-weight: 700; font-size: .85rem; color: #222; padding: 2px 4px 4px; }
+    .lm34-head-box { display: grid; grid-template-columns: minmax(230px, 24%) 1fr minmax(150px, 15%); border: 2px solid #333; }
+    .lm34-head-box > div { display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; font-weight: 700; color: #222; }
+    .lm34-head-left { border-right: 1px solid #333; font-size: .8rem; gap: 4px; }
+    .lm34-head-title { text-align: center; font-size: 1rem; letter-spacing: .02em; }
+    .lm34-head-right { border-left: 1px solid #333; text-align: center; font-size: .8rem; }
 </style>
 @endsection
 
@@ -65,13 +75,6 @@ function lm34App() {
         bulanNama(m) {
             return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
         },
-        years() {
-            return [2028, 2027, 2026, 2025];
-        },
-        months() {
-            return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-        },
-
         // Sel angka: baris seksi/judul kosong; selain itu 0/null → '-';
         // negatif dalam kurung (pola halaman laba-rugi lain).
         numFmt(dec) {
@@ -172,11 +175,12 @@ function lm34App() {
                 maxHeight: 'calc(100vh - 260px)',
                 rowFormatter: (row) => {
                     const d = row.getData();
-                    let bg = null, fw = null, italic = false;
-                    if (d._type === 'section') { bg = '#d7e9df'; fw = '700'; italic = true; }
+                    // Label seksi/judul digarisbawahi meniru Excel (L o k a l, T B S, A./B./C.).
+                    let bg = null, fw = null, italic = false, under = false;
+                    if (d._type === 'section') { bg = '#d7e9df'; fw = '700'; italic = true; under = true; }
                     else if (d._type === 'total') { bg = '#dcebe2'; fw = '700'; }
                     else if (d._type === 'subtotal') { bg = '#eef5f1'; fw = '700'; }
-                    else if (d._type === 'header') { fw = '700'; }
+                    else if (d._type === 'header') { fw = '700'; italic = true; under = true; }
                     if (!bg && !fw) return;
                     const el = row.getElement();
                     if (fw) el.style.fontWeight = fw;
@@ -187,6 +191,7 @@ function lm34App() {
                         if (fw) ce.style.fontWeight = fw;
                         if (bg) ce.style.background = bg;
                         if (italic) ce.style.fontStyle = 'italic';
+                        if (under) ce.style.textDecoration = 'underline';
                     });
                 },
             });
