@@ -31,6 +31,9 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::get('/laba-rugi/beban-usaha/proporsi', [\App\Http\Controllers\BebanUsahaController::class, 'proporsiIndex'])->name('laba-rugi.beban-usaha.proporsi.index');
     Route::get('/laba-rugi/pendapatan-lainnya', [\App\Http\Controllers\BebanUsahaController::class, 'pendapatanLainnya'])->name('laba-rugi.pendapatan-lainnya');
 
+    // Laba Rugi — LM 34 (Daftar Penjualan Ekspor dan Lokal; tabel dulu, data by tarikan menyusul).
+    Route::view('/laba-rugi/lm34', 'laba-rugi.lm34')->name('laba-rugi.lm34');
+
     // Halaman Kebun & Pabrik — submenu LM Eksploitasi (halaman saat ini) & LM Investasi (segera hadir)
     Route::get('/kebun', function () {
         return view('kebun.index');
