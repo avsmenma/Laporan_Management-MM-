@@ -52,9 +52,10 @@
     body.lm-focus .lm34-page .filter-bar { top: 0; }
     .lm34-frame .lm-report-table { border-top: 0; }
 
-    .lm34-head { padding: 8px 14px 12px; background: #fff; border-bottom: 1px solid var(--line); }
-    .lm34-head-code { text-align: right; font-weight: 700; font-size: .85rem; color: #222; padding: 2px 4px 4px; }
-    .lm34-head-box { display: grid; grid-template-columns: minmax(230px, 24%) 1fr minmax(150px, 15%); border: 2px solid #333; }
+    /* Kop menyatu dengan tabel: tanpa padding samping/bawah, kotak menempel header kolom */
+    .lm34-head { padding: 6px 0 0; background: #fff; }
+    .lm34-head-code { text-align: right; font-weight: 700; font-size: .85rem; color: #222; padding: 0 8px 4px; }
+    .lm34-head-box { display: grid; grid-template-columns: minmax(230px, 24%) 1fr minmax(150px, 15%); border: 1px solid #333; border-left: 0; border-right: 0; }
     .lm34-head-box > div { display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; font-weight: 700; color: #222; }
     .lm34-head-left { border-right: 1px solid #333; font-size: .8rem; gap: 4px; }
     .lm34-head-title { text-align: center; font-size: 1rem; letter-spacing: .02em; }
