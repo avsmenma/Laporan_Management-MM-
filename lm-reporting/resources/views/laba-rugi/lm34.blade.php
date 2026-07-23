@@ -167,6 +167,16 @@ function lm34App() {
             ];
         },
 
+        // Selaraskan sekat vertikal kop dengan batas blok kolom pertama
+        // (Volume Penjualan) supaya kop & tabel tampak satu grid seperti Excel.
+        syncKop() {
+            const grp = document.querySelector('#lm34-table .tabulator-header .tabulator-col.tabulator-col-group');
+            const box = document.querySelector('.lm34-head-box');
+            if (grp && box && grp.offsetWidth > 0) {
+                box.style.gridTemplateColumns = grp.offsetWidth + 'px 1fr minmax(150px, 15%)';
+            }
+        },
+
         render() {
             if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
             this.table = new window.Tabulator('#lm34-table', {
@@ -196,10 +206,12 @@ function lm34App() {
                     });
                 },
             });
+            this.table.on('tableBuilt', () => this.syncKop());
         },
 
         init() {
             this.$nextTick(() => this.render());
+            window.addEventListener('resize', () => this.syncKop());
         },
     };
 }
