@@ -417,6 +417,7 @@
                             <svg class="nav-caret" :class="{ 'open': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
                         <ul class="sidebar-subnav" data-flyout="LABA RUGI" x-show="open" x-cloak>
+                            <li><a href="{{ route('laba-rugi.lm27a') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.lm27a') ? 'active' : '' }}"><span class="tree-ico">📄</span> LM-27A</a></li>
                             <li><a href="{{ route('laba-rugi.penjualan') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.penjualan') ? 'active' : '' }}"><span class="tree-ico">📄</span> PENJUALAN</a></li>
                             <li><a href="{{ route('laba-rugi.beban-penjualan') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.beban-penjualan') ? 'active' : '' }}"><span class="tree-ico">📄</span> BEBAN PENJUALAN</a></li>
                             <li><a href="{{ route('laba-rugi.beban-administrasi') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.beban-administrasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> BEBAN ADMINISTRASI</a></li>

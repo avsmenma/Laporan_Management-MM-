@@ -19,6 +19,9 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::redirect('/report', '/kebun');
     Route::redirect('/reports', '/kebun')->name('reports.index');
 
+    // Laba Rugi — LM-27A (Perhitungan Laba/Rugi per budidaya; tabel dulu, data by tarikan menyusul).
+    Route::view('/laba-rugi/lm27a', 'laba-rugi.lm27a')->name('laba-rugi.lm27a');
+
     // Laba Rugi — submenu Penjualan (Penjualan Produk).
     Route::redirect('/laba-rugi', '/laba-rugi/penjualan');
     Route::view('/laba-rugi/penjualan', 'laba-rugi.penjualan')->name('laba-rugi.penjualan');
