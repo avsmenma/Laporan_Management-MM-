@@ -1,57 +1,23 @@
-@extends('layouts.app')
-
-@section('title', 'LM 34')
-
-@section('content')
-<div x-data="lm34App()" x-init="init()" class="lm34-page">
-    <div class="filter-bar">
-        <div class="filter-grid">
-            {{-- Opsi dirender server (bukan x-for) supaya nilai awal Juni 2026 langsung terpilih --}}
-            <div class="filter-group">
-                <label class="filter-label">Bulan</label>
-                <select class="filter-select" x-model.number="month" @change="render()">
-                    @foreach (['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'] as $i => $nm)
-                        <option value="{{ $i + 1 }}">{{ $nm }}</option>
-                    @endforeach
-                </select>
-            </div>
-
-            <div class="filter-group">
-                <label class="filter-label">Tahun</label>
-                <select class="filter-select" x-model.number="year" @change="render()">
-                    @foreach ([2028, 2027, 2026, 2025] as $y)
-                        <option value="{{ $y }}">{{ $y }}</option>
-                    @endforeach
-                </select>
-            </div>
+{{-- Tab LM 34 (Daftar Penjualan Ekspor dan Lokal) pada halaman Penjualan.
+     Sertakan di DALAM report-card halaman (tepat di atas div tabel), lalu spread
+     window.lm34Mixin() ke komponen Alpine halaman: return { ...lm34Mixin(), ... }.
+     Halaman memanggil renderLm34() bila tab aktif = 'lm34'.
+     Data by tarikan (belum ada sumber) → seluruh nilai '-' dulu. --}}
+<div class="lm34-head" x-show="activeTab === 'lm34'" x-cloak>
+    {{-- Kepala laporan persis Excel: identitas perusahaan | judul | periode, label LM - 34 di kanan atas --}}
+    <div class="lm34-head-code">LM - 34</div>
+    <div class="lm34-head-box">
+        <div class="lm34-head-left">
+            <div>PT PERKEBUNAN NUSANTARA IV REG V</div>
+            <div>KANTOR REGIONAL</div>
+            <div>PONTIANAK - KALIMANTAN BARAT</div>
         </div>
-    </div>
-
-    <div class="lm34-frame">
-        <div class="report-card">
-            {{-- Kepala laporan persis Excel: identitas perusahaan | judul | periode, label LM - 34 di kanan atas --}}
-            <div class="lm34-head">
-                <div class="lm34-head-code">LM - 34</div>
-                <div class="lm34-head-box">
-                    <div class="lm34-head-left">
-                        <div>PT PERKEBUNAN NUSANTARA IV REG V</div>
-                        <div>KANTOR REGIONAL</div>
-                        <div>PONTIANAK - KALIMANTAN BARAT</div>
-                    </div>
-                    <div class="lm34-head-title">DAFTAR PENJUALAN EKSPOR DAN LOKAL</div>
-                    <div class="lm34-head-right">s.d. bulan : <span x-text="bulanNama(month) + ' ' + year"></span></div>
-                </div>
-            </div>
-            <div id="lm34-table" class="lm-report-table"></div>
-        </div>
+        <div class="lm34-head-title">DAFTAR PENJUALAN EKSPOR DAN LOKAL</div>
+        <div class="lm34-head-right">s.d. bulan : <span x-text="kopPeriode()"></span></div>
     </div>
 </div>
 
 <style>
-    .lm34-page .filter-bar { position: sticky; top: 60px; z-index: 30; }
-    body.lm-focus .lm34-page .filter-bar { top: 0; }
-    .lm34-frame .lm-report-table { border-top: 0; }
-
     /* Kop menyatu dengan tabel: tanpa padding samping/bawah, kotak menempel header kolom */
     .lm34-head { padding: 6px 0 0; background: #fff; }
     .lm34-head-code { text-align: right; font-weight: 700; font-size: .85rem; color: #222; padding: 0 8px 4px; }
@@ -61,24 +27,19 @@
     .lm34-head-title { text-align: center; font-size: 1rem; letter-spacing: .02em; }
     .lm34-head-right { border-left: 1px solid #333; text-align: center; font-size: .8rem; }
 </style>
-@endsection
 
 @push('scripts')
 <script>
-function lm34App() {
+function lm34Mixin() {
     return {
-        // Data by tarikan (belum ada sumber) → seluruh nilai '-' dulu; filter
-        // periode disiapkan untuk tarikan kelak. Default mengikuti template.
-        month: 6,
-        year: 2026,
-        table: null,
-
-        bulanNama(m) {
-            return ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(m)] || String(m);
+        // Periode kop mengikuti filter halaman Penjualan; bila belum dipilih → '—'.
+        kopPeriode() {
+            return (this.year && this.month) ? (this.bulanNama(this.month) + ' ' + this.year) : '—';
         },
+
         // Sel angka: baris seksi/judul kosong; selain itu 0/null → '-';
         // negatif dalam kurung (pola halaman laba-rugi lain).
-        numFmt(dec) {
+        lm34NumFmt(dec) {
             return (cell) => {
                 const d = cell.getRow().getData();
                 if (d._type === 'section' || d._type === 'header') return '';
@@ -93,9 +54,9 @@ function lm34App() {
         // ---- Kolom persis template LM34.xlsx: Volume Penjualan | Harga Jual per kg |
         // Hasil Yang Terjual (di tengah, ikut Excel) | Jumlah Nilai Dollar FOB |
         // Jumlah Nilai Penjualan | Selisih Lebih(Kurang) ----
-        columns() {
-            const qty = this.numFmt(0);
-            const hrg = this.numFmt(2);
+        lm34Columns() {
+            const qty = this.lm34NumFmt(0);
+            const hrg = this.lm34NumFmt(2);
             const col = (title, field, fmt, minWidth) => ({ title, field, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth });
             return [
                 { title: 'Volume Penjualan', headerHozAlign: 'center', columns: [
@@ -119,7 +80,7 @@ function lm34App() {
         },
 
         // ---- Baris persis template (label verbatim dari sheet LM-34) ----
-        rows() {
+        lm34Rows() {
             const s = (u) => ({ u, _type: 'section' });
             const h = (u) => ({ u, _type: 'header' });
             const d = (u) => ({ u, _type: 'detail' });
@@ -169,21 +130,22 @@ function lm34App() {
 
         // Selaraskan sekat vertikal kop dengan batas blok kolom pertama
         // (Volume Penjualan) supaya kop & tabel tampak satu grid seperti Excel.
-        syncKop() {
-            const grp = document.querySelector('#lm34-table .tabulator-header .tabulator-col.tabulator-col-group');
+        lm34SyncKop() {
+            if (this.activeTab !== 'lm34') return;
+            const grp = document.querySelector('#pjl-active .tabulator-header .tabulator-col.tabulator-col-group');
             const box = document.querySelector('.lm34-head-box');
             if (grp && box && grp.offsetWidth > 0) {
                 box.style.gridTemplateColumns = grp.offsetWidth + 'px 1fr minmax(150px, 15%)';
             }
         },
 
-        render() {
-            if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
-            this.table = new window.Tabulator('#lm34-table', {
-                data: this.rows(), columns: this.columns(),
+        // Render tabel LM 34 ke wadah tabel bersama halaman Penjualan.
+        renderLm34() {
+            this.table = new window.Tabulator('#pjl-active', {
+                data: this.lm34Rows(), columns: this.lm34Columns(),
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',
-                maxHeight: 'calc(100vh - 260px)',
+                maxHeight: 'calc(100vh - 300px)',
                 rowFormatter: (row) => {
                     const d = row.getData();
                     // Label seksi/judul digarisbawahi meniru Excel (L o k a l, T B S, A./B./C.).
@@ -206,12 +168,7 @@ function lm34App() {
                     });
                 },
             });
-            this.table.on('tableBuilt', () => this.syncKop());
-        },
-
-        init() {
-            this.$nextTick(() => this.render());
-            window.addEventListener('resize', () => this.syncKop());
+            this.table.on('tableBuilt', () => this.lm34SyncKop());
         },
     };
 }

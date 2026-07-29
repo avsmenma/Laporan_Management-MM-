@@ -30,21 +30,23 @@
 
     <div x-show="errorMsg" x-cloak class="lm-error-panel" x-text="errorMsg"></div>
 
-    <div x-show="hasData" x-cloak class="pjl-frame">
+    {{-- Tab bar selalu tampil supaya tab LM 34 (tanpa syarat data) tetap bisa diklik --}}
+    <div class="pjl-frame">
         <div class="tabs pjl-tabs">
             <template x-for="t in tabDefs" :key="t.key">
                 <span class="tab" :class="{ active: activeTab === t.key }"
                       @click="setTab(t.key)" x-text="t.title"></span>
             </template>
         </div>
-        <div class="report-card">
+        <div class="report-card" x-show="activeTab === 'lm34' || hasData" x-cloak>
+            @include('laba-rugi._lm34-tab')
             <div id="pjl-active" class="lm-report-table"></div>
         </div>
-    </div>
 
-    <div x-show="!hasData" x-cloak style="background:#fff;padding:4rem 2rem;text-align:center;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid var(--line)">
-        <div style="font-size:3rem;margin-bottom:1rem">💰</div>
-        <h3 style="color:#666;font-weight:500">Pilih bulan &amp; tahun untuk melihat Penjualan Produk</h3>
+        <div x-show="activeTab !== 'lm34' && !hasData" x-cloak class="pjl-empty">
+            <div style="font-size:3rem;margin-bottom:1rem">💰</div>
+            <h3 style="color:#666;font-weight:500">Pilih bulan &amp; tahun untuk melihat Penjualan Produk</h3>
+        </div>
     </div>
 
     @include('laba-rugi._drill-popup')
@@ -61,6 +63,7 @@
     .pjl-frame .pjl-tabs .tab.active { font-weight: 700; }
     .pjl-frame .report-card { border-top-left-radius: 0; }
     .pjl-frame .lm-report-table { border-top: 0; }
+    .pjl-empty { background: #fff; padding: 4rem 2rem; text-align: center; border-radius: 0 12px 12px 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); border: 1px solid var(--line); }
 </style>
 @endsection
 
@@ -69,6 +72,7 @@
 function penjualanApp() {
     return {
         ...lmLrDrillMixin(),
+        ...lm34Mixin(),
         periods: [],
         year: '',
         month: '',
@@ -85,6 +89,8 @@ function penjualanApp() {
             { key: 'buyer', title: 'BUYER' },
             { key: 'plant', title: 'PLANT' },
             { key: 'all', title: 'ALL' },
+            // LM 34 (dulu submenu tersendiri) — tabel statis, tak bergantung data periode.
+            { key: 'lm34', title: 'LM 34' },
         ],
 
         // Nilai GL penjualan tersimpan kredit (negatif) — SELURUH angka dirender
@@ -133,6 +139,11 @@ function penjualanApp() {
         },
 
         async init() {
+            // Tab awal bisa ditentukan lewat ?tab= (mis. tautan lama /laba-rugi/lm34).
+            const wanted = new URLSearchParams(window.location.search).get('tab');
+            if (wanted && this.tabDefs.some(t => t.key === wanted)) {
+                this.activeTab = wanted;
+            }
             // Muat daftar periode untuk mengisi opsi dropdown, TAPI jangan auto-pilih
             // bulan/tahun — biarkan kosong sampai user memilih sendiri.
             try {
@@ -145,6 +156,10 @@ function penjualanApp() {
             this.year = '';
             this.month = '';
             this.hasData = false;
+            window.addEventListener('resize', () => this.lm34SyncKop());
+            if (this.activeTab === 'lm34') {
+                this.$nextTick(() => this.renderActive());
+            }
         },
 
         async load() {
@@ -167,7 +182,8 @@ function penjualanApp() {
                 this.plant = data.plant || null;
                 this.all = data.all || null;
                 this.hasData = (this.periods.length > 0) && !!this.year && !!this.month;
-                if (this.hasData) {
+                // Tab LM 34 statis (belum bergantung data) → tak perlu render ulang.
+                if (this.hasData && this.activeTab !== 'lm34') {
                     this.$nextTick(() => this.renderActive());
                 }
             } catch (e) {
@@ -345,6 +361,8 @@ function penjualanApp() {
 
         renderActive() {
             if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
+            if (this.activeTab === 'lm34') { this.renderLm34(); return; }
+            if (!this.hasData) return; // tab data lain butuh periode terpilih
             let data, columns;
             if (this.activeTab === 'all') {
                 data = this.allRows();
