@@ -90,6 +90,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/produksi/kebun', [\App\Http\Controllers\Api\ProduksiKebunController::class, 'index']);
     Route::get('/produksi/pembelian', [\App\Http\Controllers\Api\PembelianTbsController::class, 'index']);
     Route::get('/laba-rugi/penjualan', [\App\Http\Controllers\Api\PenjualanProdukController::class, 'index']);
+    Route::get('/laba-rugi/lm34', [\App\Http\Controllers\Api\Lm34Controller::class, 'index']);
     Route::get('/laba-rugi/beban-usaha', [\App\Http\Controllers\Api\BebanUsahaDataController::class, 'index']);
     Route::get('/laba-rugi/drilldown', [\App\Http\Controllers\Api\LabaRugiDrilldownController::class, 'pivot']);
     Route::get('/laba-rugi/drilldown-deep', [\App\Http\Controllers\Api\LabaRugiDrilldownController::class, 'deep']);

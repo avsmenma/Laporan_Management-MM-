@@ -15,15 +15,18 @@ use Illuminate\Support\Facades\DB;
  *  - Tahap 1 (pivot)  : GET /report-data/laba-rugi/drilldown
  *  - Tahap 2 (mentah) : GET /report-data/laba-rugi/drilldown-deep
  *
- * Parameter umum: page=penjualan|admin|bol|penj|pendapatan, year, month.
+ * Parameter umum: page=penjualan|lm34|admin|bol|penj|pendapatan, year, month.
  *  - admin/bol/penj/pendapatan : tab, row (indeks baris di BebanUsahaController),
  *                                field=bln|sd|sdbl.
  *  - penjualan      : tab=buyer|plant|all, mat, code, rowType=detail|jumlah|total,
  *                     blok=bl|bi|sd|jml|p_<plant>, measure=qty|nilai.
+ *  - lm34           : key (kunci baris Lm34Controller), blok=bln|sd, measure=qty|nilai.
  * Deep menambah kunci sel pivot: g (grup), r (baris), c (periode, opsional).
  *
  * Dimensi pivot per halaman:
  *  - penjualan : grup=Produk (material_desc), baris=Plant / Customer (dimensi lawan tab).
+ *  - lm34      : grup=Produk (material_desc), baris=Plant; nilai pivot dibalik tanda
+ *                agar sejalan dengan sel LM 34 yang tampil positif.
  *  - admin     : grup=Profit Center, baris=Cost Center.
  *  - bol       : grup=Kodering (class_code), baris=Profit Center.
  *  - penj      : grup=Cost Center (R5OBPJ101 CPO / R5OBPJ102 PK), baris=Akun GL.
@@ -140,11 +143,12 @@ class LabaRugiDrilldownController extends Controller
         $page = (string) $request->query('page');
         $year = $request->integer('year');
         $month = $request->integer('month');
-        abort_unless(in_array($page, ['penjualan', 'admin', 'bol', 'penj', 'pendapatan'], true), 422, 'Parameter page tidak dikenal.');
+        abort_unless(in_array($page, ['penjualan', 'lm34', 'admin', 'bol', 'penj', 'pendapatan'], true), 422, 'Parameter page tidak dikenal.');
         abort_unless($year >= 2000 && $year <= 2100 && $month >= 1 && $month <= 12, 422, 'Periode tidak valid.');
 
         return match ($page) {
             'penjualan' => $this->scopePenjualan($request, $year, $month),
+            'lm34' => $this->scopeLm34($request, $year, $month),
             'admin' => $this->scopeAdmin($request, $year, $month),
             'penj' => $this->scopePenj($request, $year, $month),
             'pendapatan' => $this->scopePendapatan($request, $year, $month),
@@ -465,6 +469,39 @@ class LabaRugiDrilldownController extends Controller
             'rDesc' => $rowIsCustomer ? 'customer_name' : 'profit_center_desc',
             'rLabel' => $rowIsCustomer ? 'Customer' : 'Plant',
             'val' => $measure === 'qty' ? 'qty' : 'amount',
+            'sectionLabel' => 'penjualan_produk — GL SAP (Penjualan Produk)',
+            'columns' => self::PENJUALAN_COLUMNS,
+            'qtyField' => 'qty',
+        ]];
+    }
+
+    /**
+     * Tab LM 34 — sumbernya penjualan_produk, difilter memakai aturan baris
+     * Lm34Controller (subtotal/total dijabarkan ke seluruh baris rincian di bawahnya).
+     *
+     * @return array{0: Builder, 1: array<string, mixed>}
+     */
+    private function scopeLm34(Request $request, int $year, int $month): array
+    {
+        $blok = (string) $request->query('blok', 'bln');
+        abort_unless(in_array($blok, ['bln', 'sd'], true), 422, 'Parameter blok tidak dikenal.');
+        $measure = (string) $request->query('measure', 'nilai');
+        abort_unless(in_array($measure, ['qty', 'nilai'], true), 422, 'Parameter measure tidak dikenal.');
+
+        $key = (string) $request->query('key', '');
+        $keys = Lm34Controller::detailKeysOf($key);
+        abort_if($keys === [], 422, 'Baris ini belum punya sumber data.');
+
+        $q = DB::table('penjualan_produk')->where('year', $year);
+        $blok === 'bln' ? $q->where('period', $month) : $q->where('period', '<=', $month);
+        Lm34Controller::applySourceFilter($q, $keys);
+
+        return [$q, [
+            'g' => 'material_desc', 'gDesc' => null, 'gLabel' => 'Produk',
+            'r' => 'profit_center', 'rDesc' => 'profit_center_desc', 'rLabel' => 'Plant',
+            // Penjualan tersimpan kredit (negatif) sedangkan sel LM 34 tampil positif
+            // → pivot dibalik tanda; tahap 2 (mentah) tetap apa adanya.
+            'val' => $measure === 'qty' ? '-qty' : '-amount',
             'sectionLabel' => 'penjualan_produk — GL SAP (Penjualan Produk)',
             'columns' => self::PENJUALAN_COLUMNS,
             'qtyField' => 'qty',

@@ -2,7 +2,8 @@
      Sertakan di DALAM report-card halaman (tepat di atas div tabel), lalu spread
      window.lm34Mixin() ke komponen Alpine halaman: return { ...lm34Mixin(), ... }.
      Halaman memanggil renderLm34() bila tab aktif = 'lm34'.
-     Data by tarikan (belum ada sumber) → seluruh nilai '-' dulu. --}}
+     Sumber angka: endpoint /report-data/laba-rugi/lm34 (tabel penjualan_produk,
+     agregasi sama dengan tab PLANT). --}}
 <div class="lm34-head" x-show="activeTab === 'lm34'" x-cloak>
     {{-- Kepala laporan persis Excel: identitas perusahaan | judul | periode, label LM - 34 di kanan atas --}}
     <div class="lm34-head-code">LM - 34</div>
@@ -17,6 +18,12 @@
     </div>
 </div>
 
+{{-- Material di luar peta baris LM 34: dilaporkan, jangan sampai hilang diam-diam --}}
+<div class="lm34-warn" x-show="activeTab === 'lm34' && lm34Unmapped.length" x-cloak>
+    ⚠️ Material berikut belum punya baris di template LM 34 sehingga tidak ikut dijumlah:
+    <span x-text="lm34Unmapped.map(u => u.material).join(', ')"></span>.
+</div>
+
 <style>
     /* Kop menyatu dengan tabel: tanpa padding samping/bawah, kotak menempel header kolom */
     .lm34-head { padding: 6px 0 0; background: #fff; }
@@ -26,12 +33,17 @@
     .lm34-head-left { border-right: 1px solid #333; font-size: .8rem; gap: 4px; }
     .lm34-head-title { text-align: center; font-size: 1rem; letter-spacing: .02em; }
     .lm34-head-right { border-left: 1px solid #333; text-align: center; font-size: .8rem; }
+    .lm34-warn { background: #fff8e1; border: 1px solid #f0d38a; color: #7a5a00; font-size: .8rem; padding: 8px 12px; }
 </style>
 
 @push('scripts')
 <script>
 function lm34Mixin() {
     return {
+        lm34Data: [],
+        lm34Unmapped: [],
+        lm34Loaded: '', // penanda periode data yang sudah dimuat (year-month)
+
         // Periode kop mengikuti filter halaman Penjualan; bila belum dipilih → '—'.
         kopPeriode() {
             return (this.year && this.month) ? (this.bulanNama(this.month) + ' ' + this.year) : '—';
@@ -54,13 +66,19 @@ function lm34Mixin() {
         // ---- Kolom persis template LM34.xlsx: Volume Penjualan | Harga Jual per kg |
         // Hasil Yang Terjual (di tengah, ikut Excel) | Jumlah Nilai Dollar FOB |
         // Jumlah Nilai Penjualan | Selisih Lebih(Kurang) ----
+        // Kolom Realisasi (volume & nilai) bisa dirinci → klik sel membuka sumber GL.
         lm34Columns() {
             const qty = this.lm34NumFmt(0);
             const hrg = this.lm34NumFmt(2);
             const col = (title, field, fmt, minWidth) => ({ title, field, hozAlign: 'right', headerHozAlign: 'center', formatter: fmt, minWidth });
+            const drill = (title, field, fmt, minWidth, blok, measure) => ({
+                ...col(title, field, fmt, minWidth),
+                cssClass: 'lm-cell-drill',
+                cellClick: (e, cell) => this.lm34Drill(cell, blok, measure),
+            });
             return [
                 { title: 'Volume Penjualan', headerHozAlign: 'center', columns: [
-                    { title: 'Realisasi', headerHozAlign: 'center', columns: [col('Bulan ini', 'vol_r_bln', qty, 100), col('s.d Bulan ini', 'vol_r_sd', qty, 100)] },
+                    { title: 'Realisasi', headerHozAlign: 'center', columns: [drill('Bulan ini', 'vol_r_bln', qty, 100, 'bln', 'qty'), drill('s.d Bulan ini', 'vol_r_sd', qty, 100, 'sd', 'qty')] },
                     { title: 'Anggaran', headerHozAlign: 'center', columns: [col('Bulan ini', 'vol_a_bln', qty, 100), col('s.d Bulan ini', 'vol_a_sd', qty, 100)] },
                 ] },
                 { title: 'Harga Jual per kg', headerHozAlign: 'center', columns: [
@@ -72,60 +90,42 @@ function lm34Mixin() {
                     { title: 'Realisasi', headerHozAlign: 'center', columns: [col('Bulan ini', 'fob_bln', qty, 105), col('s.d Bulan ini', 'fob_sd', qty, 105)] },
                 ] },
                 { title: 'Jumlah Nilai Penjualan', headerHozAlign: 'center', columns: [
-                    { title: 'Realisasi', headerHozAlign: 'center', columns: [col('Bulan ini', 'nil_r_bln', qty, 130), col('s.d Bulan ini', 'nil_r_sd', qty, 130)] },
+                    { title: 'Realisasi', headerHozAlign: 'center', columns: [drill('Bulan ini', 'nil_r_bln', qty, 130, 'bln', 'nilai'), drill('s.d Bulan ini', 'nil_r_sd', qty, 130, 'sd', 'nilai')] },
                     { title: 'Anggaran', headerHozAlign: 'center', columns: [col('Bulan ini', 'nil_a_bln', qty, 130), col('s.d Bulan ini', 'nil_a_sd', qty, 130)] },
                 ] },
                 { title: 'Selisih Lebih(Kurang)', headerHozAlign: 'center', columns: [col('sd. Bulan ini', 'selisih', qty, 140)] },
             ];
         },
 
-        // ---- Baris persis template (label verbatim dari sheet LM-34) ----
-        lm34Rows() {
-            const s = (u) => ({ u, _type: 'section' });
-            const h = (u) => ({ u, _type: 'header' });
-            const d = (u) => ({ u, _type: 'detail' });
-            const j = (u) => ({ u, _type: 'subtotal' });
-            const t = (u) => ({ u, _type: 'total' });
-            return [
-                s('L o k a l'),
-                h('T B S'),
-                d('Kebun Sendiri'),
-                d('Kebun Plasma + Pihak III'),
-                j('Jumlah'),
-                h('A. Kelapa Sawit ( Kg )'),
-                d('- Minyak Sawit ( CPO )'),
-                d('- Inti Sawit ( PK )'),
-                d('- Minyak Sawit ( CPO ) hasil titip olah'),
-                d('- Inti Sawit ( PK ) hasil titip olah'),
-                j('Jumlah A.'),
-                h('B. G u l a'),
-                d('- G u l a'),
-                j('Jumlah B.'),
-                h('C. Karet ( Kg )'),
-                d('- Lump Kering (Sinta,Lokal,Kumai, Tambarangan & Dasal)'),
-                d('- Lump Kering (Batu Licin)'),
-                d('- RSS. 1'),
-                d('- RSS. 2'),
-                d('- RSS. 3'),
-                d('- RSS. 4'),
-                d('- Cutting A'),
-                d('- Cutting B'),
-                d('- Brown Crepe 1 x'),
-                d('- Brown Crepe 2 x'),
-                d('- Sir - 20 KAR'),
-                d('- Sir - 20 KAB'),
-                d('- Sir - 20 KAR'),
-                d('- Sir - 20 KAU'),
-                d('- Sir - 20 KAY'),
-                d('- Sir - 20 KBB'),
-                d('- Sir - 20 KBY'),
-                d('- Sir - 20 KBF'),
-                d('- Sir - 20 KBJ'),
-                d('- Sir - 20 KBS'),
-                j('Jumlah C.'),
-                t('Jumlah Lokal ( A + B + C )'),
-                t('Jumlah Ekspor + Lokal'),
-            ];
+        // Klik sel Realisasi → popup sumber data (tahap 1 pivot Produk×Plant, tahap 2 mentah).
+        lm34Drill(cell, blok, measure) {
+            const d = cell.getRow().getData();
+            if (!d._drill) return;
+            const v = Number(cell.getValue() ?? 0);
+            if (!v) return;
+            const blokLabel = blok === 'bln' ? 'Bulan ini' : 's.d Bulan ini';
+            this.openDrill({
+                title: 'LM 34 — ' + d.u,
+                columnLabel: `${blokLabel} — ${measure === 'qty' ? 'Volume (Kg)' : 'Jumlah Nilai Penjualan'} · ${this.bulanNama(this.month)} ${this.year}`,
+                unit: measure === 'qty' ? '' : 'Rp',
+                value: v,
+                params: { page: 'lm34', key: d._k, blok, measure, year: this.year, month: this.month },
+            });
+        },
+
+        // Tarik baris + nilai dari backend (struktur baris juga dari server agar
+        // template baris cuma hidup di satu tempat).
+        async lm34Load() {
+            const q = '?year=' + encodeURIComponent(this.year) + '&month=' + encodeURIComponent(this.month);
+            const resp = await fetch('/report-data/laba-rugi/lm34' + q);
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.message || ('HTTP ' + resp.status));
+            }
+            const data = await resp.json();
+            this.lm34Data = data.rows || [];
+            this.lm34Unmapped = data.unmapped || [];
+            this.lm34Loaded = this.year + '-' + this.month;
         },
 
         // Selaraskan sekat vertikal kop dengan batas blok kolom pertama
@@ -140,9 +140,20 @@ function lm34Mixin() {
         },
 
         // Render tabel LM 34 ke wadah tabel bersama halaman Penjualan.
-        renderLm34() {
+        async renderLm34() {
+            try {
+                if (this.lm34Loaded !== (this.year + '-' + this.month)) {
+                    await this.lm34Load();
+                }
+            } catch (e) {
+                this.errorMsg = e.message;
+                if (window.lmToast) window.lmToast(e.message, 'err');
+                return;
+            }
+            if (this.activeTab !== 'lm34') return; // user keburu pindah tab
+
             this.table = new window.Tabulator('#pjl-active', {
-                data: this.lm34Rows(), columns: this.lm34Columns(),
+                data: this.lm34Data, columns: this.lm34Columns(),
                 columnDefaults: { headerSort: false },
                 layout: 'fitDataStretch',
                 maxHeight: 'calc(100vh - 300px)',

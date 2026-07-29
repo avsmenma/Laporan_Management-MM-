@@ -30,7 +30,7 @@
 
     <div x-show="errorMsg" x-cloak class="lm-error-panel" x-text="errorMsg"></div>
 
-    {{-- Tab bar selalu tampil supaya tab LM 34 (tanpa syarat data) tetap bisa diklik --}}
+    {{-- Tab bar selalu tampil supaya tab bisa dipilih lebih dulu, termasuk LM 34 --}}
     <div class="pjl-frame">
         <div class="tabs pjl-tabs">
             <template x-for="t in tabDefs" :key="t.key">
@@ -38,12 +38,12 @@
                       @click="setTab(t.key)" x-text="t.title"></span>
             </template>
         </div>
-        <div class="report-card" x-show="activeTab === 'lm34' || hasData" x-cloak>
+        <div class="report-card" x-show="hasData" x-cloak>
             @include('laba-rugi._lm34-tab')
             <div id="pjl-active" class="lm-report-table"></div>
         </div>
 
-        <div x-show="activeTab !== 'lm34' && !hasData" x-cloak class="pjl-empty">
+        <div x-show="!hasData" x-cloak class="pjl-empty">
             <div style="font-size:3rem;margin-bottom:1rem">💰</div>
             <h3 style="color:#666;font-weight:500">Pilih bulan &amp; tahun untuk melihat Penjualan Produk</h3>
         </div>
@@ -157,9 +157,6 @@ function penjualanApp() {
             this.month = '';
             this.hasData = false;
             window.addEventListener('resize', () => this.lm34SyncKop());
-            if (this.activeTab === 'lm34') {
-                this.$nextTick(() => this.renderActive());
-            }
         },
 
         async load() {
@@ -182,8 +179,7 @@ function penjualanApp() {
                 this.plant = data.plant || null;
                 this.all = data.all || null;
                 this.hasData = (this.periods.length > 0) && !!this.year && !!this.month;
-                // Tab LM 34 statis (belum bergantung data) → tak perlu render ulang.
-                if (this.hasData && this.activeTab !== 'lm34') {
+                if (this.hasData) {
                     this.$nextTick(() => this.renderActive());
                 }
             } catch (e) {
@@ -361,8 +357,8 @@ function penjualanApp() {
 
         renderActive() {
             if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
+            if (!this.hasData) return; // semua tab butuh periode terpilih
             if (this.activeTab === 'lm34') { this.renderLm34(); return; }
-            if (!this.hasData) return; // tab data lain butuh periode terpilih
             let data, columns;
             if (this.activeTab === 'all') {
                 data = this.allRows();
