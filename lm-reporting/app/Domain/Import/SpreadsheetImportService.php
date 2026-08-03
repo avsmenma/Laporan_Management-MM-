@@ -3,7 +3,6 @@
 namespace App\Domain\Import;
 
 use App\Domain\Import\Support\RawWorkbookImport;
-use App\Models\ArealBlok;
 use App\Models\Batch;
 use App\Models\ImportUploadLog;
 use App\Models\RefUnit;
@@ -55,6 +54,9 @@ class SpreadsheetImportService
         'lock', 'kode', 'pekerjaan_pb712_ii', 'klasifikasi', 'pekerjaan_pb7_i', 'komoditi', 'unit_kerja',
         'pekerjaan_pb712_iii',
     ];
+
+    /** Batas baris yang dipindai saat mendeteksi bulan otomatis (lihat detectPeriods). */
+    private const PERIOD_SCAN_ROWS = 2000;
 
     private const NUMERIC_RAW_COLUMNS = [
         'value' => true, 'qty' => true, 'period' => true, 'hectare_planted' => true,
@@ -229,7 +231,12 @@ class SpreadsheetImportService
             return [];
         }
 
+        // Hanya sebagian awal file yang dipindai: ini berjalan di dalam request web,
+        // sedangkan file realisasi SAP bisa puluhan ribu baris (menyapu habis = menit,
+        // pernah menembus max_execution_time). Asumsi domain "1 file = 1 bulan" membuat
+        // sampel awal cukup; bulan tetap bisa diubah user sebelum konfirmasi.
         $found = [];
+        $scanned = 0;
         foreach ($this->dataRows($path) as $values) {
             if ($this->isEmptyRow($values)) {
                 continue;
@@ -240,6 +247,10 @@ class SpreadsheetImportService
                 if ($m >= 1 && $m <= 12) {
                     $found[$m] = true;
                 }
+            }
+            // Begitu ≥2 bulan terlihat, isian otomatis batal → tak perlu lanjut memindai.
+            if (count($found) > 1 || ++$scanned >= self::PERIOD_SCAN_ROWS) {
+                break;
             }
         }
         ksort($found);
@@ -772,14 +783,8 @@ class SpreadsheetImportService
             self::isPembelianTbs($type), self::isPenjualanProduk($type) => 'Data',
             default => 'ZPTPNHLPP039',
         };
-        $n = 0;
-        foreach ($this->dataRowsSheet($path, $sheet) as $row) {
-            if (! $this->isEmptyRow($row)) {
-                $n++;
-            }
-        }
 
-        return $n;
+        return $this->totalDataRows($path, $sheet);
     }
 
     /**
@@ -847,8 +852,12 @@ class SpreadsheetImportService
      * dibaca via ZipArchive: ambil dari atribut <dimension ref="A1:..">, atau—bila tidak
      * ada—nomor baris <row> terbesar dengan membaca stream secara bertahap. Memori konstan
      * dan handle dilepas eksplisit (ZipArchive::close) sehingga tidak mengunci file di Windows.
+     *
+     * $sheetName mengarahkan hitungan ke sheet bernama itu (fallback: worksheet pertama).
+     * Catatan: hitungan ini memakai rentang baris sheet, jadi baris kosong di tengah data
+     * ikut terhitung — cukup untuk angka pratinjau & penyebut progres import.
      */
-    private function totalDataRows(string $path): int
+    private function totalDataRows(string $path, ?string $sheetName = null): int
     {
         $zip = new \ZipArchive;
         if ($zip->open($path) !== true) {
@@ -856,7 +865,9 @@ class SpreadsheetImportService
         }
 
         try {
-            $entry = $this->firstWorksheetEntry($zip);
+            $entry = $sheetName === null
+                ? $this->firstWorksheetEntry($zip)
+                : ($this->worksheetEntryByName($zip, $sheetName) ?? $this->firstWorksheetEntry($zip));
             $stream = $zip->getStream($entry);
             if ($stream === false) {
                 return 0;
@@ -911,6 +922,58 @@ class SpreadsheetImportService
         }
 
         return $default;
+    }
+
+    /**
+     * Entri worksheet untuk sheet bernama $sheetName (case-insensitive), null bila tak ada.
+     * Nama sheet ada di xl/workbook.xml, sedangkan berkas fisiknya dipetakan lewat r:id di
+     * xl/_rels/workbook.xml.rels — urutan sheet TIDAK selalu sama dengan nomor sheetN.xml.
+     */
+    private function worksheetEntryByName(\ZipArchive $zip, string $sheetName): ?string
+    {
+        $workbook = (string) $zip->getFromName('xl/workbook.xml');
+        $rels = (string) $zip->getFromName('xl/_rels/workbook.xml.rels');
+        if ($workbook === '' || $rels === '') {
+            return null;
+        }
+
+        if (preg_match_all('/<sheet\b[^>]*>/i', $workbook, $tags) === false) {
+            return null;
+        }
+
+        $relId = null;
+        foreach ($tags[0] as $tag) {
+            if (preg_match('/\bname="([^"]*)"/i', $tag, $n) !== 1
+                || strcasecmp(htmlspecialchars_decode($n[1], ENT_QUOTES | ENT_XML1), $sheetName) !== 0) {
+                continue;
+            }
+            if (preg_match('/\br:id="([^"]*)"/i', $tag, $r) === 1) {
+                $relId = $r[1];
+            }
+            break;
+        }
+
+        if ($relId === null || preg_match_all('/<Relationship\b[^>]*>/i', $rels, $relTags) === false) {
+            return null;
+        }
+
+        // Urutan atribut Id/Target tidak dijamin, jadi dicocokkan per tag, bukan sekali regex.
+        $target = null;
+        foreach ($relTags[0] as $tag) {
+            if (preg_match('/\bId="([^"]*)"/i', $tag, $id) === 1 && $id[1] === $relId
+                && preg_match('/\bTarget="([^"]*)"/i', $tag, $t) === 1) {
+                $target = ltrim($t[1], '/');
+                break;
+            }
+        }
+
+        if ($target === null) {
+            return null;
+        }
+
+        $entry = str_starts_with($target, 'xl/') ? $target : 'xl/'.$target;
+
+        return $zip->locateName($entry) !== false ? $entry : null;
     }
 
     /**
