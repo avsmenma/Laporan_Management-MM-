@@ -33,10 +33,11 @@ class PersediaanPageTest extends TestCase
         $resp->assertSee('PKR Tambarangan', false);
         $resp->assertSee('Penyesuaian atas nilai persediaan akhir', false);
         $resp->assertSee('Jumlah Persediaan', false);
-        // Nilai awal tahun manual (dari TEMPLATE PERSEDIAAN-1.xlsx) ikut terrender.
-        $resp->assertSee('12353944807', false);
-        $resp->assertSee('-10565230360', false);
+        // Nilai awal tahun manual HANYA tab KARET (sawit menunggu tarikan data).
+        $resp->assertSee('2055906444', false);
         $resp->assertSee('-2005715276', false);
+        $resp->assertDontSee('12353944807', false);
+        $resp->assertDontSee('-10565230360', false);
     }
 
     public function test_halaman_persediaan_butuh_login(): void
