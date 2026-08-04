@@ -94,8 +94,9 @@
 function persediaanApp() {
     return {
         // Kolom PRODUKSI (Kg) tab KELAPA SAWIT diisi dari produksi_pks (endpoint
-        // /report-data/laba-rugi/persediaan); kolom lain masih '-' menunggu sumber.
-        // Periode awal diadopsi dari data terbaru saat init.
+        // /report-data/laba-rugi/persediaan); kolom PERSEDIAAN AWAL TAHUN diisi
+        // manual dari TEMPLATE PERSEDIAAN-1.xlsx (konstanta awalTahun); kolom lain
+        // masih '-' menunggu sumber. Periode awal diadopsi dari data terbaru saat init.
         month: 7,
         year: 2026,
         tab: 'sawit',
@@ -106,11 +107,54 @@ function persediaanApp() {
             { key: 'karet', label: 'KARET' },
         ],
 
+        // ---- PERSEDIAAN AWAL TAHUN: nilai manual dari TEMPLATE PERSEDIAAN-1.xlsx ----
+        // Saldo awal tahun bersifat tetap (bukan tarikan data); hanya baris bernilai
+        // yang dicatat, sisanya 0 → tampil '-'. Bentuk: produk → unit → [Kg, Rp];
+        // (Rp/Kg) tidak disimpan karena diturunkan = Rp / Kg (persis formula sheet).
+        // penyesuaianRp = baris "Penyesuaian atas nilai persediaan akhir" kolom (Rp).
+        awalTahun: {
+            sawit: {
+                products: {
+                    '- Minyak Sawit': {
+                        'Tanah Merah': [712882, 12353944807],
+                        'PKS Gunung Meliau': [2030505, 23271461007],
+                        'PKS Rimba Belian': [737387, 7346163149],
+                        'PKS Ngabang': [1062012, 15599707349],
+                        'PKS Parindu': [1913260, 24541441053],
+                        'PKS Kembayan': [1118908, 18298558807],
+                        'PKS Pamukan': [82821, 1325320363],
+                        'PKS Pelaihari': [1937181, 20927291873],
+                        'PKS Long Pinang': [2829536, 49034667128],
+                    },
+                    '- Inti Sawit': {
+                        'PKS Gunung Meliau': [1031360, 5393442463],
+                        'PKS Rimba Belian': [697934, 4079867207],
+                        'PKS Ngabang': [320539, 2085112545],
+                        'PKS Parindu': [338739, 2521554971],
+                        'PKS Kembayan': [159524, 555201093],
+                        'PKS Pamukan': [36864, 164370461],
+                        'PKS Pelaihari': [149876, 524842609],
+                        'PKS Long Pinang': [489116, 1849985403],
+                    },
+                },
+                penyesuaianRp: -10565230360,
+            },
+            karet: {
+                products: {
+                    '- LUMP': {
+                        'Kebun Sintang': [10080, 2055906444],
+                        'Kebun Kumai': [10897, 479567444],
+                    },
+                },
+                penyesuaianRp: -2005715276,
+            },
+        },
+
         // ---- Struktur baris persis sheet KELAPA SAWIT & KARET (TEMPLATE PERSEDIAAN.xlsx) ----
         cfg() {
             if (this.tab === 'karet') {
                 return {
-                    judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KELAPA KARET',
+                    judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KARET',
                     // key = kunci sumber produksi; karet belum ada sumber → null semua.
                     products: [
                         { label: '- SIR 20 SWJP', key: null },
@@ -170,14 +214,15 @@ function persediaanApp() {
             return this.bulanNama(this.month).toUpperCase() + ' ' + this.year;
         },
 
-        // Sel nilai: angka format id-ID 0 desimal; 0/kosong → '-' (format akuntansi
-        // template menampilkan 0 sebagai strip); baris pemisah dibiarkan kosong.
+        // Sel nilai: angka format id-ID 0 desimal; 0/kosong → '-' dan negatif dalam
+        // kurung (format akuntansi template); baris pemisah dibiarkan kosong.
         numFmt(cell) {
             const d = cell.getRow().getData();
             if (d._t === 'spacer') return (d._dash && cell.getField() === 'akhir_kg') ? '-' : '';
             const v = cell.getValue();
             if (v == null || Number(v) === 0) return '-';
-            return Number(v).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+            const teks = Math.abs(Number(v)).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+            return Number(v) < 0 ? '(' + teks + ')' : teks;
         },
 
         // ---- Kolom persis template: grouped header 4 tingkat mengikuti merge Excel ----
@@ -185,14 +230,18 @@ function persediaanApp() {
             const num = (title, field, width) => ({ title, field, width, hozAlign: 'right', formatter: this.numFmt.bind(this) });
             const periode = this.periodeLabel();
             return [
+                // Lebar Plant+Unit Kerja (280px) sekaligus menampung label
+                // "Penyesuaian atas nilai persediaan akhir" pada emulasi colspan.
                 { title: 'KOMODITI', columns: [
                     { title: 'Plant', field: 'plant', width: 60, frozen: true, hozAlign: 'left' },
-                    { title: 'Unit Kerja', field: 'unit', width: 190, frozen: true, hozAlign: 'left' },
+                    { title: 'Unit Kerja', field: 'unit', width: 220, frozen: true, hozAlign: 'left' },
                 ] },
+                // Lebar (Rp/Kg) & (Rp) menampung nilai tebal terpanjang
+                // (203.959 dan 172.698.555.536) tanpa elipsis.
                 { title: 'PERSEDIAAN AWAL TAHUN', columns: [
                     num('(Kg)', 'awal_kg', 117),
-                    num('(Rp/Kg)', 'awal_rpkg', 75),
-                    num('(Rp)', 'awal_rp', 129),
+                    num('(Rp/Kg)', 'awal_rpkg', 90),
+                    num('(Rp)', 'awal_rp', 150),
                 ] },
                 { title: 'PRODUKSI', columns: [num('(Kg)', 'prod_kg', 117)] },
                 { title: 'PENERIMAAN<br>TRANSFER', columns: [num('(Kg)', 'terima_kg', 117)] },
@@ -215,30 +264,44 @@ function persediaanApp() {
         // Urutan baris: per produk (subtotal + rincian unit + pemisah) → Jumlah →
         // Penyesuaian → Jumlah Persediaan. Baris seksi KELAPA SAWIT/KARET dari
         // template TIDAK dirender — sudah terwakili tab bar (permintaan user).
-        // Kolom PRODUKSI (Kg) diisi per plant dari peta produksi; subtotal produk,
-        // Jumlah & Jumlah Persediaan = penjumlahannya (Penyesuaian '-', tanpa sumber).
+        // Kolom PRODUKSI (Kg) diisi per plant dari peta produksi; kolom PERSEDIAAN
+        // AWAL TAHUN dari konstanta awalTahun (manual). Subtotal produk & Jumlah =
+        // penjumlahan rinciannya; Jumlah Persediaan (Rp) = Jumlah + Penyesuaian.
         rows() {
             const c = this.cfg();
             const prod = this.tab === 'sawit' ? this.produksi : null;
+            const awal = this.awalTahun[this.tab] || { products: {}, penyesuaianRp: 0 };
+            const rpkg = (kg, rp) => (kg ? rp / kg : 0);
             const out = [];
             let totalProd = 0;
             let adaProd = false;
+            let totAwalKg = 0;
+            let totAwalRp = 0;
             c.products.forEach((p, i) => {
                 const map = (prod && p.key) ? (prod[p.key] || {}) : null;
+                const am = awal.products[p.label] || {};
                 let sub = 0;
+                let subAwalKg = 0;
+                let subAwalRp = 0;
                 const units = c.units.map(([plant, unit]) => {
                     const v = map ? map[plant] : null;
                     if (v != null) sub += Number(v);
-                    return { _t: 'detail', plant, unit, prod_kg: v ?? null };
+                    const [aKg, aRp] = am[unit] || [0, 0];
+                    subAwalKg += aKg;
+                    subAwalRp += aRp;
+                    return { _t: 'detail', plant, unit, prod_kg: v ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp };
                 });
-                out.push({ _t: 'product', unit: p.label, prod_kg: map ? sub : null });
+                out.push({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp });
                 out.push(...units);
                 out.push({ _t: 'spacer', _dash: c.spacerDash[i] });
                 if (map) { totalProd += sub; adaProd = true; }
+                totAwalKg += subAwalKg;
+                totAwalRp += subAwalRp;
             });
-            out.push({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null });
-            out.push({ _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir' });
-            out.push({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null });
+            const akhirRp = totAwalRp + awal.penyesuaianRp;
+            out.push({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp });
+            out.push({ _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp });
+            out.push({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp });
             return out;
         },
 
