@@ -29,9 +29,8 @@
 
     <div class="lm27a-frame">
         <div class="report-card">
-            {{-- Kepala laporan persis Excel: identitas | judul | Periode, label LM - 27 A di kanan atas --}}
+            {{-- Kepala laporan persis Excel: identitas | judul | Periode (label kode LM dihapus agar kop mentok atas) --}}
             <div class="lm27a-head">
-                <div class="lm27a-head-code">LM - 27 A</div>
                 <div class="lm27a-head-box">
                     <div class="lm27a-head-left">
                         <div>PTP NUSANTARA IV - REG 5</div>
@@ -58,7 +57,6 @@
     /* Kop menyatu dengan tabel: warna sama dengan header kolom (var(--g-700)) +
        garis pemisah putih tipis seperti grid header, tanpa sela ke header kolom */
     .lm27a-head { padding: 0; background: #fff; }
-    .lm27a-head-code { text-align: right; font-weight: 700; font-size: .9rem; color: #222; padding: 4px 8px; }
     .lm27a-head-box { display: grid; grid-template-columns: minmax(300px, 38%) 1fr minmax(200px, 21%); background: var(--g-700); border-bottom: 1.5px solid rgba(255, 255, 255, .45); }
     .lm27a-head-box > div { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px 10px; font-weight: 700; color: #fff; }
     .lm27a-head-left { border-right: 1.5px solid rgba(255, 255, 255, .45); font-size: .8rem; gap: 2px; }

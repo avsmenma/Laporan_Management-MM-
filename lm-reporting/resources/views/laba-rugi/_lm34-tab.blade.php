@@ -5,8 +5,7 @@
      Sumber angka: endpoint /report-data/laba-rugi/lm34 (tabel penjualan_produk,
      agregasi sama dengan tab PLANT). --}}
 <div class="lm34-head" x-show="activeTab === 'lm34'" x-cloak>
-    {{-- Kepala laporan persis Excel: identitas perusahaan | judul | periode, label LM - 34 di kanan atas --}}
-    <div class="lm34-head-code">LM - 34</div>
+    {{-- Kepala laporan persis Excel: identitas perusahaan | judul | periode (label kode LM dihapus agar kop mentok atas) --}}
     <div class="lm34-head-box">
         <div class="lm34-head-left">
             <div>PT PERKEBUNAN NUSANTARA IV REG V</div>
@@ -28,7 +27,6 @@
     /* Kop menyatu dengan tabel: warna sama dengan header kolom (var(--g-700)) +
        garis pemisah putih tipis seperti grid header, tanpa sela ke header kolom */
     .lm34-head { padding: 0; background: #fff; }
-    .lm34-head-code { text-align: right; font-weight: 700; font-size: .85rem; color: #222; padding: 4px 8px; }
     .lm34-head-box { display: grid; grid-template-columns: minmax(230px, 24%) 1fr minmax(150px, 15%); background: var(--g-700); border-bottom: 1.5px solid rgba(255, 255, 255, .45); }
     .lm34-head-box > div { display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; font-weight: 700; color: #fff; }
     .lm34-head-left { border-right: 1.5px solid rgba(255, 255, 255, .45); font-size: .8rem; gap: 4px; }

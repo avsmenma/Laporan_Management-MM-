@@ -109,7 +109,6 @@ function persediaanApp() {
             if (this.tab === 'karet') {
                 return {
                     judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KELAPA KARET',
-                    section: 'KARET',
                     products: ['- SIR 20 SWJP', '- SCRAP', '- BLANKET', '- LATEKS', '- LUMP', '- RSS I', '- RSS II', '- RSS III'],
                     // Baris pemisah antarproduk di sheet memuat strip pada kolom
                     // "Persediaan per ..." — kecuali setelah produk terakhir.
@@ -125,7 +124,6 @@ function persediaanApp() {
             }
             return {
                 judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KELAPA SAWIT',
-                section: 'KELAPA SAWIT',
                 products: ['- Minyak Sawit', '- Inti Sawit', '- Tandan Buah Segar'],
                 spacerDash: [true, false, false],
                 units: [
@@ -156,10 +154,9 @@ function persediaanApp() {
         },
 
         // Belum ada data → sel nilai '-' (format akuntansi template menampilkan 0
-        // sebagai strip); baris seksi & pemisah dibiarkan kosong.
+        // sebagai strip); baris pemisah dibiarkan kosong.
         numFmt(cell) {
             const d = cell.getRow().getData();
-            if (d._t === 'section') return '';
             if (d._t === 'spacer') return (d._dash && cell.getField() === 'akhir_kg') ? '-' : '';
             return '-';
         },
@@ -196,11 +193,12 @@ function persediaanApp() {
             ];
         },
 
-        // Urutan baris verbatim: seksi → per produk (subtotal + rincian unit + pemisah)
-        // → Jumlah → Penyesuaian → Jumlah Persediaan.
+        // Urutan baris: per produk (subtotal + rincian unit + pemisah) → Jumlah →
+        // Penyesuaian → Jumlah Persediaan. Baris seksi KELAPA SAWIT/KARET dari
+        // template TIDAK dirender — sudah terwakili tab bar (permintaan user).
         rows() {
             const c = this.cfg();
-            const out = [{ _t: 'section', plant: c.section }];
+            const out = [];
             c.products.forEach((p, i) => {
                 out.push({ _t: 'product', unit: p });
                 c.units.forEach(([plant, unit]) => out.push({ _t: 'detail', plant, unit }));
@@ -239,9 +237,9 @@ function persediaanApp() {
                 maxHeight: 'calc(100vh - 300px)',
                 rowFormatter: (row) => {
                     const d = row.getData();
-                    // Warna band persis template: seksi #C6E0B4; subtotal produk,
-                    // Jumlah & Jumlah Persediaan #E2EFDA (tebal + garis atas-bawah).
-                    const band = { section: '#c6e0b4', product: '#e2efda', jumlah: '#e2efda', jumlahp: '#e2efda' }[d._t] || null;
+                    // Warna band persis template: subtotal produk, Jumlah &
+                    // Jumlah Persediaan #E2EFDA (tebal + garis atas-bawah).
+                    const band = { product: '#e2efda', jumlah: '#e2efda', jumlahp: '#e2efda' }[d._t] || null;
                     const bold = band !== null;
                     const el = row.getElement();
                     if (band) el.style.background = band;
@@ -255,9 +253,9 @@ function persediaanApp() {
                         if (bold) ce.style.fontWeight = '700';
                     });
                     // Label yang di Excel melimpah dari kolom Plant ke Unit Kerja
-                    // (KELAPA SAWIT / KARET / Penyesuaian ...): sel Plant dilebarkan
-                    // menutup kolom Unit Kerja (emulasi colspan).
-                    if (d._t === 'section' || d._t === 'penyes') {
+                    // (Penyesuaian atas nilai ...): sel Plant dilebarkan menutup
+                    // kolom Unit Kerja (emulasi colspan).
+                    if (d._t === 'penyes') {
                         const cells = row.getCells();
                         const pc = cells.find((c) => c.getField() === 'plant');
                         const uc = cells.find((c) => c.getField() === 'unit');
