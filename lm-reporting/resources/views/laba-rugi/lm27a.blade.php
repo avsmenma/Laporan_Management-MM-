@@ -103,12 +103,12 @@ function lm27aApp() {
             return '1 Januari s/d ' + akhir + ' ' + this.bulanNama(this.month) + ' ' + this.year;
         },
 
-        // Sel angka: baris kosong/judul tanpa nilai → kosong; 0/null → '-';
+        // Sel angka: baris judul tanpa nilai → kosong; 0/null → '-';
         // negatif memakai tanda minus di depan (persis format #,##0 di template).
         numFmt(maxDec) {
             return (cell) => {
                 const d = cell.getRow().getData();
-                if (d._type === 'blank' || d._type === 'group') return '';
+                if (d._type === 'group') return '';
                 const v = cell.getValue();
                 if (v == null || Number(v) === 0) return '-';
                 return Number(v).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: maxDec });
@@ -118,7 +118,6 @@ function lm27aApp() {
         // Kolom uraian: indentasi + tebal/garis bawah/rata tengah sesuai tipe baris Excel.
         uraianFmt(cell) {
             const d = cell.getRow().getData();
-            if (d._type === 'blank') return '';
             const cls = ['lm27a-u'];
             if (d._type === 'total') { cls.push('tot'); }
             else if (d._type === 'detail' || d._type === 'dhead') { cls.push('lvl2'); }
@@ -147,9 +146,9 @@ function lm27aApp() {
             ];
         },
 
-        // ---- Baris persis template (label verbatim, termasuk baris kosong pemisah) ----
+        // ---- Baris persis template (label verbatim; baris kosong pemisah Excel
+        // TIDAK dirender — dihapus atas permintaan user) ----
         rows() {
-            const b = () => ({ _type: 'blank', u: '' });
             const g = (u) => ({ u, _type: 'group' });   // judul blok: tebal + garis bawah
             const gv = (u) => ({ u, _type: 'gvalue' }); // judul blok bernilai: tebal saja
             const sb = (u) => ({ u, _type: 'sub' });    // baris setingkat judul blok, biasa
@@ -162,7 +161,6 @@ function lm27aApp() {
                 d('Lokal'),
                 d('Perubahan Nilai Wajar Aset Biologis'),
                 t('Jumlah Penjualan'),
-                b(),
                 g('Harga Pokok Penjualan'),
                 d('Persediaan Awal'),
                 d('Biaya Produksi'),
@@ -170,25 +168,16 @@ function lm27aApp() {
                 d('Order Produksi'),
                 d('Persediaan Akhir'),
                 t('Harga Pokok Penjualan'),
-                b(),
                 t('Laba ( Rugi ) Kotor'),
-                b(),
-                b(),
                 g('Biaya Usaha'),
-                b(),
                 d('Biaya Penjualan'),
                 dh('Biaya Administrasi / Umum'),
-                b(),
-                b(),
                 d('- Administrasi Kandir'),
                 d('- Administrasi Kebun'),
                 t('Jumlah Biaya Usaha'),
-                b(),
                 t('Laba ( Rugi ) Usaha'),
-                b(),
                 d('Biaya Bunga'),
                 t('Laba (Rugi) Usaha Setelah Biaya Bunga'),
-                b(),
                 gv('Pendapatan / Biaya Lain - Lain'),
                 d('Pendapatan Lain - Lain'),
                 d('Biaya Lain - Lain'),
@@ -230,9 +219,15 @@ function lm27aApp() {
                 rowFormatter: (row) => {
                     const d = row.getData();
                     // Warna latar baris kunci sesuai template: hijau muda (sebelum pajak),
-                    // kuning (setelah pajak tangguhan), abu (komprehensif).
+                    // kuning (setelah pajak tangguhan), abu (komprehensif). Selain itu,
+                    // judul blok & baris total diberi band hijau muda (permintaan user)
+                    // supaya struktur tabel lebih terbaca.
                     const fills = { green: '#eaf1dd', gold: '#ffd966', grey: '#efefef' };
-                    const bg = d._fill ? fills[d._fill] : null;
+                    let bg = d._fill ? fills[d._fill] : null;
+                    if (!bg) {
+                        if (d._type === 'group' || d._type === 'gvalue') bg = '#d7e9df';
+                        else if (d._type === 'total') bg = '#dcebe2';
+                    }
                     const bold = d._type === 'total';
                     if (!bg && !bold) return;
                     const el = row.getElement();
