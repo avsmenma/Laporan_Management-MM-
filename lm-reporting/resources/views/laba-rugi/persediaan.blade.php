@@ -61,14 +61,16 @@
     .psd-frame .report-card { border-top-left-radius: 0; border-top-right-radius: 0; }
     .psd-frame .lm-report-table { border-top: 0; }
 
-    /* Kop menyatu dengan tabel: hijau #70AD47 + teks putih persis template.
-       Tanpa padding & margin apa pun antara kop dan header kolom (tema semantic-ui
-       memberi margin pada .tabulator — dinolkan agar tidak ada sela putih). */
-    .psd-head { padding: 0; background: #fff; }
+    /* Kop menyatu dengan tabel: warna sama dengan pita judul grup di bawahnya
+       (var(--g-700)) + garis pemisah putih tipis seperti grid header, atas
+       permintaan user. Tanpa padding & margin apa pun antara kop dan header kolom
+       (tema semantic-ui memberi margin pada .tabulator — dinolkan agar tidak ada
+       sela putih). */
+    .psd-head { padding: 0; background: var(--g-700); }
     .psd-frame #psd-table { margin: 0 !important; }
-    .psd-head-box { display: grid; grid-template-columns: 250px 1fr; border-top: 1px solid #333; border-bottom: 0; }
-    .psd-head-left { background: #70ad47; color: #fff; font-weight: 700; font-size: .8rem; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 10px; border-right: 1px solid #3d6b28; }
-    .psd-head-title { background: #70ad47; color: #fff; font-weight: 700; font-size: 1.05rem; letter-spacing: .02em; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px 12px; }
+    .psd-head-box { display: grid; grid-template-columns: 250px 1fr; border-bottom: 1.5px solid rgba(255, 255, 255, .45); }
+    .psd-head-left { background: var(--g-700); color: #fff; font-weight: 700; font-size: .8rem; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 10px; border-right: 1.5px solid rgba(255, 255, 255, .45); }
+    .psd-head-title { background: var(--g-700); color: #fff; font-weight: 700; font-size: 1.05rem; letter-spacing: .02em; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px 12px; }
 
     /* Semua baris putih seperti Excel (matikan striping baris genap) */
     .psd-frame .tabulator .tabulator-row.tabulator-row-even { background: #fff; }
