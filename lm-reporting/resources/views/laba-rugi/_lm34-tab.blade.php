@@ -25,15 +25,22 @@
 </div>
 
 <style>
-    /* Kop menyatu dengan tabel: tanpa padding samping/bawah, kotak menempel header kolom */
-    .lm34-head { padding: 6px 0 0; background: #fff; }
-    .lm34-head-code { text-align: right; font-weight: 700; font-size: .85rem; color: #222; padding: 0 8px 4px; }
-    .lm34-head-box { display: grid; grid-template-columns: minmax(230px, 24%) 1fr minmax(150px, 15%); border: 1px solid #333; border-left: 0; border-right: 0; }
-    .lm34-head-box > div { display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; font-weight: 700; color: #222; }
-    .lm34-head-left { border-right: 1px solid #333; font-size: .8rem; gap: 4px; }
+    /* Kop menyatu dengan tabel: warna sama dengan header kolom (var(--g-700)) +
+       garis pemisah putih tipis seperti grid header, tanpa sela ke header kolom */
+    .lm34-head { padding: 0; background: #fff; }
+    .lm34-head-code { text-align: right; font-weight: 700; font-size: .85rem; color: #222; padding: 4px 8px; }
+    .lm34-head-box { display: grid; grid-template-columns: minmax(230px, 24%) 1fr minmax(150px, 15%); background: var(--g-700); border-bottom: 1.5px solid rgba(255, 255, 255, .45); }
+    .lm34-head-box > div { display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; font-weight: 700; color: #fff; }
+    .lm34-head-left { border-right: 1.5px solid rgba(255, 255, 255, .45); font-size: .8rem; gap: 4px; }
     .lm34-head-title { text-align: center; font-size: 1rem; letter-spacing: .02em; }
-    .lm34-head-right { border-left: 1px solid #333; text-align: center; font-size: .8rem; }
+    .lm34-head-right { border-left: 1.5px solid rgba(255, 255, 255, .45); text-align: center; font-size: .8rem; }
     .lm34-warn { background: #fff8e1; border: 1px solid #f0d38a; color: #7a5a00; font-size: .8rem; padding: 8px 12px; }
+
+    /* Hanya saat tab LM 34: tabel rapat ke kop (tema semantic-ui memberi margin
+       pada .tabulator) dan label kolom tanpa sub (Hasil Yang Terjual, Selisih)
+       dipusatkan vertikal supaya tidak ada zona hijau kosong di header. */
+    .lm34-on #pjl-active { margin: 0 !important; }
+    .lm34-on .tabulator-header .tabulator-col:not(.tabulator-col-group) .tabulator-col-content { height: 100% !important; display: flex; align-items: center; justify-content: center; }
 </style>
 
 @push('scripts')

@@ -38,7 +38,8 @@
                       @click="setTab(t.key)" x-text="t.title"></span>
             </template>
         </div>
-        <div class="report-card" x-show="hasData" x-cloak>
+        {{-- Kelas lm34-on: gaya kop-menyatu (margin 0 + label header terpusat) hanya untuk tab LM 34 --}}
+        <div class="report-card" :class="{ 'lm34-on': activeTab === 'lm34' }" x-show="hasData" x-cloak>
             @include('laba-rugi._lm34-tab')
             <div id="pjl-active" class="lm-report-table"></div>
         </div>

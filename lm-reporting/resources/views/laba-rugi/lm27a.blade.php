@@ -55,15 +55,22 @@
     body.lm-focus .lm27a-page .filter-bar { top: 0; }
     .lm27a-frame .lm-report-table { border-top: 0; }
 
-    /* Kop menyatu dengan tabel: selebar tabel, menempel header kolom */
-    .lm27a-head { padding: 6px 0 0; background: #fff; }
-    .lm27a-head-code { text-align: right; font-weight: 700; font-size: .9rem; color: #222; padding: 0 8px 4px; }
-    .lm27a-head-box { display: grid; grid-template-columns: minmax(300px, 38%) 1fr minmax(200px, 21%); border: 1px solid #333; border-left: 0; border-right: 0; }
-    .lm27a-head-box > div { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px 10px; font-weight: 700; color: #222; }
-    .lm27a-head-left { border-right: 1px solid #333; font-size: .8rem; gap: 2px; }
+    /* Kop menyatu dengan tabel: warna sama dengan header kolom (var(--g-700)) +
+       garis pemisah putih tipis seperti grid header, tanpa sela ke header kolom */
+    .lm27a-head { padding: 0; background: #fff; }
+    .lm27a-head-code { text-align: right; font-weight: 700; font-size: .9rem; color: #222; padding: 4px 8px; }
+    .lm27a-head-box { display: grid; grid-template-columns: minmax(300px, 38%) 1fr minmax(200px, 21%); background: var(--g-700); border-bottom: 1.5px solid rgba(255, 255, 255, .45); }
+    .lm27a-head-box > div { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px 10px; font-weight: 700; color: #fff; }
+    .lm27a-head-left { border-right: 1.5px solid rgba(255, 255, 255, .45); font-size: .8rem; gap: 2px; }
     .lm27a-head-left .ul { text-decoration: underline; }
     .lm27a-head-title { font-size: 1rem; letter-spacing: .02em; }
-    .lm27a-head-right { border-left: 1px solid #333; font-size: .8rem; gap: 4px; }
+    .lm27a-head-right { border-left: 1.5px solid rgba(255, 255, 255, .45); font-size: .8rem; gap: 4px; }
+
+    /* Tabel rapat ke kop (tema semantic-ui memberi margin pada .tabulator) dan
+       label kolom tanpa sub (U r a i a n, Jumlah, %) dipusatkan vertikal supaya
+       tidak ada zona hijau kosong di header. */
+    .lm27a-frame #lm27a-table { margin: 0 !important; }
+    .lm27a-frame .tabulator-header .tabulator-col:not(.tabulator-col-group) .tabulator-col-content { height: 100% !important; display: flex; align-items: center; justify-content: center; }
 
     /* Semua baris putih seperti Excel (matikan striping baris genap) */
     .lm27a-frame .tabulator .tabulator-row.tabulator-row-even { background: #fff; }
