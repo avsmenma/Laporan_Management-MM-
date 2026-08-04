@@ -58,12 +58,15 @@
     .psd-frame .psd-tabs .tab:not(.active) { background: #eaf0ec; border-color: var(--line); }
     .psd-frame .psd-tabs .tab:not(.active):hover { background: #dfe8e2; }
     .psd-frame .psd-tabs .tab.active { font-weight: 700; }
-    .psd-frame .report-card { border-top-left-radius: 0; }
+    .psd-frame .report-card { border-top-left-radius: 0; border-top-right-radius: 0; }
     .psd-frame .lm-report-table { border-top: 0; }
 
-    /* Kop menyatu dengan tabel: hijau #70AD47 + teks putih persis template */
-    .psd-head { padding: 6px 0 0; background: #fff; }
-    .psd-head-box { display: grid; grid-template-columns: 250px 1fr; border: 1px solid #333; border-left: 0; border-right: 0; }
+    /* Kop menyatu dengan tabel: hijau #70AD47 + teks putih persis template.
+       Tanpa padding & margin apa pun antara kop dan header kolom (tema semantic-ui
+       memberi margin pada .tabulator — dinolkan agar tidak ada sela putih). */
+    .psd-head { padding: 0; background: #fff; }
+    .psd-frame #psd-table { margin: 0 !important; }
+    .psd-head-box { display: grid; grid-template-columns: 250px 1fr; border-top: 1px solid #333; border-bottom: 0; }
     .psd-head-left { background: #70ad47; color: #fff; font-weight: 700; font-size: .8rem; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 10px; border-right: 1px solid #3d6b28; }
     .psd-head-title { background: #70ad47; color: #fff; font-weight: 700; font-size: 1.05rem; letter-spacing: .02em; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px 12px; }
 
@@ -73,6 +76,14 @@
     /* Judul kolom boleh membungkus (PENERIMAAN TRANSFER, PENGOLAHAN SENDIRI, dst.)
        supaya lebar grup tetap = jumlah lebar anaknya, tanpa celah seperti Excel */
     .psd-frame .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title { white-space: normal; }
+
+    /* Hilangkan zona hijau tua kosong di header:
+       - zona judul semua grup diseragamkan setinggi 3 baris (meniru merge baris 4-6
+         Excel) sehingga garis sekat judul/label rata satu garis;
+       - label kolom daun ((Kg), GR, Plant, dst.) dipusatkan vertikal karena Tabulator
+         meregangkan sel daun sampai dasar header (teks menempel atas = tampak kosong). */
+    .psd-frame .tabulator-header .tabulator-col-group > .tabulator-col-content { min-height: 65px; display: flex; align-items: center; justify-content: center; }
+    .psd-frame .tabulator-header .tabulator-col:not(.tabulator-col-group) .tabulator-col-content { height: 100% !important; display: flex; align-items: center; justify-content: center; }
 </style>
 @endsection
 
@@ -179,7 +190,7 @@ function persediaanApp() {
                 ] },
                 { title: 'PERSEDIAAN<br>PER<br>' + periode, columns: [num('(Kg)', 'akhir_kg', 117)] },
                 { title: 'HRG. POKOK/<br>SATUAN', columns: [num('(Rp/Kg)', 'hrg_rpkg', 96)] },
-                { title: 'NILAI PERSEDIAAN<br>AKHIR<br>' + periode, columns: [num('(Rp)', 'nilai_rp', 129)] },
+                { title: 'NILAI PERSEDIAAN<br>AKHIR<br>' + periode, columns: [num('(Rp)', 'nilai_rp', 145)] },
             ];
         },
 
