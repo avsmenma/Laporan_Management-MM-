@@ -423,6 +423,7 @@
                             <li><a href="{{ route('laba-rugi.beban-administrasi') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.beban-administrasi') ? 'active' : '' }}"><span class="tree-ico">📄</span> BEBAN ADMINISTRASI</a></li>
                             <li><a href="{{ route('laba-rugi.beban-operasional-lainnya') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.beban-operasional-lainnya') ? 'active' : '' }}"><span class="tree-ico">📄</span> BEBAN OPS LAINNYA</a></li>
                             <li><a href="{{ route('laba-rugi.pendapatan-lainnya') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.pendapatan-lainnya') ? 'active' : '' }}"><span class="tree-ico">📄</span> PENDAPATAN LAINNYA</a></li>
+                            <li><a href="{{ route('laba-rugi.persediaan') }}" class="sidebar-sublink {{ request()->routeIs('laba-rugi.persediaan') ? 'active' : '' }}"><span class="tree-ico">📄</span> PERSEDIAAN</a></li>
                             {{-- LM 34 kini jadi tab di submenu PENJUALAN (sebelah kanan tab ALL) --}}
                         </ul>
                     </li>

@@ -34,6 +34,10 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::get('/laba-rugi/beban-usaha/proporsi', [\App\Http\Controllers\BebanUsahaController::class, 'proporsiIndex'])->name('laba-rugi.beban-usaha.proporsi.index');
     Route::get('/laba-rugi/pendapatan-lainnya', [\App\Http\Controllers\BebanUsahaController::class, 'pendapatanLainnya'])->name('laba-rugi.pendapatan-lainnya');
 
+    // Laba Rugi — Persediaan Akhir Hasil Produksi (tab KELAPA SAWIT & KARET;
+    // UI dulu, sumber data menyusul).
+    Route::view('/laba-rugi/persediaan', 'laba-rugi.persediaan')->name('laba-rugi.persediaan');
+
     // Laba Rugi — LM 34 kini tab pada halaman Penjualan; tautan lama diarahkan ke tab itu.
     Route::redirect('/laba-rugi/lm34', '/laba-rugi/penjualan?tab=lm34')->name('laba-rugi.lm34');
 
