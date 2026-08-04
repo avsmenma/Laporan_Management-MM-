@@ -33,11 +33,11 @@ class PersediaanPageTest extends TestCase
         $resp->assertSee('PKR Tambarangan', false);
         $resp->assertSee('Penyesuaian atas nilai persediaan akhir', false);
         $resp->assertSee('Jumlah Persediaan', false);
-        // Nilai awal tahun manual HANYA tab KARET (sawit menunggu tarikan data).
-        $resp->assertSee('2055906444', false);
-        $resp->assertSee('-2005715276', false);
-        $resp->assertDontSee('12353944807', false);
-        $resp->assertDontSee('-10565230360', false);
+        // Nilai awal tahun manual (TEMPLATE PERSEDIAAN-1.xlsx) terrender di KEDUA tab.
+        $resp->assertSee('12353944807', false);   // sawit: Minyak Sawit Tanah Merah
+        $resp->assertSee('-10565230360', false);  // sawit: Penyesuaian
+        $resp->assertSee('2055906444', false);    // karet: LUMP Kebun Sintang
+        $resp->assertSee('-2005715276', false);   // karet: Penyesuaian
     }
 
     public function test_halaman_persediaan_butuh_login(): void

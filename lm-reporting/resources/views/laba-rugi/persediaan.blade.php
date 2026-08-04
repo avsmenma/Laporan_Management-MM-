@@ -94,10 +94,9 @@
 function persediaanApp() {
     return {
         // Kolom PRODUKSI (Kg) tab KELAPA SAWIT diisi dari produksi_pks (endpoint
-        // /report-data/laba-rugi/persediaan); kolom PERSEDIAAN AWAL TAHUN tab KARET
-        // diisi manual dari TEMPLATE PERSEDIAAN-1.xlsx (konstanta awalTahun); kolom
-        // lain masih '-' menunggu sumber. Periode awal diadopsi dari data terbaru
-        // saat init.
+        // /report-data/laba-rugi/persediaan); kolom PERSEDIAAN AWAL TAHUN diisi
+        // manual dari TEMPLATE PERSEDIAAN-1.xlsx (konstanta awalTahun); kolom lain
+        // masih '-' menunggu sumber. Periode awal diadopsi dari data terbaru saat init.
         month: 7,
         year: 2026,
         tab: 'sawit',
@@ -108,15 +107,38 @@ function persediaanApp() {
             { key: 'karet', label: 'KARET' },
         ],
 
-        // ---- PERSEDIAAN AWAL TAHUN: nilai manual, HANYA tab KARET ----
-        // Saldo awal tahun karet diisi tetap dari TEMPLATE PERSEDIAAN-1.xlsx (bukan
-        // tarikan data). Tab KELAPA SAWIT SENGAJA tidak didaftarkan di sini — kolomnya
-        // tetap '-' sampai sumber tarikan datanya tersedia (keputusan user).
-        // Bentuk: produk → unit → [Kg, Rp]; hanya baris bernilai yang dicatat, sisanya
-        // 0 → tampil '-'. (Rp/Kg) tidak disimpan karena diturunkan = Rp / Kg (persis
-        // formula sheet). penyesuaianRp = baris "Penyesuaian atas nilai persediaan
-        // akhir" kolom (Rp).
+        // ---- PERSEDIAAN AWAL TAHUN: nilai manual dari TEMPLATE PERSEDIAAN-1.xlsx ----
+        // Saldo awal tahun bersifat tetap (bukan tarikan data); hanya baris bernilai
+        // yang dicatat, sisanya 0 → tampil '-'. Bentuk: produk → unit → [Kg, Rp];
+        // (Rp/Kg) tidak disimpan karena diturunkan = Rp / Kg (persis formula sheet).
+        // penyesuaianRp = baris "Penyesuaian atas nilai persediaan akhir" kolom (Rp).
         awalTahun: {
+            sawit: {
+                products: {
+                    '- Minyak Sawit': {
+                        'Tanah Merah': [712882, 12353944807],
+                        'PKS Gunung Meliau': [2030505, 23271461007],
+                        'PKS Rimba Belian': [737387, 7346163149],
+                        'PKS Ngabang': [1062012, 15599707349],
+                        'PKS Parindu': [1913260, 24541441053],
+                        'PKS Kembayan': [1118908, 18298558807],
+                        'PKS Pamukan': [82821, 1325320363],
+                        'PKS Pelaihari': [1937181, 20927291873],
+                        'PKS Long Pinang': [2829536, 49034667128],
+                    },
+                    '- Inti Sawit': {
+                        'PKS Gunung Meliau': [1031360, 5393442463],
+                        'PKS Rimba Belian': [697934, 4079867207],
+                        'PKS Ngabang': [320539, 2085112545],
+                        'PKS Parindu': [338739, 2521554971],
+                        'PKS Kembayan': [159524, 555201093],
+                        'PKS Pamukan': [36864, 164370461],
+                        'PKS Pelaihari': [149876, 524842609],
+                        'PKS Long Pinang': [489116, 1849985403],
+                    },
+                },
+                penyesuaianRp: -10565230360,
+            },
             karet: {
                 products: {
                     '- LUMP': {
@@ -214,9 +236,8 @@ function persediaanApp() {
                     { title: 'Plant', field: 'plant', width: 60, frozen: true, hozAlign: 'left' },
                     { title: 'Unit Kerja', field: 'unit', width: 220, frozen: true, hozAlign: 'left' },
                 ] },
-                // Lebar (Rp/Kg) & (Rp) menampung nilai tebal terpanjang tanpa elipsis
-                // (karet 203.959 & 2.535.473.888; cukup pula untuk nilai sawit
-                // belasan digit saat sumbernya nanti tersedia).
+                // Lebar (Rp/Kg) & (Rp) menampung nilai tebal terpanjang
+                // (203.959 dan 172.698.555.536) tanpa elipsis.
                 { title: 'PERSEDIAAN AWAL TAHUN', columns: [
                     num('(Kg)', 'awal_kg', 117),
                     num('(Rp/Kg)', 'awal_rpkg', 90),
@@ -244,9 +265,8 @@ function persediaanApp() {
         // Penyesuaian → Jumlah Persediaan. Baris seksi KELAPA SAWIT/KARET dari
         // template TIDAK dirender — sudah terwakili tab bar (permintaan user).
         // Kolom PRODUKSI (Kg) diisi per plant dari peta produksi; kolom PERSEDIAAN
-        // AWAL TAHUN dari konstanta awalTahun (manual, hanya tab yang terdaftar).
-        // Subtotal produk & Jumlah = penjumlahan rinciannya; Jumlah Persediaan (Rp)
-        // = Jumlah + Penyesuaian.
+        // AWAL TAHUN dari konstanta awalTahun (manual). Subtotal produk & Jumlah =
+        // penjumlahan rinciannya; Jumlah Persediaan (Rp) = Jumlah + Penyesuaian.
         rows() {
             const c = this.cfg();
             const prod = this.tab === 'sawit' ? this.produksi : null;
