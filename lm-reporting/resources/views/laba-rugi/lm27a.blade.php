@@ -216,8 +216,10 @@ function lm27aApp() {
             ];
 
             // Isi nilai + kolom Jumlah (= Kelapa Sawit + Karet) dan kolom %.
-            // % = nilai baris ÷ "Jumlah Penjualan" kolom yang sama × 100 (pola
-            // aman: penyebut 0 → null → '-'), persis dasar hitung template.
+            // Dasar hitung % (permintaan user): kolom Kelapa Sawit & Karet =
+            // nilai ÷ Jumlah BARIS ITU (porsi tiap budidaya, total 100%);
+            // kolom % paling kanan = Jumlah baris ÷ "Jumlah Penjualan" (porsi
+            // baris terhadap total penjualan). Pola aman: penyebut 0 → '-'.
             const nilai = this.nilaiBaris();
             const basis = nilai.jml_penjualan || null;
             const pct = (x, b) => (b ? (x / b) * 100 : null);
@@ -228,8 +230,8 @@ function lm27aApp() {
                 return {
                     ...r,
                     ks: v.ks, kr: v.kr, jm,
-                    ks_p: pct(v.ks, basis ? basis.ks : 0),
-                    kr_p: pct(v.kr, basis ? basis.kr : 0),
+                    ks_p: pct(v.ks, jm),
+                    kr_p: pct(v.kr, jm),
                     jm_p: pct(jm, basis ? basis.ks + basis.kr : 0),
                 };
             });
