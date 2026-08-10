@@ -9,7 +9,7 @@
             {{-- Opsi dirender server (bukan x-for) supaya nilai awal Juni 2026 langsung terpilih --}}
             <div class="filter-group">
                 <label class="filter-label">Bulan</label>
-                <select class="filter-select" x-model.number="month" @change="render()">
+                <select class="filter-select" x-model.number="month" @change="load()">
                     @foreach (['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'] as $i => $nm)
                         <option value="{{ $i + 1 }}">{{ $nm }}</option>
                     @endforeach
@@ -18,7 +18,7 @@
 
             <div class="filter-group">
                 <label class="filter-label">Tahun</label>
-                <select class="filter-select" x-model.number="year" @change="render()">
+                <select class="filter-select" x-model.number="year" @change="load()">
                     @foreach ([2028, 2027, 2026, 2025] as $y)
                         <option value="{{ $y }}">{{ $y }}</option>
                     @endforeach
@@ -88,10 +88,12 @@
 <script>
 function lm27aApp() {
     return {
-        // Data by tarikan (sumber belum ditentukan) → seluruh nilai '-' dulu; filter
-        // periode disiapkan untuk tarikan kelak. Default mengikuti template (Juni 2026).
+        // Blok Penjualan baris "Lokal" ditarik dari /report-data/laba-rugi/lm27a
+        // (sumber sama dengan LM 34). Baris lain belum ada sumber → tetap '-'.
+        // Default template Juni 2026; saat init diganti periode data TERBARU.
         month: 6,
         year: 2026,
+        values: {},
         table: null,
 
         bulanNama(m) {
@@ -146,21 +148,36 @@ function lm27aApp() {
             ];
         },
 
+        // ---- Nilai per kunci baris; baris tanpa sumber TIDAK diisi (tetap '-'),
+        // tetapi tetap dihitung 0 pada baris jumlah (persis template Excel) ----
+        nilaiBaris() {
+            const out = {};
+            const lokal = this.values.lokal;
+            if (!lokal) return out;
+            const ks = Number(lokal.ks || 0);
+            const kr = Number(lokal.kr || 0);
+            out.lokal = { ks, kr };
+            // Jumlah Penjualan = Ekspor + Lokal + Perubahan Nilai Wajar Aset
+            // Biologis; dua baris itu belum ada sumber → dihitung 0.
+            out.jml_penjualan = { ks, kr };
+            return out;
+        },
+
         // ---- Baris persis template (label verbatim; baris kosong pemisah Excel
         // TIDAK dirender — dihapus atas permintaan user) ----
         rows() {
             const g = (u) => ({ u, _type: 'group' });   // judul blok: tebal + garis bawah
             const gv = (u) => ({ u, _type: 'gvalue' }); // judul blok bernilai: tebal saja
             const sb = (u) => ({ u, _type: 'sub' });    // baris setingkat judul blok, biasa
-            const d = (u) => ({ u, _type: 'detail' });  // rincian
+            const d = (u, k) => ({ u, _type: 'detail', _k: k || null });  // rincian
             const dh = (u) => ({ u, _type: 'dhead' });  // rincian bertebal + garis bawah
-            const t = (u, fill) => ({ u, _type: 'total', _fill: fill || null });
-            return [
+            const t = (u, k, fill) => ({ u, _type: 'total', _k: k || null, _fill: fill || null });
+            const defs = [
                 g('Penjualan'),
-                d('Ekspor'),
-                d('Lokal'),
-                d('Perubahan Nilai Wajar Aset Biologis'),
-                t('Jumlah Penjualan'),
+                d('Ekspor', 'ekspor'),
+                d('Lokal', 'lokal'),
+                d('Perubahan Nilai Wajar Aset Biologis', 'pnw'),
+                t('Jumlah Penjualan', 'jml_penjualan'),
                 g('Harga Pokok Penjualan'),
                 d('Persediaan Awal'),
                 d('Biaya Produksi'),
@@ -182,18 +199,37 @@ function lm27aApp() {
                 d('Pendapatan Lain - Lain'),
                 d('Biaya Lain - Lain'),
                 t('Jumlah Pendapatan / Biaya Lain - Lain'),
-                t('Laba (Rugi) sebelum Pajak', 'green'),
+                t('Laba (Rugi) sebelum Pajak', null, 'green'),
                 sb('Pajak Perseroan'),
                 t('Laba (Rugi) setelah Pajak'),
                 sb('Pajak Tangguhan'),
-                t('Laba (Rugi) setelah Pajak Tangguhan', 'gold'),
+                t('Laba (Rugi) setelah Pajak Tangguhan', null, 'gold'),
                 g('Pendapatan Komprehensif Lain :'),
                 sb('Selisih Nilai Wajar Asset Keuangan'),
                 sb('Keuntungan ( Kerugian ) Aktuaria'),
                 sb('Penyesuaian Pajak tangguhan atas OCI tahun 2021'),
-                t('Jumlah Pendapatan Komprehensif Lain', 'grey'),
-                t('Laba (Rugi) Komprehensif', 'grey'),
+                t('Jumlah Pendapatan Komprehensif Lain', null, 'grey'),
+                t('Laba (Rugi) Komprehensif', null, 'grey'),
             ];
+
+            // Isi nilai + kolom Jumlah (= Kelapa Sawit + Karet) dan kolom %.
+            // % = nilai baris ÷ "Jumlah Penjualan" kolom yang sama × 100 (pola
+            // aman: penyebut 0 → null → '-'), persis dasar hitung template.
+            const nilai = this.nilaiBaris();
+            const basis = nilai.jml_penjualan || null;
+            const pct = (x, b) => (b ? (x / b) * 100 : null);
+            return defs.map((r) => {
+                const v = r._k ? nilai[r._k] : null;
+                if (!v) return r;
+                const jm = v.ks + v.kr;
+                return {
+                    ...r,
+                    ks: v.ks, kr: v.kr, jm,
+                    ks_p: pct(v.ks, basis ? basis.ks : 0),
+                    kr_p: pct(v.kr, basis ? basis.kr : 0),
+                    jm_p: pct(jm, basis ? basis.ks + basis.kr : 0),
+                };
+            });
         },
 
         // Selaraskan sekat kop dengan batas kolom tabel (Uraian | Budidaya | Jumlah+%)
@@ -242,8 +278,31 @@ function lm27aApp() {
             this.table.on('tableBuilt', () => this.syncKop());
         },
 
+        // Ambil nilai periode terpilih. $adopt (saat init) = tanpa parameter periode
+        // → API mengembalikan periode data TERBARU dan filter mengikutinya.
+        async load(adopt = false) {
+            let url = '/report-data/laba-rugi/lm27a';
+            if (!adopt) {
+                url += '?year=' + encodeURIComponent(this.year) + '&month=' + encodeURIComponent(this.month);
+            }
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                this.values = data.values || {};
+                if (adopt && data.year && data.month) {
+                    this.year = Number(data.year);
+                    this.month = Number(data.month);
+                }
+            } catch (e) {
+                this.values = {};
+                if (window.lmToast) window.lmToast('Gagal memuat LM-27A: ' + e.message, 'err');
+            }
+            this.render();
+        },
+
         init() {
-            this.$nextTick(() => this.render());
+            this.$nextTick(() => this.load(true));
             window.addEventListener('resize', () => this.syncKop());
         },
     };
