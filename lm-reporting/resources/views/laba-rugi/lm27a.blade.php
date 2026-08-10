@@ -107,13 +107,14 @@ function lm27aApp() {
 
         // Sel angka: baris judul tanpa nilai → kosong; 0/null → '-';
         // negatif memakai tanda minus di depan (persis format #,##0 di template).
-        numFmt(maxDec) {
+        // $minDec dipakai kolom % agar desimal SELALU tampil (mis. 100,00).
+        numFmt(maxDec, minDec = 0) {
             return (cell) => {
                 const d = cell.getRow().getData();
                 if (d._type === 'group') return '';
                 const v = cell.getValue();
                 if (v == null || Number(v) === 0) return '-';
-                return Number(v).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: maxDec });
+                return Number(v).toLocaleString('id-ID', { minimumFractionDigits: minDec, maximumFractionDigits: maxDec });
             };
         },
 
@@ -132,19 +133,21 @@ function lm27aApp() {
         // ---- Kolom persis template LM-27A.xlsx: U r a i a n | Budidaya (Kelapa Sawit % Karet %) | Jumlah | % ----
         columns() {
             const rp = this.numFmt(0);
-            const pc = this.numFmt(2);
-            // minWidth + widthGrow: proporsi lebar kolom mengikuti template (kolom % sempit)
+            const pc = this.numFmt(2, 2); // persen: selalu 2 desimal (permintaan user)
+            // minWidth + widthGrow: proporsi lebar kolom mengikuti template (kolom %
+            // sempit). minWidth dinaikkan agar di layar sempit angka penuh
+            // (1.104.788.325.803 & 100,00) tidak terpotong elipsis.
             const col = (title, field, fmt, minWidth, grow) => ({ title, field, minWidth, widthGrow: grow, hozAlign: 'right', headerHozAlign: 'center', headerVertAlign: 'middle', formatter: fmt });
             return [
                 { title: 'U r a i a n', field: 'u', minWidth: 300, widthGrow: 6, headerHozAlign: 'center', headerVertAlign: 'middle', formatter: (c) => this.uraianFmt(c) },
                 { title: 'Budidaya', headerHozAlign: 'center', columns: [
-                    col('Kelapa Sawit', 'ks', rp, 140, 2),
-                    col('%', 'ks_p', pc, 55, 0.8),
-                    col('Karet', 'kr', rp, 130, 1.9),
-                    col('%', 'kr_p', pc, 55, 0.8),
+                    col('Kelapa Sawit', 'ks', rp, 155, 2),
+                    col('%', 'ks_p', pc, 80, 0.8),
+                    col('Karet', 'kr', rp, 145, 1.9),
+                    col('%', 'kr_p', pc, 80, 0.8),
                 ] },
-                col('Jumlah', 'jm', rp, 140, 2.1),
-                col('%', 'jm_p', pc, 55, 0.8),
+                col('Jumlah', 'jm', rp, 155, 2.1),
+                col('%', 'jm_p', pc, 80, 0.8),
             ];
         },
 
