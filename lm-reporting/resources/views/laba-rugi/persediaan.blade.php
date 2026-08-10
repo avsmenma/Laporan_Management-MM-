@@ -137,7 +137,9 @@ function persediaanApp() {
                         'PKS Long Pinang': [489116, 1849985403],
                     },
                 },
-                penyesuaianRp: -10565230360,
+                // Dikoreksi user 2026-08-10 (dulu −10.565.230.360) → Jumlah Persediaan
+                // jadi 194.983.848.689, sama dengan "Persediaan Awal" Kelapa Sawit LM-27A.
+                penyesuaianRp: 5110916401,
             },
             karet: {
                 products: {
