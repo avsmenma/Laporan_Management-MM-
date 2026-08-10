@@ -93,15 +93,17 @@
 <script>
 function persediaanApp() {
     return {
-        // Kolom PRODUKSI (Kg) tab KELAPA SAWIT diisi dari produksi_pks (endpoint
-        // /report-data/laba-rugi/persediaan); kolom PERSEDIAAN AWAL TAHUN diisi
-        // manual dari TEMPLATE PERSEDIAAN-1.xlsx (konstanta awalTahun); kolom lain
-        // masih '-' menunggu sumber. Periode awal diadopsi dari data terbaru saat init.
+        // Kolom PRODUKSI (Kg) & PENGELUARAN→PENJUALAN (Kg) tab KELAPA SAWIT diisi
+        // dari endpoint /report-data/laba-rugi/persediaan (produksi_pks &
+        // penjualan_produk); kolom PERSEDIAAN AWAL TAHUN diisi manual dari
+        // TEMPLATE PERSEDIAAN-1.xlsx (konstanta awalTahun); kolom lain masih '-'
+        // menunggu sumber. Periode awal diadopsi dari data terbaru saat init.
         month: 7,
         year: 2026,
         tab: 'sawit',
         table: null,
         produksi: null, // {ms: {plant: kg}, is: {...}, tbs: {...}} atau null bila periode tanpa data
+        penjualan: null, // {ms: {plant: kg}, is: {...}} — TBS tak dijual dari sini
         tabs: [
             { key: 'sawit', label: 'KELAPA SAWIT' },
             { key: 'karet', label: 'KARET' },
@@ -182,7 +184,8 @@ function persediaanApp() {
             }
             return {
                 judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KELAPA SAWIT',
-                // key mengacu peta produksi dari API: ms/is/tbs (TBS = TBS Diterima).
+                // key mengacu peta produksi dari API: ms/is/tbs (TBS = TBS Diterima);
+                // peta penjualan hanya punya ms (CPO) & is (INTI SAWIT).
                 products: [
                     { label: '- Minyak Sawit', key: 'ms' },
                     { label: '- Inti Sawit', key: 'is' },
@@ -272,38 +275,48 @@ function persediaanApp() {
         rows() {
             const c = this.cfg();
             const prod = this.tab === 'sawit' ? this.produksi : null;
+            const jual = this.tab === 'sawit' ? this.penjualan : null;
             const awal = this.awalTahun[this.tab] || { products: {}, penyesuaianRp: 0 };
             const rpkg = (kg, rp) => (kg ? rp / kg : 0);
             const out = [];
             let totalProd = 0;
             let adaProd = false;
+            let totalJual = 0;
+            let adaJual = false;
             let totAwalKg = 0;
             let totAwalRp = 0;
             c.products.forEach((p, i) => {
                 const map = (prod && p.key) ? (prod[p.key] || {}) : null;
+                // Produk tanpa peta penjualan (TBS) → kolom penjualan tetap '-'.
+                const jmap = (jual && p.key && jual[p.key]) ? jual[p.key] : null;
                 const am = awal.products[p.label] || {};
                 let sub = 0;
+                let subJual = 0;
                 let subAwalKg = 0;
                 let subAwalRp = 0;
                 const units = c.units.map(([plant, unit]) => {
                     const v = map ? map[plant] : null;
                     if (v != null) sub += Number(v);
+                    const j = jmap ? jmap[plant] : null;
+                    if (j != null) subJual += Number(j);
                     const [aKg, aRp] = am[unit] || [0, 0];
                     subAwalKg += aKg;
                     subAwalRp += aRp;
-                    return { _t: 'detail', plant, unit, prod_kg: v ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp };
+                    return { _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp };
                 });
-                out.push({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp });
+                out.push({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp });
                 out.push(...units);
                 out.push({ _t: 'spacer', _dash: c.spacerDash[i] });
                 if (map) { totalProd += sub; adaProd = true; }
+                if (jmap) { totalJual += subJual; adaJual = true; }
                 totAwalKg += subAwalKg;
                 totAwalRp += subAwalRp;
             });
             const akhirRp = totAwalRp + awal.penyesuaianRp;
-            out.push({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp });
+            const jualTot = adaJual ? totalJual : null;
+            out.push({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp });
             out.push({ _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp });
-            out.push({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp });
+            out.push({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp });
             return out;
         },
 
@@ -323,8 +336,10 @@ function persediaanApp() {
                 const data = await resp.json();
                 if (adopt && data.year != null) { this.year = data.year; this.month = data.month; }
                 this.produksi = data.produksi || null;
+                this.penjualan = data.penjualan || null;
             } catch (e) {
                 this.produksi = null;
+                this.penjualan = null;
                 if (window.lmToast) window.lmToast('Gagal memuat data: ' + e.message, 'err');
             }
             this.render();

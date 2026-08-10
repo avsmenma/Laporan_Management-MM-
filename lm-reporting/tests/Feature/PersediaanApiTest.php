@@ -27,6 +27,63 @@ class PersediaanApiTest extends TestCase
         }
     }
 
+    /** Satu baris GL penjualan; qty kredit (negatif) seperti ekspor SAP. */
+    private function pjlRow(int $period, string $material, string $pc, float $qty): array
+    {
+        return [
+            'document_number' => 'DOC-1',
+            'posting_date' => sprintf('2026-%02d-10', $period),
+            'year' => 2026,
+            'period' => $period,
+            'account' => '41100000',
+            'gl_account_desc' => 'Penjualan',
+            'profit_center' => $pc,
+            'profit_center_desc' => 'Unit',
+            'material_code' => 'M1',
+            'material_desc' => $material,
+            'qty' => $qty,
+            'uom' => 'KG',
+            'amount' => -1000,
+            'customer_code' => 'C1',
+            'customer_name' => 'PT Pembeli',
+            'document_type' => 'RV',
+            'reference' => 'REF',
+        ];
+    }
+
+    public function test_penjualan_per_plant_kumulatif_sd_bulan(): void
+    {
+        $this->seedProduksi();
+        DB::table('penjualan_produk')->insert([
+            // 5F01 CPO: bulan lalu + bulan ini → s.d Mei = 300.
+            $this->pjlRow(4, 'CPO', '5F01000001', -100),
+            $this->pjlRow(5, 'CPO', '5F01000001', -200),
+            $this->pjlRow(5, 'CPO', '5F07000001', -50),
+            $this->pjlRow(5, 'INTI SAWIT', '5F01000001', -30),
+            // Tidak boleh ikut: bulan sesudahnya & material di luar peta.
+            $this->pjlRow(6, 'CPO', '5F01000001', -9999),
+            $this->pjlRow(5, 'Lump', '5E06000001', -7),
+        ]);
+        $role = Role::query()->firstOrCreate(['name' => 'Viewer']);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        $data = $this->actingAs($user)->getJson('/report-data/laba-rugi/persediaan?year=2026&month=5')
+            ->assertOk()->json();
+
+        $this->assertSame(300, (int) $data['penjualan']['ms']['5F01']);
+        $this->assertSame(50, (int) $data['penjualan']['ms']['5F07']);
+        $this->assertSame(30, (int) $data['penjualan']['is']['5F01']);
+        // TBS tidak punya peta penjualan; Lump bukan material sawit.
+        $this->assertArrayNotHasKey('tbs', $data['penjualan']);
+        $this->assertArrayNotHasKey('5E06', $data['penjualan']['ms']);
+
+        // Periode tanpa snapshot produksi tetap boleh punya angka penjualan.
+        $tanpaSnapshot = $this->actingAs($user)->getJson('/report-data/laba-rugi/persediaan?year=2026&month=4')
+            ->assertOk()->json();
+        $this->assertNull($tanpaSnapshot['produksi']);
+        $this->assertSame(100, (int) $tanpaSnapshot['penjualan']['ms']['5F01']);
+    }
+
     public function test_produksi_per_plant_dari_snapshot_terbaru(): void
     {
         $this->seedProduksi();
