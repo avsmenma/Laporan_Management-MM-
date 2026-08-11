@@ -114,6 +114,29 @@ class PersediaanApiTest extends TestCase
         $this->assertNull($kosong['date']);
     }
 
+    public function test_nilai_persediaan_akhir_dari_impor_zstock(): void
+    {
+        $this->seedProduksi();
+        DB::table('persediaan_nilai')->insert([
+            ['year' => 2026, 'period' => 5, 'plant_code' => '5F01', 'unit_name' => 'PKS Gunung Meliau', 'product' => '- Minyak Sawit', 'nilai_rp' => 1000, 'created_at' => now(), 'updated_at' => now()],
+            ['year' => 2026, 'period' => 5, 'plant_code' => '5R00', 'unit_name' => 'Tanah Merah', 'product' => '- Minyak Sawit', 'nilai_rp' => 250, 'created_at' => now(), 'updated_at' => now()],
+            ['year' => 2026, 'period' => 5, 'plant_code' => '5E06', 'unit_name' => 'Kebun Sintang', 'product' => 'LUMP', 'nilai_rp' => 77, 'created_at' => now(), 'updated_at' => now()],
+            // Periode lain tidak boleh ikut.
+            ['year' => 2026, 'period' => 4, 'plant_code' => '5F01', 'unit_name' => 'PKS Gunung Meliau', 'product' => '- Minyak Sawit', 'nilai_rp' => 999, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $role = Role::query()->firstOrCreate(['name' => 'Viewer']);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        $data = $this->actingAs($user)->getJson('/report-data/laba-rugi/persediaan?year=2026&month=5')
+            ->assertOk()->json();
+
+        // Kunci dinormalkan: huruf besar & tanpa awalan '-'.
+        $this->assertEqualsWithDelta(1000, $data['nilai']['MINYAK SAWIT']['5F01|PKS GUNUNG MELIAU'], 0.001);
+        $this->assertEqualsWithDelta(250, $data['nilai']['MINYAK SAWIT']['5R00|TANAH MERAH'], 0.001);
+        $this->assertEqualsWithDelta(77, $data['nilai']['LUMP']['5E06|KEBUN SINTANG'], 0.001);
+        $this->assertCount(2, $data['nilai']['MINYAK SAWIT']);
+    }
+
     public function test_butuh_otentikasi(): void
     {
         $this->getJson('/report-data/laba-rugi/persediaan')->assertStatus(401);

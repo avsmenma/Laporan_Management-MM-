@@ -199,6 +199,13 @@ class ImportTemplateService
                     'Contract', 'Purch. Order', 'Mat. Doc', 'Year', 'Inv. Doc', 'Item Inv', 'Year Inv',
                 ],
             ],
+            'persediaan_nilai' => [
+                'sheet' => 'Data',
+                'note' => 'Nilai persediaan akhir (ekspor SAP ZSTOCK) — sheet harus bernama "Data". Berkas TIDAK punya kolom periode: bulan & tahun yang dipilih saat impor menjadi periodenya (impor ulang periode sama akan mengganti datanya). Kolom "Material Description" harus sama dengan nama baris produk di halaman Persediaan (mis. "- Minyak Sawit", "- Inti Sawit", "- Tandan Buah Segar", "LUMP") dan "Plant Description" sama dengan Unit Kerja. Isi mulai baris ke-2.',
+                'headers' => [
+                    'Plant', 'Plant Description', 'Material Description', 'Value on Period End',
+                ],
+            ],
             'penjualan_produk' => [
                 'sheet' => 'Data',
                 'note' => 'Penjualan Produk (ekspor GL SAP) — sheet harus bernama "Data". Satu file boleh berisi banyak periode (kolom Posting Period); seluruh periode pada tahun terpilih diimpor (hapus-ganti per periode). Nilai kredit (negatif) disimpan apa adanya. Isi mulai baris ke-2.',

@@ -104,6 +104,7 @@ function persediaanApp() {
         table: null,
         produksi: null, // {ms: {plant: kg}, is: {...}, tbs: {...}} atau null bila periode tanpa data
         penjualan: null, // {ms: {plant: kg}, is: {...}} — TBS tak dijual dari sini
+        nilai: {},       // {PRODUK: {"PLANT|UNIT": rp}} hasil impor ZSTOCK
         tabs: [
             { key: 'sawit', label: 'KELAPA SAWIT' },
             { key: 'karet', label: 'KARET' },
@@ -285,6 +286,9 @@ function persediaanApp() {
                 return masuk - keluar;
             };
             const withAkhir = (r) => ({ ...r, akhir_kg: akhirKg(r) });
+            // Kunci peta nilai persediaan akhir (impor ZSTOCK) — samakan dengan
+            // normalisasi di server: huruf besar, tanpa awalan '-'.
+            const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().replace(/^[-\s]+/, '').toUpperCase();
             const c = this.cfg();
             const prod = this.tab === 'sawit' ? this.produksi : null;
             const jual = this.tab === 'sawit' ? this.penjualan : null;
@@ -297,6 +301,8 @@ function persediaanApp() {
             let adaJual = false;
             let totalOlah = 0;
             let adaOlah = false;
+            let totalNilai = 0;
+            let adaNilai = false;
             let totAwalKg = 0;
             let totAwalRp = 0;
             c.products.forEach((p, i) => {
@@ -305,10 +311,13 @@ function persediaanApp() {
                 const jmap = (jual && p.key && jual[p.key]) ? jual[p.key] : null;
                 // Pengolahan sendiri hanya untuk TBS (bahan baku yang diolah).
                 const omap = (prod && p.keyOlah) ? (prod[p.keyOlah] || {}) : null;
+                // Nilai persediaan akhir (Rp) hasil impor ZSTOCK, per unit kerja.
+                const nmap = this.nilai[norm(p.label)] || null;
                 const am = awal.products[p.label] || {};
                 let sub = 0;
                 let subJual = 0;
                 let subOlah = 0;
+                let subNilai = 0;
                 let subAwalKg = 0;
                 let subAwalRp = 0;
                 const units = c.units.map(([plant, unit]) => {
@@ -318,26 +327,30 @@ function persediaanApp() {
                     if (j != null) subJual += Number(j);
                     const o = omap ? omap[plant] : null;
                     if (o != null) subOlah += Number(o);
+                    const n = nmap ? nmap[norm(plant) + '|' + norm(unit)] : null;
+                    if (n != null) subNilai += Number(n);
                     const [aKg, aRp] = am[unit] || [0, 0];
                     subAwalKg += aKg;
                     subAwalRp += aRp;
-                    return withAkhir({ _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, olah_kg: o ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp });
+                    return withAkhir({ _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, olah_kg: o ?? null, nilai_rp: n ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp });
                 });
-                out.push(withAkhir({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, olah_kg: omap ? subOlah : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp }));
+                out.push(withAkhir({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, olah_kg: omap ? subOlah : null, nilai_rp: nmap ? subNilai : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp }));
                 out.push(...units);
                 out.push({ _t: 'spacer', _dash: c.spacerDash[i] });
                 if (map) { totalProd += sub; adaProd = true; }
                 if (jmap) { totalJual += subJual; adaJual = true; }
                 if (omap) { totalOlah += subOlah; adaOlah = true; }
+                if (nmap) { totalNilai += subNilai; adaNilai = true; }
                 totAwalKg += subAwalKg;
                 totAwalRp += subAwalRp;
             });
             const akhirRp = totAwalRp + awal.penyesuaianRp;
             const jualTot = adaJual ? totalJual : null;
             const olahTot = adaOlah ? totalOlah : null;
-            out.push(withAkhir({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp }));
+            const nilaiTot = adaNilai ? totalNilai : null;
+            out.push(withAkhir({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, nilai_rp: nilaiTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp }));
             out.push({ _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp });
-            out.push(withAkhir({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp }));
+            out.push(withAkhir({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, nilai_rp: nilaiTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp }));
             return out;
         },
 
@@ -358,9 +371,11 @@ function persediaanApp() {
                 if (adopt && data.year != null) { this.year = data.year; this.month = data.month; }
                 this.produksi = data.produksi || null;
                 this.penjualan = data.penjualan || null;
+                this.nilai = data.nilai || {};
             } catch (e) {
                 this.produksi = null;
                 this.penjualan = null;
+                this.nilai = {};
                 if (window.lmToast) window.lmToast('Gagal memuat data: ' + e.message, 'err');
             }
             this.render();

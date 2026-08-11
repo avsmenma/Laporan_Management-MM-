@@ -61,6 +61,10 @@ class ProcessImport implements ShouldQueue
             } elseif (SpreadsheetImportService::isPenjualanProduk($job->type)) {
                 // Sama seperti pembelian TBS: multi-periode per tahun, tanpa regenerasi.
                 $result = $service->importPenjualanProduk($path, $job->user_id, $onProgress, (int) $job->year);
+            } elseif (SpreadsheetImportService::isPersediaanNilai($job->type)) {
+                // ZSTOCK: berkas tanpa kolom periode → bulan & tahun terpilih jadi
+                // periodenya; tidak menyentuh report batch → tanpa regenerasi.
+                $result = $service->importPersediaanNilai($path, $job->user_id, $onProgress, (int) $job->year, $month);
             } elseif (SpreadsheetImportService::isBebanUsaha($job->type)) {
                 // GL Beban Usaha (ADMIN/BOL): multi-periode per tahun, tanpa regenerasi.
                 $result = $service->importBebanUsaha($job->type, $path, $job->user_id, $onProgress, (int) $job->year);

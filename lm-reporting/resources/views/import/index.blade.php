@@ -77,6 +77,7 @@
                               { v: 'beban_ops', t: '[LABA RUGI] BEBAN OPS LAINNYA', budget: false },
                               { v: 'beban_penjualan', t: '[LABA RUGI] BEBAN PENJUALAN', budget: false },
                               { v: 'pendapatan_lain', t: '[LABA RUGI] PENDAPATAN LAINNYA', budget: false },
+                              { v: 'persediaan_nilai', t: '[LABA RUGI] PERSEDIAAN — NILAI AKHIR (ZSTOCK)', budget: false },
                               { v: 'pks_biaya', t: '[PABRIK] BIAYA PKS ALL', budget: true },
                               { v: 'produksi', t: '[PABRIK] PRODUKSI PKS', budget: true },
                           ];

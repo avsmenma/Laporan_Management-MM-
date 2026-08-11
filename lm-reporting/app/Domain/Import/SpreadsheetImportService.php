@@ -122,6 +122,7 @@ class SpreadsheetImportService
             'produksi_kebun' => 'Produksi Kebun',
             'pembelian_tbs' => 'Pembelian TBS',
             'penjualan_produk' => 'Penjualan Produk',
+            'persediaan_nilai' => 'Persediaan — Nilai Akhir (ZSTOCK)',
             'beban_admin' => 'Beban Administrasi (GL)',
             'beban_ops' => 'Beban Ops Lainnya (GL)',
             'beban_penjualan' => 'Beban Penjualan (GL)',
@@ -175,6 +176,12 @@ class SpreadsheetImportService
         return $type === 'penjualan_produk';
     }
 
+    /** Jenis nilai persediaan akhir (ekspor SAP ZSTOCK, sheet "Data"). */
+    public static function isPersediaanNilai(string $type): bool
+    {
+        return $type === 'persediaan_nilai';
+    }
+
     /**
      * Jenis beban usaha (ekspor line-item GL SAP): Beban Administrasi / Beban Ops
      * Lainnya / Beban Penjualan / Pendapatan Lainnya (satu tabel beban_usaha_gl).
@@ -190,8 +197,11 @@ class SpreadsheetImportService
         // Catatan pembelian_tbs & penjualan_produk: bulan wajib dipilih di UI, tetapi file
         // berisi banyak periode sekaligus — importer memakai TAHUN sebagai penjaga &
         // mengimpor semua periode pada tahun itu (hapus-ganti per year+period).
+        // Catatan persediaan_nilai: berkas TIDAK punya kolom periode sama sekali —
+        // bulan & tahun terpilih JADI periodenya (hapus-ganti per year+period).
         return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type)
-            || self::isPembelianTbs($type) || self::isPenjualanProduk($type) || self::isBebanUsaha($type);
+            || self::isPembelianTbs($type) || self::isPenjualanProduk($type) || self::isBebanUsaha($type)
+            || self::isPersediaanNilai($type);
     }
 
     /** Sumber budget (BKU/OHC/GC/PKS) untuk jenis anggaran rko & rkap, atau null. */
@@ -691,6 +701,25 @@ class SpreadsheetImportService
             return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
         }
 
+        // Persediaan — Nilai Akhir (ZSTOCK): sampel dari sheet "Data" (4 kolom saja).
+        if (self::isPersediaanNilai($type)) {
+            $total = max(0, $this->rowCountForType($type, $path));
+            $headers = ['Plant', 'Plant Description', 'Material Description', 'Value on Period End'];
+            $rows = [];
+            $emitted = 0;
+            foreach ($this->dataRowsSheet($path, 'Data') as $row) {
+                if ($this->isEmptyRow($row)) {
+                    continue;
+                }
+                $rows[] = array_map(fn ($i) => $row[$i] ?? null, [0, 1, 2, 3]);
+                if (++$emitted >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
+        }
+
         // Beban Usaha (ADMIN/BOL/PENJ/PENDPT): sampel dari sheet tunggal (kolom kunci verifikasi mata).
         if (self::isBebanUsaha($type)) {
             $total = max(0, $this->totalDataRows($path));
@@ -774,13 +803,14 @@ class SpreadsheetImportService
     public function rowCountForType(string $type, string $path): int
     {
         if ($type !== 'areal' && ! self::isProduksi($type) && ! self::isProduksiKebun($type)
-            && ! self::isPembelianTbs($type) && ! self::isPenjualanProduk($type)) {
+            && ! self::isPembelianTbs($type) && ! self::isPenjualanProduk($type)
+            && ! self::isPersediaanNilai($type)) {
             return $this->totalDataRows($path);
         }
         $sheet = match (true) {
             $type === 'areal' => 'DB',
             self::isProduksiKebun($type) => 'ZESTHLE020',
-            self::isPembelianTbs($type), self::isPenjualanProduk($type) => 'Data',
+            self::isPembelianTbs($type), self::isPenjualanProduk($type), self::isPersediaanNilai($type) => 'Data',
             default => 'ZPTPNHLPP039',
         };
 
@@ -1673,6 +1703,65 @@ class SpreadsheetImportService
                 }
             }
             $flush();
+        });
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /** Indeks kolom 0-based sheet "Data" berkas ZSTOCK (nilai persediaan akhir). */
+    private const PERSEDIAAN_NILAI_COLS = [
+        'plant_code' => 0, 'unit_name' => 1, 'product' => 2, 'nilai_rp' => 3,
+    ];
+
+    /**
+     * Impor sheet "Data" (ekspor SAP ZSTOCK) → persediaan_nilai.
+     *
+     * Berkas TIDAK memuat kolom periode → bulan & tahun yang dipilih di UI menjadi
+     * periodenya. Idempoten: seluruh baris (year, period) dihapus lebih dulu, lalu
+     * diisi ulang. Baris tanpa plant/produk dilewati; baris duplikat (plant+unit+
+     * produk sama) dijumlahkan supaya tidak menabrak indeks unik.
+     */
+    public function importPersediaanNilai(string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null, ?int $month = null): ImportResult
+    {
+        abort_if($year === null || $month === null, 422, 'Tahun & bulan wajib diisi untuk impor nilai persediaan.');
+        $C = self::PERSEDIAAN_NILAI_COLS;
+        $inserted = 0;
+
+        DB::transaction(function () use ($path, $C, $year, $month, $onProgress, &$inserted): void {
+            DB::table('persediaan_nilai')->where('year', $year)->where('period', $month)->delete();
+
+            $byKey = [];
+            foreach ($this->dataRowsSheet($path, 'Data') as $v) {
+                if ($this->isEmptyRow($v)) {
+                    continue;
+                }
+                $plant = strtoupper(trim((string) ($v[$C['plant_code']] ?? '')));
+                $unit = trim((string) ($v[$C['unit_name']] ?? ''));
+                $product = trim((string) ($v[$C['product']] ?? ''));
+                if ($plant === '' || $product === '') {
+                    continue;
+                }
+                $key = $plant.'|'.mb_strtoupper($unit).'|'.mb_strtoupper($product);
+                $byKey[$key] ??= [
+                    'year' => $year,
+                    'period' => $month,
+                    'plant_code' => mb_substr($plant, 0, 10),
+                    'unit_name' => mb_substr($unit, 0, 100),
+                    'product' => mb_substr($product, 0, 100),
+                    'nilai_rp' => 0.0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+                $byKey[$key]['nilai_rp'] += $this->produksiNum($v[$C['nilai_rp']] ?? null);
+            }
+
+            foreach (array_chunk(array_values($byKey), 500) as $chunk) {
+                DB::table('persediaan_nilai')->insert($chunk);
+                $inserted += count($chunk);
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
+            }
         });
 
         return new ImportResult(rowCount: $inserted, errors: []);

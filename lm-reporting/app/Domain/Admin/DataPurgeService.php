@@ -105,6 +105,10 @@ class DataPurgeService
                 'label' => 'Penjualan Produk', 'group' => 'Laba Rugi',
                 'tables' => [['table' => 'penjualan_produk', 'scope' => 'year_period']],
             ],
+            'persediaan_nilai' => [
+                'label' => 'Persediaan — Nilai Akhir (ZSTOCK)', 'group' => 'Laba Rugi',
+                'tables' => [['table' => 'persediaan_nilai', 'scope' => 'year_period']],
+            ],
             'laporan' => [
                 'label' => 'Hasil Laporan (LM13 / LM14 / LM16)', 'group' => 'Hasil Laporan',
                 'tables' => [

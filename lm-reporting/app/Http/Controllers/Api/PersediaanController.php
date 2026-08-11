@@ -28,6 +28,10 @@ use Illuminate\Support\Facades\DB;
  * "SD BULAN INI → QTY" tab PLANT. Minyak Sawit ← material CPO, Inti Sawit ←
  * material INTI SAWIT (keputusan user); TBS tidak diisi.
  *
+ * Kolom NILAI PERSEDIAAN AKHIR (Rp) dari `persediaan_nilai` (impor ZSTOCK,
+ * jenis "Persediaan — Nilai Akhir") pada periode filter, dicocokkan per
+ * produk × unit kerja.
+ *
  * Kolom lain belum ada sumber → frontend menampilkan '-'.
  */
 class PersediaanController extends Controller
@@ -59,7 +63,7 @@ class PersediaanController extends Controller
         if ($periods === []) {
             return response()->json([
                 'periods' => [], 'year' => null, 'month' => null, 'date' => null,
-                'produksi' => null, 'penjualan' => null,
+                'produksi' => null, 'penjualan' => null, 'nilai' => [],
             ]);
         }
 
@@ -82,10 +86,43 @@ class PersediaanController extends Controller
             'month' => $month,
             'date' => $date,
             'produksi' => $date === null ? null : $this->produksiPerPlant($date),
-            // Penjualan TIDAK bergantung snapshot produksi — periode tanpa
-            // snapshot tetap bisa punya angka penjualan.
+            // Penjualan & nilai persediaan TIDAK bergantung snapshot produksi —
+            // periode tanpa snapshot tetap bisa punya angkanya.
             'penjualan' => $this->penjualanPerPlant($year, $month),
+            'nilai' => $this->nilaiAkhir($year, $month),
         ]);
+    }
+
+    /** Kunci pencocokan longgar: huruf besar, tanpa awalan '-'/spasi ganda. */
+    private static function norm(string $s): string
+    {
+        $s = preg_replace('/\s+/u', ' ', trim($s)) ?? '';
+
+        return mb_strtoupper(ltrim($s, "- \t"));
+    }
+
+    /**
+     * Nilai persediaan akhir (Rp) hasil impor ZSTOCK untuk periode terpilih:
+     * produk → "PLANT|UNIT KERJA" → Rp. Kunci dinormalkan (huruf besar, tanpa
+     * awalan '-') supaya label berkas ("LUMP") cocok dgn label halaman ("- LUMP").
+     *
+     * @return array<string, array<string, float>>
+     */
+    private function nilaiAkhir(int $year, int $month): array
+    {
+        $rows = DB::table('persediaan_nilai')
+            ->where('year', $year)->where('period', $month)
+            ->select('plant_code', 'unit_name', 'product', 'nilai_rp')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $produk = self::norm((string) $r->product);
+            $unit = self::norm((string) $r->plant_code).'|'.self::norm((string) $r->unit_name);
+            $out[$produk][$unit] = ($out[$produk][$unit] ?? 0) + (float) $r->nilai_rp;
+        }
+
+        return $out;
     }
 
     /**
