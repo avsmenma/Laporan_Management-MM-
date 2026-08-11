@@ -37,7 +37,7 @@ class PersediaanPageTest extends TestCase
         $resp->assertSee('12353944807', false);   // sawit: Minyak Sawit Tanah Merah
         $resp->assertSee('5110916401', false);    // sawit: Penyesuaian (koreksi user)
         $resp->assertSee('2055906444', false);    // karet: LUMP Kebun Sintang
-        $resp->assertSee('-2005715276', false);   // karet: Penyesuaian
+        $resp->assertSee('-2293498392', false);   // karet: Penyesuaian (koreksi user)
     }
 
     public function test_halaman_persediaan_butuh_login(): void

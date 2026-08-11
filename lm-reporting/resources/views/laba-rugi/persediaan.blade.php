@@ -151,7 +151,9 @@ function persediaanApp() {
                         'Kebun Kumai': [10897, 479567444],
                     },
                 },
-                penyesuaianRp: -2005715276,
+                // Dikoreksi user 2026-08-11 (dulu −2.005.715.276) → Jumlah Persediaan
+                // jadi 241.975.496, sama dengan "Persediaan Awal" Karet LM-27A.
+                penyesuaianRp: -2293498392,
             },
         },
 
