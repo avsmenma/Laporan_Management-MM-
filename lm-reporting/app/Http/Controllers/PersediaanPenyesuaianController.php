@@ -1,0 +1,120 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Tab PENYESUAIAN halaman /laba-rugi/persediaan — input manual lima kolom
+ * kuantitas yang belum punya sumber sistem (Transfer Penerimaan, Transfer
+ * Pengeluaran, Susut, STO GR, STO GI), meniru "FORM PENYESUAIAN.xlsx".
+ * Pola CRUD sama dengan tab PROPORSI Beban Administrasi.
+ */
+class PersediaanPenyesuaianController extends Controller
+{
+    /** Nilai khusus dropdown form untuk baris "Penyesuaian atas nilai persediaan akhir". */
+    public const KHUSUS = 'Penyesuaian Nilai Akhir';
+
+    /** Pilihan PLANT pada form (Data!F2:F18). */
+    public const PLANTS = [
+        '5R00', '5F01', '5F04', '5F07', '5F08', '5F09', '5F14', '5F15', '5F21', '5F22',
+        '5F20', '5E06', '5E11', '5E13', '5E19', '5E12', self::KHUSUS,
+    ];
+
+    /** Pilihan MATERIAL pada form (Data!G2:G6). */
+    public const PRODUCTS = [
+        '- Minyak Sawit', '- Inti Sawit', '- Tandan Buah Segar', 'LUMP', self::KHUSUS,
+    ];
+
+    /** @return array<int, string> kolom kuantitas yang boleh diisi */
+    public static function kolomNilai(): array
+    {
+        return ['transfer_masuk', 'transfer_keluar', 'susut', 'sto_gr', 'sto_gi'];
+    }
+
+    /** Daftar seluruh baris penyesuaian (semua periode). */
+    public function index(): JsonResponse
+    {
+        $rows = DB::table('persediaan_penyesuaian')
+            ->orderBy('year')->orderBy('month')->orderBy('plant_code')->orderBy('product')
+            ->get()
+            ->map(fn ($r) => [
+                'id' => (int) $r->id,
+                'year' => (int) $r->year,
+                'month' => (int) $r->month,
+                'plant_code' => $r->plant_code,
+                'product' => $r->product,
+                'transfer_masuk' => (float) $r->transfer_masuk,
+                'transfer_keluar' => (float) $r->transfer_keluar,
+                'susut' => (float) $r->susut,
+                'sto_gr' => (float) $r->sto_gr,
+                'sto_gi' => (float) $r->sto_gi,
+            ]);
+
+        return response()->json([
+            'rows' => $rows,
+            'plants' => self::PLANTS,
+            'products' => self::PRODUCTS,
+        ]);
+    }
+
+    /**
+     * Simpan satu baris (Operator/Admin). Tanpa id → baris baru; kombinasi
+     * (tahun, bulan, plant, produk) unik.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'id' => ['nullable', 'integer'],
+            'year' => ['required', 'integer', 'between:2000,2100'],
+            'month' => ['required', 'integer', 'between:1,12'],
+            'plant_code' => ['required', 'in:'.implode(',', self::PLANTS)],
+            'product' => ['required', 'in:'.implode(',', self::PRODUCTS)],
+            'transfer_masuk' => ['required', 'numeric'],
+            'transfer_keluar' => ['required', 'numeric'],
+            'susut' => ['required', 'numeric'],
+            'sto_gr' => ['required', 'numeric'],
+            'sto_gi' => ['required', 'numeric'],
+        ]);
+
+        $dupe = DB::table('persediaan_penyesuaian')
+            ->where('year', $data['year'])->where('month', $data['month'])
+            ->where('plant_code', $data['plant_code'])->where('product', $data['product'])
+            ->when(isset($data['id']), fn ($q) => $q->where('id', '<>', $data['id']))
+            ->exists();
+        if ($dupe) {
+            return response()->json([
+                'message' => 'Baris '.$data['plant_code'].' — '.$data['product'].' untuk periode itu sudah ada.',
+            ], 422);
+        }
+
+        $values = [
+            'year' => $data['year'], 'month' => $data['month'],
+            'plant_code' => $data['plant_code'], 'product' => $data['product'],
+            'updated_at' => now(),
+        ];
+        foreach (self::kolomNilai() as $k) {
+            $values[$k] = $data[$k];
+        }
+
+        $q = DB::table('persediaan_penyesuaian');
+        if (isset($data['id'])) {
+            $q->where('id', $data['id'])->update($values);
+            $id = (int) $data['id'];
+        } else {
+            $id = (int) $q->insertGetId($values + ['created_at' => now()]);
+        }
+
+        return response()->json(['id' => $id]);
+    }
+
+    /** Hapus satu baris (Operator/Admin). */
+    public function destroy(int $id): JsonResponse
+    {
+        DB::table('persediaan_penyesuaian')->where('id', $id)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+}

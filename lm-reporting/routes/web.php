@@ -37,6 +37,8 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     // Laba Rugi — Persediaan Akhir Hasil Produksi (tab KELAPA SAWIT & KARET;
     // UI dulu, sumber data menyusul).
     Route::view('/laba-rugi/persediaan', 'laba-rugi.persediaan')->name('laba-rugi.persediaan');
+    Route::get('/laba-rugi/persediaan/penyesuaian', [\App\Http\Controllers\PersediaanPenyesuaianController::class, 'index'])
+        ->name('laba-rugi.persediaan.penyesuaian.index');
 
     // Laba Rugi — LM 34 kini tab pada halaman Penjualan; tautan lama diarahkan ke tab itu.
     Route::redirect('/laba-rugi/lm34', '/laba-rugi/penjualan?tab=lm34')->name('laba-rugi.lm34');
@@ -106,6 +108,9 @@ Route::prefix('report-data')->group(function () {
 Route::middleware(['auth', 'role:Operator,Admin'])->group(function () {
     Route::post('/laba-rugi/beban-usaha/proporsi', [\App\Http\Controllers\BebanUsahaController::class, 'proporsiStore'])->name('laba-rugi.beban-usaha.proporsi.store');
     Route::delete('/laba-rugi/beban-usaha/proporsi/{id}', [\App\Http\Controllers\BebanUsahaController::class, 'proporsiDestroy'])->name('laba-rugi.beban-usaha.proporsi.destroy');
+
+    Route::post('/laba-rugi/persediaan/penyesuaian', [\App\Http\Controllers\PersediaanPenyesuaianController::class, 'store'])->name('laba-rugi.persediaan.penyesuaian.store');
+    Route::delete('/laba-rugi/persediaan/penyesuaian/{id}', [\App\Http\Controllers\PersediaanPenyesuaianController::class, 'destroy'])->name('laba-rugi.persediaan.penyesuaian.destroy');
 
     Route::get('/batches', [BatchController::class, 'index'])->name('batches.index');
     Route::post('/batches', [BatchController::class, 'store'])->name('batches.store');

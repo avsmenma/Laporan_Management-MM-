@@ -3,7 +3,16 @@
 @section('title', 'Persediaan')
 
 @section('content')
-<div x-data="persediaanApp()" x-init="init()" class="psd-page">
+@php
+    // Tab PENYESUAIAN: input manual (pola tab PROPORSI Beban Administrasi).
+    $psdPenyesuaian = [
+        'listUrl' => route('laba-rugi.persediaan.penyesuaian.index'),
+        'saveUrl' => route('laba-rugi.persediaan.penyesuaian.store'),
+        'deleteUrl' => url('/laba-rugi/persediaan/penyesuaian'), // + /{id}
+        'canEdit' => (bool) auth()->user()?->hasRole(\App\Models\Role::OPERATOR, \App\Models\Role::ADMIN),
+    ];
+@endphp
+<div x-data="persediaanApp(@js($psdPenyesuaian))" x-init="init()" class="psd-page">
     <div class="filter-bar">
         <div class="filter-grid">
             {{-- Opsi dirender server (bukan x-for) supaya nilai awal Juli 2026 langsung terpilih --}}
@@ -35,7 +44,7 @@
         </div>
         <div class="report-card">
             {{-- Kop persis template: blok identitas hijau (selebar kolom KOMODITI) + judul hijau --}}
-            <div class="psd-head">
+            <div class="psd-head" x-show="tab !== 'penyesuaian'">
                 <div class="psd-head-box">
                     <div class="psd-head-left">
                         <div>PT PERKEBUNAN NUSANTARA IV</div>
@@ -43,6 +52,15 @@
                     </div>
                     <div class="psd-head-title" x-text="judul()"></div>
                 </div>
+            </div>
+            {{-- Toolbar tab PENYESUAIAN: judul + tombol tambah baris (Operator/Admin) --}}
+            <div class="psd-toolbar" x-show="tab === 'penyesuaian'" x-cloak>
+                <div>
+                    <div class="psd-toolbar-title">FORM PENYESUAIAN PERSEDIAAN</div>
+                    <div class="psd-toolbar-sub">Isian manual kolom Penerimaan Transfer, Transfer, Susut, dan Selisih Stock Opname (Kg)</div>
+                </div>
+                <button x-show="canEditPenyesuaian()" class="btn btn-primary"
+                        style="height:34px;padding:0 14px" @click="tambahPenyesuaian()">+ Tambah Baris</button>
             </div>
             <div id="psd-table" class="lm-report-table"></div>
         </div>
@@ -72,6 +90,11 @@
     .psd-head-left { background: var(--g-700); color: #fff; font-weight: 700; font-size: .8rem; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 10px; border-right: 1.5px solid rgba(255, 255, 255, .45); }
     .psd-head-title { background: var(--g-700); color: #fff; font-weight: 700; font-size: 1.05rem; letter-spacing: .02em; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px 12px; }
 
+    /* Toolbar tab PENYESUAIAN (pola bu-title-strip halaman Beban Usaha) */
+    .psd-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); background: #fff; }
+    .psd-toolbar-title { font-weight: 700; color: var(--g-700); letter-spacing: .02em; }
+    .psd-toolbar-sub { font-size: .8rem; color: #667; }
+
     /* Semua baris putih seperti Excel (matikan striping baris genap) */
     .psd-frame .tabulator .tabulator-row.tabulator-row-even { background: #fff; }
 
@@ -91,8 +114,14 @@
 
 @push('scripts')
 <script>
-function persediaanApp() {
+function persediaanApp(cfgPenyesuaian) {
     return {
+        cfgPenyes: cfgPenyesuaian || null,
+        penyRows: [],       // baris tab PENYESUAIAN (semua periode)
+        penyPlants: [],     // pilihan PLANT dari server
+        penyProducts: [],   // pilihan MATERIAL dari server
+        penyLoaded: false,
+        penyesuaian: {},    // {PRODUK: {PLANT: {transfer_masuk, ...}}} periode terpilih
         // Kolom PRODUKSI (Kg) & PENGELUARAN→PENJUALAN (Kg) tab KELAPA SAWIT diisi
         // dari endpoint /report-data/laba-rugi/persediaan (produksi_pks &
         // penjualan_produk); kolom PERSEDIAAN AWAL TAHUN diisi manual dari
@@ -108,6 +137,7 @@ function persediaanApp() {
         tabs: [
             { key: 'sawit', label: 'KELAPA SAWIT' },
             { key: 'karet', label: 'KARET' },
+            { key: 'penyesuaian', label: 'PENYESUAIAN' },
         ],
 
         // ---- PERSEDIAAN AWAL TAHUN: nilai manual dari TEMPLATE PERSEDIAAN-1.xlsx ----
@@ -305,6 +335,8 @@ function persediaanApp() {
             let adaOlah = false;
             let totalNilai = 0;
             let adaNilai = false;
+            const totY = { transfer_masuk: 0, transfer_keluar: 0, susut: 0, sto_gr: 0, sto_gi: 0 };
+            let adaY = false;
             let totAwalKg = 0;
             let totAwalRp = 0;
             c.products.forEach((p, i) => {
@@ -315,6 +347,11 @@ function persediaanApp() {
                 const omap = (prod && p.keyOlah) ? (prod[p.keyOlah] || {}) : null;
                 // Nilai persediaan akhir (Rp) hasil impor ZSTOCK, per unit kerja.
                 const nmap = this.nilai[norm(p.label)] || null;
+                // Penyesuaian manual (tab PENYESUAIAN) per PLANT. Form hanya punya
+                // kolom PLANT, sedangkan 5R00 dipakai 2 unit → nilainya dipasang di
+                // baris PERTAMA plant itu saja supaya subtotal tidak dobel.
+                const ymap = this.penyesuaian[norm(p.label)] || null;
+                const plantTerpakai = new Set();
                 const am = awal.products[p.label] || {};
                 let sub = 0;
                 let subJual = 0;
@@ -322,6 +359,7 @@ function persediaanApp() {
                 let subNilai = 0;
                 let subAwalKg = 0;
                 let subAwalRp = 0;
+                const subY = { transfer_masuk: 0, transfer_keluar: 0, susut: 0, sto_gr: 0, sto_gi: 0 };
                 const units = c.units.map(([plant, unit]) => {
                     const v = map ? map[plant] : null;
                     if (v != null) sub += Number(v);
@@ -334,15 +372,35 @@ function persediaanApp() {
                     const [aKg, aRp] = am[unit] || [0, 0];
                     subAwalKg += aKg;
                     subAwalRp += aRp;
-                    return withAkhir({ _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, olah_kg: o ?? null, nilai_rp: n ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp });
+                    let y = null;
+                    if (ymap && !plantTerpakai.has(norm(plant))) {
+                        y = ymap[norm(plant)] || null;
+                        if (y) {
+                            plantTerpakai.add(norm(plant));
+                            Object.keys(subY).forEach((k) => { subY[k] += Number(y[k] || 0); });
+                        }
+                    }
+                    return withAkhir({
+                        _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, olah_kg: o ?? null,
+                        nilai_rp: n ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp,
+                        terima_kg: y ? y.transfer_masuk : null, trf_kg: y ? y.transfer_keluar : null,
+                        susut_kg: y ? y.susut : null, so_gr: y ? y.sto_gr : null, so_gi: y ? y.sto_gi : null,
+                    });
                 });
-                out.push(withAkhir({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, olah_kg: omap ? subOlah : null, nilai_rp: nmap ? subNilai : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp }));
+                out.push(withAkhir({
+                    _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null,
+                    olah_kg: omap ? subOlah : null, nilai_rp: nmap ? subNilai : null,
+                    awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp,
+                    terima_kg: ymap ? subY.transfer_masuk : null, trf_kg: ymap ? subY.transfer_keluar : null,
+                    susut_kg: ymap ? subY.susut : null, so_gr: ymap ? subY.sto_gr : null, so_gi: ymap ? subY.sto_gi : null,
+                }));
                 out.push(...units);
                 out.push({ _t: 'spacer', _dash: c.spacerDash[i] });
                 if (map) { totalProd += sub; adaProd = true; }
                 if (jmap) { totalJual += subJual; adaJual = true; }
                 if (omap) { totalOlah += subOlah; adaOlah = true; }
                 if (nmap) { totalNilai += subNilai; adaNilai = true; }
+                if (ymap) { adaY = true; Object.keys(totY).forEach((k) => { totY[k] += subY[k]; }); }
                 totAwalKg += subAwalKg;
                 totAwalRp += subAwalRp;
             });
@@ -350,16 +408,186 @@ function persediaanApp() {
             const jualTot = adaJual ? totalJual : null;
             const olahTot = adaOlah ? totalOlah : null;
             const nilaiTot = adaNilai ? totalNilai : null;
-            out.push(withAkhir({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, nilai_rp: nilaiTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp }));
-            out.push({ _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp });
-            out.push(withAkhir({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, nilai_rp: nilaiTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp }));
+            // Kolom penyesuaian pada baris jumlah (null → '-' bila tak ada isian).
+            const yCols = (src, ada) => ({
+                terima_kg: ada ? src.transfer_masuk : null, trf_kg: ada ? src.transfer_keluar : null,
+                susut_kg: ada ? src.susut : null, so_gr: ada ? src.sto_gr : null, so_gi: ada ? src.sto_gi : null,
+            });
+            // Baris "Penyesuaian atas nilai persediaan akhir": isian dgn PLANT/MATERIAL
+            // 'Penyesuaian Nilai Akhir' pada form masuk ke baris ini.
+            const yPenyes = (this.penyesuaian['_penyes'] || {})['_penyes'] || null;
+
+            out.push(withAkhir({
+                _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot,
+                olah_kg: olahTot, nilai_rp: nilaiTot, awal_kg: totAwalKg,
+                awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp, ...yCols(totY, adaY),
+            }));
+            out.push({
+                _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp,
+                ...yCols(yPenyes || totY, !!yPenyes),
+            });
+            // Jumlah Persediaan = Jumlah + baris Penyesuaian (untuk kolom kuantitas).
+            const totYp = {};
+            Object.keys(totY).forEach((k) => { totYp[k] = totY[k] + Number(yPenyes ? yPenyes[k] : 0); });
+            out.push(withAkhir({
+                _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot,
+                olah_kg: olahTot, nilai_rp: nilaiTot, awal_kg: totAwalKg,
+                awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp, ...yCols(totYp, adaY || !!yPenyes),
+            }));
             return out;
         },
 
         setTab(key) {
             if (this.tab === key) return;
             this.tab = key;
+            if (key === 'penyesuaian' && !this.penyLoaded) {
+                this.loadPenyesuaian().then(() => this.render());
+                return;
+            }
             this.$nextTick(() => this.render());
+        },
+
+        // ===== Tab PENYESUAIAN (input manual, pola tab PROPORSI Beban Administrasi) =====
+        canEditPenyesuaian() {
+            return !!(this.cfgPenyes && this.cfgPenyes.canEdit);
+        },
+        // Terima ketikan bebas: "1234", "1.234", atau "1.234,56" (gaya Indonesia).
+        parseAngka(v) {
+            if (typeof v === 'number') return isFinite(v) ? v : 0;
+            const t = String(v ?? '').trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+            const n = Number(t);
+            return isFinite(n) ? n : 0;
+        },
+        async loadPenyesuaian() {
+            if (!this.cfgPenyes) return;
+            try {
+                const resp = await fetch(this.cfgPenyes.listUrl);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                this.penyRows = data.rows || [];
+                this.penyPlants = data.plants || [];
+                this.penyProducts = data.products || [];
+                this.penyLoaded = true;
+            } catch (e) {
+                if (window.lmToast) window.lmToast('Gagal memuat penyesuaian: ' + e.message, 'err');
+            }
+        },
+        // Kolom form persis FORM PENYESUAIAN.xlsx (PLANT, MATERIAL, BULAN, TAHUN + 5 nilai).
+        penyesuaianColumns() {
+            const edit = this.canEditPenyesuaian();
+            const bulanMap = {};
+            for (let m = 1; m <= 12; m++) bulanMap[m] = this.bulanNama(m);
+            const angka = (title, field) => ({
+                title, field, hozAlign: 'right', headerHozAlign: 'center', minWidth: 130,
+                formatter: (c) => {
+                    const v = c.getValue();
+                    if (v == null || Number(v) === 0) return '-';
+                    const teks = Math.abs(Number(v)).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+                    return Number(v) < 0 ? '(' + teks + ')' : teks;
+                },
+                editor: edit ? 'input' : false, editorParams: { selectContents: true },
+            });
+            const cols = [
+                { title: 'PLANT', field: 'plant_code', minWidth: 150, headerHozAlign: 'center',
+                  editor: edit ? 'list' : false, editorParams: { values: this.penyPlants } },
+                { title: 'MATERIAL', field: 'product', minWidth: 180, headerHozAlign: 'center',
+                  editor: edit ? 'list' : false, editorParams: { values: this.penyProducts } },
+                { title: 'BULAN', field: 'month', minWidth: 110, headerHozAlign: 'center',
+                  formatter: (c) => this.bulanNama(c.getValue()),
+                  editor: edit ? 'list' : false, editorParams: { values: bulanMap } },
+                { title: 'TAHUN', field: 'year', minWidth: 90, hozAlign: 'left', headerHozAlign: 'center',
+                  editor: edit ? 'list' : false, editorParams: { values: [2025, 2026, 2027, 2028, 2029, 2030] } },
+                angka('TRANSFER PENERIMAAN', 'transfer_masuk'),
+                angka('TRANSFER PENGELUARAN', 'transfer_keluar'),
+                angka('SUSUT', 'susut'),
+                angka('STO GR', 'sto_gr'),
+                angka('STO GI', 'sto_gi'),
+            ];
+            if (edit) {
+                cols.push({ title: '', width: 46, hozAlign: 'center', headerSort: false,
+                    formatter: () => '<span style="color:#b3261e;cursor:pointer;font-weight:700">✕</span>',
+                    cellClick: (e, cell) => this.hapusPenyesuaian(cell.getRow()) });
+            }
+            return cols;
+        },
+        async tambahPenyesuaian() {
+            // Baris baru berperiode filter aktif — LANGSUNG disimpan supaya tidak
+            // hilang bila halaman dimuat ulang sebelum sempat diedit.
+            const row = {
+                id: null, year: Number(this.year) || 2026, month: Number(this.month) || 1,
+                plant_code: this.penyPlants[0] || '5F01', product: this.penyProducts[0] || '- Minyak Sawit',
+                transfer_masuk: 0, transfer_keluar: 0, susut: 0, sto_gr: 0, sto_gi: 0,
+            };
+            this.penyRows.push(row);
+            await this.simpanPenyesuaian(row);
+            this.render();
+        },
+        async simpanPenyesuaian(rowData) {
+            try {
+                const resp = await fetch(this.cfgPenyes.saveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    },
+                    body: JSON.stringify({
+                        id: rowData.id || null,
+                        year: Number(rowData.year), month: Number(rowData.month),
+                        plant_code: rowData.plant_code, product: rowData.product,
+                        transfer_masuk: Number(rowData.transfer_masuk) || 0,
+                        transfer_keluar: Number(rowData.transfer_keluar) || 0,
+                        susut: Number(rowData.susut) || 0,
+                        sto_gr: Number(rowData.sto_gr) || 0,
+                        sto_gi: Number(rowData.sto_gi) || 0,
+                    }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.message || ('HTTP ' + resp.status));
+                rowData.id = data.id;
+                if (window.lmToast) window.lmToast('Penyesuaian tersimpan', 'ok');
+                // Segarkan nilai tabel Sawit/Karet bila barisnya seperiode filter.
+                if (Number(rowData.year) === Number(this.year) && Number(rowData.month) === Number(this.month)) {
+                    this.muatPenyesuaianPeriode();
+                }
+            } catch (e) {
+                // Baris tetap ditampilkan (jangan hapus ketikan user) — perbaiki isian
+                // (mis. plant+material kembar seperiode) lalu edit lagi untuk menyimpan.
+                if (window.lmToast) window.lmToast('BELUM tersimpan: ' + e.message, 'err');
+            }
+        },
+        async hapusPenyesuaian(rowComponent) {
+            const d = rowComponent.getData();
+            const label = d.plant_code + ' — ' + d.product + ' (' + this.bulanNama(d.month) + ' ' + d.year + ')';
+            if (!window.confirm('Hapus baris penyesuaian ' + label + '?')) return;
+            this.penyRows = this.penyRows.filter(r => r !== d && (d.id == null || r.id !== d.id));
+            rowComponent.delete();
+            if (d.id == null) return; // belum pernah tersimpan
+            try {
+                const resp = await fetch(this.cfgPenyes.deleteUrl + '/' + d.id, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    },
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                if (window.lmToast) window.lmToast('Baris dihapus', 'ok');
+                this.muatPenyesuaianPeriode();
+            } catch (e) {
+                if (window.lmToast) window.lmToast('Gagal menghapus: ' + e.message, 'err');
+                await this.loadPenyesuaian();
+                this.render();
+            }
+        },
+        /** Ambil ulang nilai penyesuaian periode terpilih (dipakai tab Sawit/Karet). */
+        async muatPenyesuaianPeriode() {
+            try {
+                const resp = await fetch(`/report-data/laba-rugi/persediaan?year=${this.year}&month=${this.month}`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                this.penyesuaian = data.penyesuaian || {};
+            } catch (e) { /* biarkan nilai lama */ }
         },
 
         // Muat nilai dari API. adopt=true (saat init): tanpa parameter → server
@@ -374,10 +602,12 @@ function persediaanApp() {
                 this.produksi = data.produksi || null;
                 this.penjualan = data.penjualan || null;
                 this.nilai = data.nilai || {};
+                this.penyesuaian = data.penyesuaian || {};
             } catch (e) {
                 this.produksi = null;
                 this.penjualan = null;
                 this.nilai = {};
+                this.penyesuaian = {};
                 if (window.lmToast) window.lmToast('Gagal memuat data: ' + e.message, 'err');
             }
             this.render();
@@ -396,6 +626,30 @@ function persediaanApp() {
 
         render() {
             if (this.table) { try { this.table.destroy(); } catch (e) {} this.table = null; }
+            if (this.tab === 'penyesuaian') {
+                this.table = new window.Tabulator('#psd-table', {
+                    data: this.penyRows,
+                    columns: this.penyesuaianColumns(),
+                    columnDefaults: { headerSort: false, headerVertAlign: 'middle' },
+                    layout: 'fitDataStretch',
+                    maxHeight: 'calc(100vh - 300px)',
+                    placeholder: 'Belum ada baris penyesuaian.',
+                });
+                // Simpan tiap kali sel selesai diedit (angka diparse gaya Indonesia).
+                // Pola sama dgn tab PROPORSI: ubah lewat row.update(), JANGAN menulis
+                // langsung ke objek data (baris berasal dari state Alpine yang reaktif).
+                if (this.canEditPenyesuaian()) {
+                    this.table.on('cellEdited', (cell) => {
+                        const row = cell.getRow();
+                        const f = cell.getField();
+                        if (['transfer_masuk', 'transfer_keluar', 'susut', 'sto_gr', 'sto_gi'].includes(f)) {
+                            row.update({ [f]: this.parseAngka(cell.getValue()) });
+                        }
+                        this.simpanPenyesuaian(row.getData());
+                    });
+                }
+                return;
+            }
             this.table = new window.Tabulator('#psd-table', {
                 data: this.rows(),
                 columns: this.columns(),

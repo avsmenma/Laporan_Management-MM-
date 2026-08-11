@@ -32,6 +32,9 @@ use Illuminate\Support\Facades\DB;
  * jenis "Persediaan — Nilai Akhir") pada periode filter, dicocokkan per
  * produk × unit kerja.
  *
+ * Kolom PENERIMAAN TRANSFER, PENGELUARAN→TRANSFER, SUSUT, dan SELISIH STOCK
+ * OPNAME (GR/GI) dari `persediaan_penyesuaian` — isian manual tab PENYESUAIAN.
+ *
  * Kolom lain belum ada sumber → frontend menampilkan '-'.
  */
 class PersediaanController extends Controller
@@ -60,18 +63,21 @@ class PersediaanController extends Controller
         }
         usort($periods, fn ($a, $b) => ($b['year'] <=> $a['year']) ?: ($b['month'] <=> $a['month']));
 
-        if ($periods === []) {
-            return response()->json([
-                'periods' => [], 'year' => null, 'month' => null, 'date' => null,
-                'produksi' => null, 'penjualan' => null, 'nilai' => [],
-            ]);
-        }
-
         // Tanpa parameter → adopsi periode terbaru. Dengan parameter → persis
         // periode itu; bulan tanpa snapshot → produksi null (semua sel '-'),
         // TIDAK diam-diam jatuh ke bulan lain.
         $year = $request->query('year');
         $month = $request->query('month');
+
+        // Belum ada snapshot produksi SAMA SEKALI & periode tak diminta → kosong.
+        // (Bila periode diminta, kolom non-produksi tetap dilayani.)
+        if ($periods === [] && ($year === null || $month === null)) {
+            return response()->json([
+                'periods' => [], 'year' => null, 'month' => null, 'date' => null,
+                'produksi' => null, 'penjualan' => null, 'nilai' => [], 'penyesuaian' => [],
+            ]);
+        }
+
         if ($year === null || $month === null) {
             $year = $periods[0]['year'];
             $month = $periods[0]['month'];
@@ -90,7 +96,41 @@ class PersediaanController extends Controller
             // periode tanpa snapshot tetap bisa punya angkanya.
             'penjualan' => $this->penjualanPerPlant($year, $month),
             'nilai' => $this->nilaiAkhir($year, $month),
+            'penyesuaian' => $this->penyesuaian($year, $month),
         ]);
+    }
+
+    /**
+     * Penyesuaian manual (tab PENYESUAIAN) periode terpilih: produk → PLANT →
+     * lima kolom kuantitas. Baris ber-plant/produk 'Penyesuaian Nilai Akhir'
+     * dikumpulkan ke kunci khusus `_penyes` (baris "Penyesuaian atas nilai
+     * persediaan akhir" pada tabel).
+     *
+     * @return array<string, array<string, array<string, float>>>
+     */
+    private function penyesuaian(int $year, int $month): array
+    {
+        $kolom = \App\Http\Controllers\PersediaanPenyesuaianController::kolomNilai();
+        $khusus = self::norm(\App\Http\Controllers\PersediaanPenyesuaianController::KHUSUS);
+
+        $rows = DB::table('persediaan_penyesuaian')
+            ->where('year', $year)->where('month', $month)->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $produk = self::norm((string) $r->product);
+            $plant = self::norm((string) $r->plant_code);
+            [$kProduk, $kPlant] = ($produk === $khusus || $plant === $khusus)
+                ? ['_penyes', '_penyes']
+                : [$produk, $plant];
+
+            $out[$kProduk][$kPlant] ??= array_fill_keys($kolom, 0.0);
+            foreach ($kolom as $k) {
+                $out[$kProduk][$kPlant][$k] += (float) $r->{$k};
+            }
+        }
+
+        return $out;
     }
 
     /** Kunci pencocokan longgar: huruf besar, tanpa awalan '-'/spasi ganda. */
