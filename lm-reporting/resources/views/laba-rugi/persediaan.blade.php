@@ -317,7 +317,12 @@ function persediaanApp(cfgPenyesuaian) {
                 const keluar = n(r.jual_kg) + n(r.susut_kg) + n(r.trf_kg) + n(r.olah_kg) + n(r.so_gr) + n(r.so_gi);
                 return masuk - keluar;
             };
-            const withAkhir = (r) => ({ ...r, akhir_kg: akhirKg(r) });
+            // "Hrg. Pokok/Satuan (Rp/Kg)" = Nilai Persediaan Akhir (Rp) ÷ Persediaan
+            // per bulan (Kg) — permintaan user; penyebut 0 → 0 (tampil '-').
+            const withAkhir = (r) => {
+                const kg = akhirKg(r);
+                return { ...r, akhir_kg: kg, hrg_rpkg: kg ? Number(r.nilai_rp || 0) / kg : 0 };
+            };
             // Kunci peta nilai persediaan akhir (impor ZSTOCK) — samakan dengan
             // normalisasi di server: huruf besar, tanpa awalan '-'.
             const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().replace(/^[-\s]+/, '').toUpperCase();
