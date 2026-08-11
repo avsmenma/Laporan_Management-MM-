@@ -274,6 +274,17 @@ function persediaanApp() {
         // AWAL TAHUN dari konstanta awalTahun (manual). Subtotal produk & Jumlah =
         // penjumlahan rinciannya; Jumlah Persediaan (Rp) = Jumlah + Penyesuaian.
         rows() {
+            // "Persediaan per <bulan> (Kg)" = (Awal Tahun + Produksi + Penerimaan
+            // Transfer) − (Penjualan + Susut + Transfer + Pengolahan Sendiri +
+            // Selisih Stock Opname GR & GI) — rumus dari user. Kolom yang belum
+            // ada sumbernya dihitung 0; hasil 0 tetap dirender '-'.
+            const akhirKg = (r) => {
+                const n = (x) => Number(x || 0);
+                const masuk = n(r.awal_kg) + n(r.prod_kg) + n(r.terima_kg);
+                const keluar = n(r.jual_kg) + n(r.susut_kg) + n(r.trf_kg) + n(r.olah_kg) + n(r.so_gr) + n(r.so_gi);
+                return masuk - keluar;
+            };
+            const withAkhir = (r) => ({ ...r, akhir_kg: akhirKg(r) });
             const c = this.cfg();
             const prod = this.tab === 'sawit' ? this.produksi : null;
             const jual = this.tab === 'sawit' ? this.penjualan : null;
@@ -310,9 +321,9 @@ function persediaanApp() {
                     const [aKg, aRp] = am[unit] || [0, 0];
                     subAwalKg += aKg;
                     subAwalRp += aRp;
-                    return { _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, olah_kg: o ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp };
+                    return withAkhir({ _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, olah_kg: o ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp });
                 });
-                out.push({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, olah_kg: omap ? subOlah : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp });
+                out.push(withAkhir({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, olah_kg: omap ? subOlah : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp }));
                 out.push(...units);
                 out.push({ _t: 'spacer', _dash: c.spacerDash[i] });
                 if (map) { totalProd += sub; adaProd = true; }
@@ -324,9 +335,9 @@ function persediaanApp() {
             const akhirRp = totAwalRp + awal.penyesuaianRp;
             const jualTot = adaJual ? totalJual : null;
             const olahTot = adaOlah ? totalOlah : null;
-            out.push({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp });
+            out.push(withAkhir({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp }));
             out.push({ _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp });
-            out.push({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp });
+            out.push(withAkhir({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp }));
             return out;
         },
 
