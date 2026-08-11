@@ -17,10 +17,10 @@ class PersediaanApiTest extends TestCase
         // Dua snapshot pada bulan yang sama: hanya tanggal TERBARU (2026-05-31)
         // yang boleh dipakai (pola snapshot halaman /produksi/pks).
         $rows = [
-            ['posting_date' => '2026-05-15', 'plant_code' => '5F01', 'kebun_code' => '5E01', 'ms_sdbulan' => 999, 'is_sdbulan' => 99, 'tbs_diterima_sdbulan' => 9999],
-            ['posting_date' => '2026-05-31', 'plant_code' => '5F01', 'kebun_code' => '5E01', 'ms_sdbulan' => 100.4, 'is_sdbulan' => 10, 'tbs_diterima_sdbulan' => 1000],
-            ['posting_date' => '2026-05-31', 'plant_code' => '5F01', 'kebun_code' => '5E02', 'ms_sdbulan' => 50.4, 'is_sdbulan' => 5, 'tbs_diterima_sdbulan' => 500],
-            ['posting_date' => '2026-05-31', 'plant_code' => '5F07', 'kebun_code' => '5E01', 'ms_sdbulan' => 70, 'is_sdbulan' => 7, 'tbs_diterima_sdbulan' => 700],
+            ['posting_date' => '2026-05-15', 'plant_code' => '5F01', 'kebun_code' => '5E01', 'ms_sdbulan' => 999, 'is_sdbulan' => 99, 'tbs_diterima_sdbulan' => 9999, 'tbs_diolah_sdbulan' => 8888],
+            ['posting_date' => '2026-05-31', 'plant_code' => '5F01', 'kebun_code' => '5E01', 'ms_sdbulan' => 100.4, 'is_sdbulan' => 10, 'tbs_diterima_sdbulan' => 1000, 'tbs_diolah_sdbulan' => 900],
+            ['posting_date' => '2026-05-31', 'plant_code' => '5F01', 'kebun_code' => '5E02', 'ms_sdbulan' => 50.4, 'is_sdbulan' => 5, 'tbs_diterima_sdbulan' => 500, 'tbs_diolah_sdbulan' => 450],
+            ['posting_date' => '2026-05-31', 'plant_code' => '5F07', 'kebun_code' => '5E01', 'ms_sdbulan' => 70, 'is_sdbulan' => 7, 'tbs_diterima_sdbulan' => 700, 'tbs_diolah_sdbulan' => 650],
         ];
         foreach ($rows as $r) {
             DB::table('produksi_pks')->insert($r + ['plant_desc' => '', 'nama_kebun' => '', 'created_at' => now(), 'updated_at' => now()]);
@@ -103,6 +103,9 @@ class PersediaanApiTest extends TestCase
         $this->assertSame(15, (int) $data['produksi']['is']['5F01']);
         $this->assertSame(1500, (int) $data['produksi']['tbs']['5F01']);
         $this->assertSame(70, (int) $data['produksi']['ms']['5F07']);
+        // TBS Diolah (PENGOLAHAN SENDIRI) = Σ tbs_diolah_sdbulan snapshot terbaru.
+        $this->assertSame(1350, (int) $data['produksi']['olah']['5F01']);
+        $this->assertSame(650, (int) $data['produksi']['olah']['5F07']);
 
         // Periode tanpa snapshot → produksi null (tidak diam-diam pindah bulan).
         $kosong = $this->actingAs($user)->getJson('/report-data/laba-rugi/persediaan?year=2026&month=1')->assertOk()->json();

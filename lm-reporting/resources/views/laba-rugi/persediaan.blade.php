@@ -185,11 +185,12 @@ function persediaanApp() {
             return {
                 judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KELAPA SAWIT',
                 // key mengacu peta produksi dari API: ms/is/tbs (TBS = TBS Diterima);
-                // peta penjualan hanya punya ms (CPO) & is (INTI SAWIT).
+                // peta penjualan hanya punya ms (CPO) & is (INTI SAWIT);
+                // keyOlah (PENGOLAHAN SENDIRI) hanya TBS = TBS Diolah.
                 products: [
                     { label: '- Minyak Sawit', key: 'ms' },
                     { label: '- Inti Sawit', key: 'is' },
-                    { label: '- Tandan Buah Segar', key: 'tbs' },
+                    { label: '- Tandan Buah Segar', key: 'tbs', keyOlah: 'olah' },
                 ],
                 spacerDash: [true, false, false],
                 units: [
@@ -283,15 +284,20 @@ function persediaanApp() {
             let adaProd = false;
             let totalJual = 0;
             let adaJual = false;
+            let totalOlah = 0;
+            let adaOlah = false;
             let totAwalKg = 0;
             let totAwalRp = 0;
             c.products.forEach((p, i) => {
                 const map = (prod && p.key) ? (prod[p.key] || {}) : null;
                 // Produk tanpa peta penjualan (TBS) → kolom penjualan tetap '-'.
                 const jmap = (jual && p.key && jual[p.key]) ? jual[p.key] : null;
+                // Pengolahan sendiri hanya untuk TBS (bahan baku yang diolah).
+                const omap = (prod && p.keyOlah) ? (prod[p.keyOlah] || {}) : null;
                 const am = awal.products[p.label] || {};
                 let sub = 0;
                 let subJual = 0;
+                let subOlah = 0;
                 let subAwalKg = 0;
                 let subAwalRp = 0;
                 const units = c.units.map(([plant, unit]) => {
@@ -299,24 +305,28 @@ function persediaanApp() {
                     if (v != null) sub += Number(v);
                     const j = jmap ? jmap[plant] : null;
                     if (j != null) subJual += Number(j);
+                    const o = omap ? omap[plant] : null;
+                    if (o != null) subOlah += Number(o);
                     const [aKg, aRp] = am[unit] || [0, 0];
                     subAwalKg += aKg;
                     subAwalRp += aRp;
-                    return { _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp };
+                    return { _t: 'detail', plant, unit, prod_kg: v ?? null, jual_kg: j ?? null, olah_kg: o ?? null, awal_kg: aKg, awal_rpkg: rpkg(aKg, aRp), awal_rp: aRp };
                 });
-                out.push({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp });
+                out.push({ _t: 'product', unit: p.label, prod_kg: map ? sub : null, jual_kg: jmap ? subJual : null, olah_kg: omap ? subOlah : null, awal_kg: subAwalKg, awal_rpkg: rpkg(subAwalKg, subAwalRp), awal_rp: subAwalRp });
                 out.push(...units);
                 out.push({ _t: 'spacer', _dash: c.spacerDash[i] });
                 if (map) { totalProd += sub; adaProd = true; }
                 if (jmap) { totalJual += subJual; adaJual = true; }
+                if (omap) { totalOlah += subOlah; adaOlah = true; }
                 totAwalKg += subAwalKg;
                 totAwalRp += subAwalRp;
             });
             const akhirRp = totAwalRp + awal.penyesuaianRp;
             const jualTot = adaJual ? totalJual : null;
-            out.push({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp });
+            const olahTot = adaOlah ? totalOlah : null;
+            out.push({ _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, totAwalRp), awal_rp: totAwalRp });
             out.push({ _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp });
-            out.push({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp });
+            out.push({ _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot, olah_kg: olahTot, awal_kg: totAwalKg, awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp });
             return out;
         },
 

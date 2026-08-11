@@ -19,6 +19,10 @@ use Illuminate\Support\Facades\DB;
  * per plant PKS pada SNAPSHOT posting_date TERBARU di bulan filter — angkanya
  * identik dengan baris Grand Total blok "S.D Bulan Ini" halaman produksi.
  *
+ * Kolom PENGELUARAN → PENGOLAHAN SENDIRI (Kg) baris Tandan Buah Segar dari
+ * sumber yang sama: Σ tbs_diolah_sdbulan per plant = Grand Total tab
+ * "TBS DIOLAH" blok "S.D Bulan Ini" halaman /produksi/pks (keputusan user).
+ *
  * Kolom PENGELUARAN → PENJUALAN (Kg) dari `penjualan_produk` (tabel halaman
  * /laba-rugi/penjualan): Σ qty s.d bulan filter per plant — identik blok
  * "SD BULAN INI → QTY" tab PLANT. Minyak Sawit ← material CPO, Inti Sawit ←
@@ -88,24 +92,28 @@ class PersediaanController extends Controller
      * Σ kolom *_sdbulan per plant PKS pada snapshot $date, dibulatkan 0 desimal
      * setelah dijumlah (round-of-sum) — identik Grand Total halaman produksi.
      *
-     * @return array{ms: array<string, float>, is: array<string, float>, tbs: array<string, float>}
+     * @return array{ms: array<string, float>, is: array<string, float>, tbs: array<string, float>, olah: array<string, float>}
      */
     private function produksiPerPlant(string $date): array
     {
         $rows = DB::table('produksi_pks')
-            ->selectRaw('plant_code, SUM(ms_sdbulan) AS ms, SUM(is_sdbulan) AS inti, SUM(tbs_diterima_sdbulan) AS tbs')
+            ->selectRaw(
+                'plant_code, SUM(ms_sdbulan) AS ms, SUM(is_sdbulan) AS inti,'
+                .' SUM(tbs_diterima_sdbulan) AS tbs, SUM(tbs_diolah_sdbulan) AS olah'
+            )
             ->whereDate('posting_date', $date)
             ->whereNotNull('plant_code')
             ->where('plant_code', '!=', '')
             ->groupBy('plant_code')
             ->get();
 
-        $out = ['ms' => [], 'is' => [], 'tbs' => []];
+        $out = ['ms' => [], 'is' => [], 'tbs' => [], 'olah' => []];
         foreach ($rows as $r) {
             $p = (string) $r->plant_code;
             $out['ms'][$p] = round((float) $r->ms);
             $out['is'][$p] = round((float) $r->inti);
             $out['tbs'][$p] = round((float) $r->tbs);
+            $out['olah'][$p] = round((float) $r->olah);
         }
 
         return $out;
