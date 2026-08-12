@@ -17,10 +17,20 @@ class PersediaanPenyesuaianController extends Controller
     /** Nilai khusus dropdown form untuk baris "Penyesuaian atas nilai persediaan akhir". */
     public const KHUSUS = 'Penyesuaian Nilai Akhir';
 
-    /** Pilihan PLANT pada form (Data!F2:F18). */
+    /**
+     * Pilihan PLANT pada form (Data!F2:F18). Kode 5R00 dipakai DUA unit kerja
+     * (IPP Tayan & Tanah Merah) sehingga dipecah jadi 5R00-1/5R00-2 — tanpa itu
+     * isian selalu jatuh ke baris pertama saja (permintaan user).
+     */
     public const PLANTS = [
-        '5R00', '5F01', '5F04', '5F07', '5F08', '5F09', '5F14', '5F15', '5F21', '5F22',
+        '5R00-1', '5R00-2', '5F01', '5F04', '5F07', '5F08', '5F09', '5F14', '5F15', '5F21', '5F22',
         '5F20', '5E06', '5E11', '5E13', '5E19', '5E12', self::KHUSUS,
+    ];
+
+    /** Label dropdown untuk kode yang perlu penjelas unit (selain ini pakai kodenya). */
+    public const PLANT_LABELS = [
+        '5R00-1' => '5R00-1 (IPP Tayan)',
+        '5R00-2' => '5R00-2 (Tanah Merah)',
     ];
 
     /** Pilihan MATERIAL pada form (Data!G2:G6). */
@@ -56,6 +66,7 @@ class PersediaanPenyesuaianController extends Controller
         return response()->json([
             'rows' => $rows,
             'plants' => self::PLANTS,
+            'plantLabels' => self::PLANT_LABELS,
             'products' => self::PRODUCTS,
         ]);
     }

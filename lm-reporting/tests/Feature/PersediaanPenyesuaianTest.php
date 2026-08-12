@@ -51,6 +51,7 @@ class PersediaanPenyesuaianTest extends TestCase
         $this->assertEqualsWithDelta(77.0, $data['rows'][0]['susut'], 0.001);
         $this->assertContains('Penyesuaian Nilai Akhir', $data['plants']);
         $this->assertContains('LUMP', $data['products']);
+        $this->assertSame('5R00-1 (IPP Tayan)', $data['plantLabels']['5R00-1']);
 
         $this->actingAs($op)->deleteJson('/laba-rugi/persediaan/penyesuaian/'.$id)->assertOk();
         $this->assertSame([], $this->actingAs($op)->getJson('/laba-rugi/persediaan/penyesuaian')->json('rows'));
@@ -72,6 +73,26 @@ class PersediaanPenyesuaianTest extends TestCase
             $this->baris(['plant_code' => '9Z99']))->assertStatus(422);
         $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian',
             $this->baris(['product' => 'Kopi']))->assertStatus(422);
+    }
+
+    public function test_plant_5r00_terpisah_untuk_dua_unit(): void
+    {
+        $op = $this->user('Operator');
+
+        // IPP Tayan & Tanah Merah berbagi kode plant 5R00 → dipisah 5R00-1/5R00-2.
+        $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian',
+            $this->baris(['plant_code' => '5R00-1', 'transfer_keluar' => 121030]))->assertOk();
+        $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian',
+            $this->baris(['plant_code' => '5R00-2', 'susut' => 55]))->assertOk();
+        // Kode lama tanpa akhiran tidak lagi diterima.
+        $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian',
+            $this->baris(['plant_code' => '5R00']))->assertStatus(422);
+
+        $data = $this->actingAs($op)->getJson('/report-data/laba-rugi/persediaan?year=2026&month=6')
+            ->assertOk()->json();
+
+        $this->assertEqualsWithDelta(121030.0, $data['penyesuaian']['MINYAK SAWIT']['5R00-1']['transfer_keluar'], 0.001);
+        $this->assertEqualsWithDelta(55.0, $data['penyesuaian']['MINYAK SAWIT']['5R00-2']['susut'], 0.001);
     }
 
     public function test_nilai_penyesuaian_muncul_di_endpoint_persediaan(): void

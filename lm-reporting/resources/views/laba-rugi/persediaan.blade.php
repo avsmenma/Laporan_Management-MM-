@@ -119,6 +119,7 @@ function persediaanApp(cfgPenyesuaian) {
         cfgPenyes: cfgPenyesuaian || null,
         penyRows: [],       // baris tab PENYESUAIAN (semua periode)
         penyPlants: [],     // pilihan PLANT dari server
+        penyPlantLabels: {}, // label dropdown PLANT (mis. 5R00-1 → '5R00-1 (IPP Tayan)')
         penyProducts: [],   // pilihan MATERIAL dari server
         penyLoaded: false,
         penyesuaian: {},    // {PRODUK: {PLANT: {transfer_masuk, ...}}} periode terpilih
@@ -226,9 +227,14 @@ function persediaanApp(cfgPenyesuaian) {
                     { label: '- Tandan Buah Segar', key: 'tbs', keyOlah: 'olah' },
                 ],
                 spacerDash: [true, false, false],
+                // [plant, unit kerja, kode form penyesuaian (bila beda)] — kode
+                // 5R00 dipakai 2 unit, jadi tab PENYESUAIAN memakai 5R00-1 (IPP
+                // Tayan) & 5R00-2 (Tanah Merah) supaya isian tidak selalu jatuh
+                // ke baris pertama. Kolom lain (produksi/penjualan/ZSTOCK) tetap
+                // memakai kode plant asli.
                 units: [
-                    ['5R00', 'IPP Tayan'],
-                    ['5R00', 'Tanah Merah'],
+                    ['5R00', 'IPP Tayan', '5R00-1'],
+                    ['5R00', 'Tanah Merah', '5R00-2'],
                     ['5F01', 'PKS Gunung Meliau'],
                     ['5F04', 'PKS Rimba Belian'],
                     ['5F07', 'PKS Ngabang'],
@@ -352,9 +358,9 @@ function persediaanApp(cfgPenyesuaian) {
                 const omap = (prod && p.keyOlah) ? (prod[p.keyOlah] || {}) : null;
                 // Nilai persediaan akhir (Rp) hasil impor ZSTOCK, per unit kerja.
                 const nmap = this.nilai[norm(p.label)] || null;
-                // Penyesuaian manual (tab PENYESUAIAN) per PLANT. Form hanya punya
-                // kolom PLANT, sedangkan 5R00 dipakai 2 unit → nilainya dipasang di
-                // baris PERTAMA plant itu saja supaya subtotal tidak dobel.
+                // Penyesuaian manual (tab PENYESUAIAN) per KODE FORM: sama dengan
+                // kode plant, kecuali unit yang berbagi kode (5R00 → 5R00-1/-2).
+                // Kode kembar tetap dijaga agar nilainya tidak dobel di subtotal.
                 const ymap = this.penyesuaian[norm(p.label)] || null;
                 const plantTerpakai = new Set();
                 const am = awal.products[p.label] || {};
@@ -365,7 +371,8 @@ function persediaanApp(cfgPenyesuaian) {
                 let subAwalKg = 0;
                 let subAwalRp = 0;
                 const subY = { transfer_masuk: 0, transfer_keluar: 0, susut: 0, sto_gr: 0, sto_gi: 0 };
-                const units = c.units.map(([plant, unit]) => {
+                const units = c.units.map(([plant, unit, kodeForm]) => {
+                    const yKey = norm(kodeForm || plant);
                     const v = map ? map[plant] : null;
                     if (v != null) sub += Number(v);
                     const j = jmap ? jmap[plant] : null;
@@ -378,10 +385,10 @@ function persediaanApp(cfgPenyesuaian) {
                     subAwalKg += aKg;
                     subAwalRp += aRp;
                     let y = null;
-                    if (ymap && !plantTerpakai.has(norm(plant))) {
-                        y = ymap[norm(plant)] || null;
+                    if (ymap && !plantTerpakai.has(yKey)) {
+                        y = ymap[yKey] || null;
                         if (y) {
-                            plantTerpakai.add(norm(plant));
+                            plantTerpakai.add(yKey);
                             Object.keys(subY).forEach((k) => { subY[k] += Number(y[k] || 0); });
                         }
                     }
@@ -471,6 +478,7 @@ function persediaanApp(cfgPenyesuaian) {
                 const data = await resp.json();
                 this.penyRows = data.rows || [];
                 this.penyPlants = data.plants || [];
+                this.penyPlantLabels = data.plantLabels || {};
                 this.penyProducts = data.products || [];
                 this.penyLoaded = true;
             } catch (e) {
@@ -492,9 +500,14 @@ function persediaanApp(cfgPenyesuaian) {
                 },
                 editor: edit ? 'input' : false, editorParams: { selectContents: true },
             });
+            // Kode yang berbagi plant (5R00-1/-2) ditampilkan beserta nama unitnya
+            // supaya jelas isian ditujukan ke baris yang mana.
+            const plantMap = {};
+            this.penyPlants.forEach((v) => { plantMap[v] = this.penyPlantLabels[v] || v; });
             const cols = [
-                { title: 'PLANT', field: 'plant_code', minWidth: 150, headerHozAlign: 'center',
-                  editor: edit ? 'list' : false, editorParams: { values: this.penyPlants } },
+                { title: 'PLANT', field: 'plant_code', minWidth: 200, headerHozAlign: 'center',
+                  formatter: (c) => plantMap[c.getValue()] || c.getValue(),
+                  editor: edit ? 'list' : false, editorParams: { values: plantMap } },
                 { title: 'MATERIAL', field: 'product', minWidth: 180, headerHozAlign: 'center',
                   editor: edit ? 'list' : false, editorParams: { values: this.penyProducts } },
                 { title: 'BULAN', field: 'month', minWidth: 110, headerHozAlign: 'center',
