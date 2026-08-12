@@ -30,7 +30,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Kolom NILAI PERSEDIAAN AKHIR (Rp) dari `persediaan_nilai` (impor ZSTOCK,
  * jenis "Persediaan — Nilai Akhir") pada periode filter, dicocokkan per
- * produk × unit kerja.
+ * produk × unit kerja. Baris "Penyesuaian atas nilai persediaan akhir" pada
+ * kolom ini diisi manual (kolom PERSEDIAAN AKHIR tab PENYESUAIAN).
  *
  * Kolom PENERIMAAN TRANSFER, PENGELUARAN→TRANSFER, SUSUT, dan SELISIH STOCK
  * OPNAME (GR/GI) dari `persediaan_penyesuaian` — isian manual tab PENYESUAIAN.
@@ -102,9 +103,9 @@ class PersediaanController extends Controller
 
     /**
      * Penyesuaian manual (tab PENYESUAIAN) periode terpilih: produk → PLANT →
-     * lima kolom kuantitas. Baris ber-plant/produk 'Penyesuaian Nilai Akhir'
-     * dikumpulkan ke kunci khusus `_penyes` (baris "Penyesuaian atas nilai
-     * persediaan akhir" pada tabel).
+     * kolom nilai (lima kuantitas Kg + `nilai_akhir` Rp). Baris ber-plant/produk
+     * 'Penyesuaian Nilai Akhir' dikumpulkan ke kunci khusus `_penyes` (baris
+     * "Penyesuaian atas nilai persediaan akhir" pada tabel).
      *
      * @return array<string, array<string, array<string, float>>>
      */

@@ -24,6 +24,7 @@ class PersediaanPenyesuaianTest extends TestCase
         return array_merge([
             'year' => 2026, 'month' => 6, 'plant_code' => '5F01', 'product' => '- Minyak Sawit',
             'transfer_masuk' => 1000, 'transfer_keluar' => 200, 'susut' => 30, 'sto_gr' => 4, 'sto_gi' => 5,
+            'nilai_akhir' => 0,
         ], $ubah);
     }
 
@@ -52,6 +53,19 @@ class PersediaanPenyesuaianTest extends TestCase
 
         $this->actingAs($op)->deleteJson('/laba-rugi/persediaan/penyesuaian/'.$id)->assertOk();
         $this->assertSame([], $this->actingAs($op)->getJson('/laba-rugi/persediaan/penyesuaian')->json('rows'));
+    }
+
+    public function test_kolom_nilai_akhir_opsional(): void
+    {
+        // Halaman versi lama (JS ter-cache) tidak mengirim nilai_akhir → 0, bukan 422.
+        $op = $this->user('Operator');
+        $tanpa = $this->baris();
+        unset($tanpa['nilai_akhir']);
+
+        $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian', $tanpa)->assertOk();
+
+        $rows = $this->actingAs($op)->getJson('/laba-rugi/persediaan/penyesuaian')->json('rows');
+        $this->assertEqualsWithDelta(0.0, $rows[0]['nilai_akhir'], 0.001);
     }
 
     public function test_viewer_tidak_boleh_menulis(): void
@@ -118,10 +132,12 @@ class PersediaanPenyesuaianTest extends TestCase
     {
         $op = $this->user('Operator');
         $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian', $this->baris())->assertOk();
-        // Baris khusus untuk baris "Penyesuaian atas nilai persediaan akhir".
+        // Baris khusus untuk baris "Penyesuaian atas nilai persediaan akhir";
+        // kolom PERSEDIAAN AKHIR (Rp) mengisi kolom NILAI PERSEDIAAN AKHIR.
         $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian', $this->baris([
             'plant_code' => 'Penyesuaian Nilai Akhir', 'product' => 'Penyesuaian Nilai Akhir',
             'transfer_masuk' => 9, 'transfer_keluar' => 0, 'susut' => 0, 'sto_gr' => 0, 'sto_gi' => 0,
+            'nilai_akhir' => 5110916401,
         ]))->assertOk();
         // Periode lain tidak boleh ikut.
         $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian',
@@ -133,6 +149,7 @@ class PersediaanPenyesuaianTest extends TestCase
         $this->assertEqualsWithDelta(1000.0, $data['penyesuaian']['MINYAK SAWIT']['5F01']['transfer_masuk'], 0.001);
         $this->assertEqualsWithDelta(30.0, $data['penyesuaian']['MINYAK SAWIT']['5F01']['susut'], 0.001);
         $this->assertEqualsWithDelta(9.0, $data['penyesuaian']['_penyes']['_penyes']['transfer_masuk'], 0.001);
+        $this->assertEqualsWithDelta(5110916401.0, $data['penyesuaian']['_penyes']['_penyes']['nilai_akhir'], 0.001);
         $this->assertArrayNotHasKey('5F04', $data['penyesuaian']['MINYAK SAWIT']);
     }
 }

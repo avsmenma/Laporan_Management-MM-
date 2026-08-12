@@ -57,7 +57,7 @@
             <div class="psd-toolbar" x-show="tab === 'penyesuaian'" x-cloak>
                 <div>
                     <div class="psd-toolbar-title">FORM PENYESUAIAN PERSEDIAAN</div>
-                    <div class="psd-toolbar-sub">Isian manual kolom Penerimaan Transfer, Transfer, Susut, dan Selisih Stock Opname (Kg)</div>
+                    <div class="psd-toolbar-sub">Isian manual kolom Penerimaan Transfer, Transfer, Susut, dan Selisih Stock Opname (Kg) serta Persediaan Akhir (Rp)</div>
                 </div>
                 <button x-show="canEditPenyesuaian()" class="btn btn-primary"
                         style="height:34px;padding:0 14px" @click="tambahPenyesuaian()">+ Tambah Baris</button>
@@ -428,6 +428,11 @@ function persediaanApp(cfgPenyesuaian) {
             // Baris "Penyesuaian atas nilai persediaan akhir": isian dgn PLANT/MATERIAL
             // 'Penyesuaian Nilai Akhir' pada form masuk ke baris ini.
             const yPenyes = (this.penyesuaian['_penyes'] || {})['_penyes'] || null;
+            // Kolom PERSEDIAAN AKHIR (Rp) baris itu → kolom NILAI PERSEDIAAN AKHIR.
+            const penyesRp = yPenyes ? Number(yPenyes.nilai_akhir || 0) : 0;
+            // Jumlah Persediaan (Rp) = Jumlah + Penyesuaian, sepola kolom (Rp)
+            // Persediaan Awal Tahun; tetap '-' bila keduanya tanpa nilai.
+            const nilaiTotP = (nilaiTot == null && penyesRp === 0) ? null : Number(nilaiTot || 0) + penyesRp;
 
             out.push(withAkhir({
                 _t: 'jumlah', unit: 'Jumlah', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot,
@@ -436,14 +441,14 @@ function persediaanApp(cfgPenyesuaian) {
             }));
             out.push({
                 _t: 'penyes', plant: 'Penyesuaian atas nilai persediaan akhir', awal_rp: awal.penyesuaianRp,
-                ...yCols(yPenyes || totY, !!yPenyes),
+                nilai_rp: penyesRp, ...yCols(yPenyes || totY, !!yPenyes),
             });
             // Jumlah Persediaan = Jumlah + baris Penyesuaian (untuk kolom kuantitas).
             const totYp = {};
             Object.keys(totY).forEach((k) => { totYp[k] = totY[k] + Number(yPenyes ? yPenyes[k] : 0); });
             out.push(withAkhir({
                 _t: 'jumlahp', unit: 'Jumlah Persediaan', prod_kg: adaProd ? totalProd : null, jual_kg: jualTot,
-                olah_kg: olahTot, nilai_rp: nilaiTot, awal_kg: totAwalKg,
+                olah_kg: olahTot, nilai_rp: nilaiTotP, awal_kg: totAwalKg,
                 awal_rpkg: rpkg(totAwalKg, akhirRp), awal_rp: akhirRp, ...yCols(totYp, adaY || !!yPenyes),
             }));
             return out;
@@ -520,6 +525,9 @@ function persediaanApp(cfgPenyesuaian) {
                 angka('SUSUT', 'susut'),
                 angka('STO GR', 'sto_gr'),
                 angka('STO GI', 'sto_gi'),
+                // Rupiah — hanya dipakai baris ber-MATERIAL 'Penyesuaian Nilai
+                // Akhir', mengisi kolom NILAI PERSEDIAAN AKHIR tabel Sawit/Karet.
+                angka('PERSEDIAAN AKHIR', 'nilai_akhir'),
             ];
             if (edit) {
                 cols.push({ title: '', width: 46, hozAlign: 'center', headerSort: false,
@@ -534,7 +542,7 @@ function persediaanApp(cfgPenyesuaian) {
             const row = {
                 id: null, year: Number(this.year) || 2026, month: Number(this.month) || 1,
                 plant_code: this.penyPlants[0] || '5F01', product: this.penyProducts[0] || '- Minyak Sawit',
-                transfer_masuk: 0, transfer_keluar: 0, susut: 0, sto_gr: 0, sto_gi: 0,
+                transfer_masuk: 0, transfer_keluar: 0, susut: 0, sto_gr: 0, sto_gi: 0, nilai_akhir: 0,
             };
             this.penyRows.push(row);
             await this.simpanPenyesuaian(row);
@@ -558,6 +566,7 @@ function persediaanApp(cfgPenyesuaian) {
                         susut: Number(rowData.susut) || 0,
                         sto_gr: Number(rowData.sto_gr) || 0,
                         sto_gi: Number(rowData.sto_gi) || 0,
+                        nilai_akhir: Number(rowData.nilai_akhir) || 0,
                     }),
                 });
                 const data = await resp.json().catch(() => ({}));
@@ -660,7 +669,7 @@ function persediaanApp(cfgPenyesuaian) {
                     this.table.on('cellEdited', (cell) => {
                         const row = cell.getRow();
                         const f = cell.getField();
-                        if (['transfer_masuk', 'transfer_keluar', 'susut', 'sto_gr', 'sto_gi'].includes(f)) {
+                        if (['transfer_masuk', 'transfer_keluar', 'susut', 'sto_gr', 'sto_gi', 'nilai_akhir'].includes(f)) {
                             row.update({ [f]: this.parseAngka(cell.getValue()) });
                         }
                         this.simpanPenyesuaian(row.getData());

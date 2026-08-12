@@ -38,10 +38,16 @@ class PersediaanPenyesuaianController extends Controller
         '- Minyak Sawit', '- Inti Sawit', '- Tandan Buah Segar', 'LUMP', self::KHUSUS,
     ];
 
-    /** @return array<int, string> kolom kuantitas yang boleh diisi */
+    /**
+     * Kolom nilai yang boleh diisi. Lima pertama satuan Kg; `nilai_akhir`
+     * satuan Rupiah — mengisi kolom NILAI PERSEDIAAN AKHIR pada baris
+     * "Penyesuaian atas nilai persediaan akhir".
+     *
+     * @return array<int, string>
+     */
     public static function kolomNilai(): array
     {
-        return ['transfer_masuk', 'transfer_keluar', 'susut', 'sto_gr', 'sto_gi'];
+        return ['transfer_masuk', 'transfer_keluar', 'susut', 'sto_gr', 'sto_gi', 'nilai_akhir'];
     }
 
     /** Daftar seluruh baris penyesuaian (semua periode). */
@@ -61,6 +67,7 @@ class PersediaanPenyesuaianController extends Controller
                 'susut' => (float) $r->susut,
                 'sto_gr' => (float) $r->sto_gr,
                 'sto_gi' => (float) $r->sto_gi,
+                'nilai_akhir' => (float) $r->nilai_akhir,
             ]);
 
         return response()->json([
@@ -90,6 +97,9 @@ class PersediaanPenyesuaianController extends Controller
             'susut' => ['required', 'numeric'],
             'sto_gr' => ['required', 'numeric'],
             'sto_gi' => ['required', 'numeric'],
+            // Kolom baru — dibuat opsional agar halaman versi lama (JS ter-cache)
+            // tetap bisa menyimpan; tidak dikirim → dianggap 0.
+            'nilai_akhir' => ['nullable', 'numeric'],
         ]);
 
         $values = [
@@ -98,7 +108,7 @@ class PersediaanPenyesuaianController extends Controller
             'updated_at' => now(),
         ];
         foreach (self::kolomNilai() as $k) {
-            $values[$k] = $data[$k];
+            $values[$k] = $data[$k] ?? 0;
         }
 
         $q = DB::table('persediaan_penyesuaian');
