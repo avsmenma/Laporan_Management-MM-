@@ -36,9 +36,6 @@ class PersediaanPenyesuaianTest extends TestCase
         $id = $resp->json('id');
         $this->assertIsInt($id);
 
-        // Kombinasi periode+plant+material kembar ditolak.
-        $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian', $this->baris())->assertStatus(422);
-
         // Ubah baris yang sama (pakai id).
         $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian',
             $this->baris(['id' => $id, 'susut' => 77]))->assertOk();
@@ -73,6 +70,28 @@ class PersediaanPenyesuaianTest extends TestCase
             $this->baris(['plant_code' => '9Z99']))->assertStatus(422);
         $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian',
             $this->baris(['product' => 'Kopi']))->assertStatus(422);
+    }
+
+    public function test_plant_dan_material_sama_boleh_beberapa_baris_dan_dijumlah(): void
+    {
+        $op = $this->user('Operator');
+
+        // Baris 1: hanya Transfer Penerimaan. Baris 2 (plant+material+periode
+        // SAMA): hanya Susut — keduanya harus tersimpan & saling menambah.
+        $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian', $this->baris([
+            'plant_code' => '5F09', 'transfer_masuk' => 207290,
+            'transfer_keluar' => 0, 'susut' => 0, 'sto_gr' => 0, 'sto_gi' => 0,
+        ]))->assertOk();
+        $this->actingAs($op)->postJson('/laba-rugi/persediaan/penyesuaian', $this->baris([
+            'plant_code' => '5F09', 'transfer_masuk' => 0,
+            'transfer_keluar' => 0, 'susut' => 14947, 'sto_gr' => 0, 'sto_gi' => 0,
+        ]))->assertOk();
+
+        $data = $this->actingAs($op)->getJson('/report-data/laba-rugi/persediaan?year=2026&month=6')
+            ->assertOk()->json();
+
+        $this->assertEqualsWithDelta(207290.0, $data['penyesuaian']['MINYAK SAWIT']['5F09']['transfer_masuk'], 0.001);
+        $this->assertEqualsWithDelta(14947.0, $data['penyesuaian']['MINYAK SAWIT']['5F09']['susut'], 0.001);
     }
 
     public function test_plant_5r00_terpisah_untuk_dua_unit(): void

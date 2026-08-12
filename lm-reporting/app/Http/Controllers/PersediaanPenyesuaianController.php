@@ -72,8 +72,10 @@ class PersediaanPenyesuaianController extends Controller
     }
 
     /**
-     * Simpan satu baris (Operator/Admin). Tanpa id → baris baru; kombinasi
-     * (tahun, bulan, plant, produk) unik.
+     * Simpan satu baris (Operator/Admin). Tanpa id → baris baru. Kombinasi
+     * (tahun, bulan, plant, produk) BOLEH berulang — satu plant bisa punya
+     * beberapa baris pada periode sama (mis. baris transfer terpisah dari baris
+     * susut); nilainya dijumlahkan saat dibaca halaman Persediaan.
      */
     public function store(Request $request): JsonResponse
     {
@@ -89,17 +91,6 @@ class PersediaanPenyesuaianController extends Controller
             'sto_gr' => ['required', 'numeric'],
             'sto_gi' => ['required', 'numeric'],
         ]);
-
-        $dupe = DB::table('persediaan_penyesuaian')
-            ->where('year', $data['year'])->where('month', $data['month'])
-            ->where('plant_code', $data['plant_code'])->where('product', $data['product'])
-            ->when(isset($data['id']), fn ($q) => $q->where('id', '<>', $data['id']))
-            ->exists();
-        if ($dupe) {
-            return response()->json([
-                'message' => 'Baris '.$data['plant_code'].' — '.$data['product'].' untuk periode itu sudah ada.',
-            ], 422);
-        }
 
         $values = [
             'year' => $data['year'], 'month' => $data['month'],
