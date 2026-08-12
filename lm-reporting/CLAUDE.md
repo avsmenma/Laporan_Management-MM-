@@ -1,5 +1,6 @@
 # Aturan Kerja Proyek LM
 
+- **BACA `../CONTEXT.md` LEBIH DULU** (serah-terima konteks: status project, peta kode, keputusan arsitektur, daftar "JANGAN DIUBAH", cara deploy).
 - Sumber kebenaran: `docs/PRD_Sistem_Pelaporan_LM.md`, `docs/PROMPTS_AI_Agent_LM.md`, SQL seed di `database/seeders/sql`, dan workbook acuan Mei 2026.
 - Stack: Laravel 12, PHP 8.3+, MySQL 8, Blade + Alpine.js + Tabulator.js.
 - Untuk rencana yang sudah disetujui, boleh menjalankan beberapa tugas berurutan secara subagent-driven (satu subagent per tugas) dengan review di antara tugas; tidak perlu menunggu "lanjut" di tiap tugas. Tetap berhenti minta keputusan bila acceptance gagal, ada ambiguitas, atau menyentuh gerbang kritis (tahap 03–05 mesin hitung).

@@ -10,6 +10,7 @@ Baca dokumen acuan SEBELUM menulis kode. Patuhi aturan di bawah sepanjang proyek
 
 | Berkas | Peran |
 |---|---|
+| `CONTEXT.md` | **BACA PALING DULU** — serah-terima konteks: status project, peta kode, model data, keputusan arsitektur, daftar "JANGAN DIUBAH", utang teknis, cara deploy. |
 | `docs/PRD_Sistem_Pelaporan_LM.md` | **Sumber kebenaran** — spesifikasi lengkap (navigasi, filter, struktur tabel, aturan hitung, ERD, API, acceptance). |
 | `docs/PROMPTS_AI_Agent_LM.md` | Urutan tahap kerja `prompt_00`..`prompt_09`. Kerjakan berurutan. |
 | `database/seeders/sql/schema_mysql.sql` | DDL MySQL + seed master unit & klasifikasi (+ tabel sumber LM13/LM16). |
