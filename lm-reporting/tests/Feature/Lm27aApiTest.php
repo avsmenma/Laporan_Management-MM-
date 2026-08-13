@@ -213,6 +213,10 @@ class Lm27aApiTest extends TestCase
             $this->assertEqualsWithDelta(0, $data['values'][$key]['ks'], 0.001);
             $this->assertEqualsWithDelta(0, $data['values'][$key]['kr'], 0.001);
         }
+
+        // Tidak ada kolom yang boleh dihitung Harga Pokok Penjualan-nya: tanpa
+        // biaya produksi & penyusutan, totalnya hanya persediaan → menyesatkan.
+        $this->assertSame([], $data['values']['hpp_kolom']);
     }
 
     public function test_tanpa_parameter_adopsi_periode_terbaru(): void

@@ -123,7 +123,7 @@ class Lm27aController extends Controller
                 'persediaan_akhir' => $this->persediaanAkhir($year, $month),
                 // Kolom budidaya yang komponen Harga Pokok Penjualan-nya lengkap;
                 // hanya kolom ini yang dihitung HPP & Laba (Rugi) Kotor-nya.
-                'hpp_kolom' => array_keys(self::LM13_BUDIDAYA),
+                'hpp_kolom' => $lm13['siap'],
             ],
         ]);
     }
@@ -179,13 +179,18 @@ class Lm27aController extends Controller
      * Hanya kolom Kelapa Sawit yang diisi; alasan kolom Karet dikosongkan ada di
      * LM13_BUDIDAYA.
      *
-     * @return array<string, array<string, float>>
+     * Kunci `siap` = kolom yang benar-benar mendapat angka. Periode tanpa batch
+     * (atau batch yang belum digenerate) TIDAK masuk daftar, supaya Harga Pokok
+     * Penjualan tidak dihitung dari blok yang cuma berisi persediaan.
+     *
+     * @return array{biaya_produksi: array<string, float>, penyusutan: array<string, float>, siap: list<string>}
      */
     private function lm13Values(int $year, int $month): array
     {
         $out = [
             'biaya_produksi' => ['ks' => 0.0, 'kr' => 0.0],
             'penyusutan' => ['ks' => 0.0, 'kr' => 0.0],
+            'siap' => [],
         ];
 
         // Batch unik per (year, month) — sama seperti pemilihan batch di halaman
@@ -220,6 +225,7 @@ class Lm27aController extends Controller
             $penyusutan = $nilai($ref['penyusutan']);
             $out['penyusutan'][$col] = $penyusutan;
             $out['biaya_produksi'][$col] = $nilai($ref['biaya_produksi']) - $penyusutan;
+            $out['siap'][] = $col;
         }
 
         return $out;
