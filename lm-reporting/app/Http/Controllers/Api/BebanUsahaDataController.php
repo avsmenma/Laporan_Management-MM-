@@ -469,6 +469,27 @@ class BebanUsahaDataController extends Controller
         ];
     }
 
+    /**
+     * Baris "Total" tab KELAPA SAWIT & KARET halaman Beban Ops Lainnya, kolom
+     * "sd Bulan {n} {tahun}" → Realisasi (= Jumlah rincian + Jumlah Biaya KSO).
+     * Dipakai baris "Biaya Lain - Lain" LM-27A.
+     *
+     * Pemisahan komoditinya sudah ada di halaman itu: tab KARET = A119@5E12
+     * (KSO Kumai) + A123@5F20 (PKR), KELAPA SAWIT = Summary − KARET.
+     *
+     * @return array<string, float>
+     */
+    public function bebanOpsLainnyaSd(int $year, int $month): array
+    {
+        $iTotal = $this->findIndex(BebanUsahaController::rowsBolSummary(), 'total');
+        $tabs = $this->bolValues($year, $month);
+
+        return [
+            'ks' => (float) ($tabs['ks'][$iTotal]['sd'] ?? 0),
+            'kr' => (float) ($tabs['kr'][$iTotal]['sd'] ?? 0),
+        ];
+    }
+
     /** Indeks baris pertama bertipe $type mulai dari $from. */
     private function findIndex(array $rows, string $type, int $from = 0): int
     {

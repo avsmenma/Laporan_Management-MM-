@@ -40,6 +40,9 @@ use Illuminate\Support\Facades\DB;
  *                              Kelapa Sawit / Karet.
  *   "- Administrasi Kandir"  — /laba-rugi/beban-administrasi tab ADMI KS & ADMI KR,
  *                              baris "Jumlah beban administrasi Include Penyusutan".
+ * Blok PENDAPATAN / BIAYA LAIN - LAIN:
+ *   "Biaya Lain - Lain"      — /laba-rugi/beban-ops-lainnya tab KELAPA SAWIT & KARET,
+ *                              baris "Total", kolom "sd Bulan {n}" → Realisasi.
  *
  * ⚠️ Tanda: seluruh baris biaya (Persediaan Awal, Biaya Produksi, Penyusutan,
  * Biaya Penjualan, Administrasi Kandir) dikirim NEGATIF atas permintaan user,
@@ -134,6 +137,7 @@ class Lm27aController extends Controller
                 // Blok Biaya Usaha — juga biaya, jadi bertanda minus.
                 'biaya_penjualan' => $this->negatif($beban->bebanPenjualanSd($year, $month)),
                 'administrasi_kandir' => $this->negatif($beban->bebanAdministrasiSd($year, $month)),
+                'biaya_lain_lain' => $this->negatif($beban->bebanOpsLainnyaSd($year, $month)),
                 // Kolom budidaya yang komponen Harga Pokok Penjualan-nya lengkap;
                 // hanya kolom ini yang dihitung HPP & Laba (Rugi) Kotor-nya.
                 'hpp_kolom' => $lm13['siap'],

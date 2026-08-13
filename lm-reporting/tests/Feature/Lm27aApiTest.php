@@ -205,12 +205,12 @@ class Lm27aApiTest extends TestCase
     {
         $this->seedPenjualan();
 
-        $gl = fn (string $type, int $period, string $class, float $amount): array => [
+        $gl = fn (string $type, int $period, string $class, float $amount, string $code = '00', string $pc = '5R00000001'): array => [
             'report_type' => $type, 'document_number' => 'DOC-1',
             'posting_date' => sprintf('2026-%02d-10', $period), 'year' => 2026, 'period' => $period,
-            'account' => '6', 'gl_account_desc' => 'Beban', 'profit_center' => '5R00000001',
-            'profit_center_desc' => 'Kandir', 'cost_center' => 'CC', 'cost_element' => 'CE',
-            'text' => 'Uji', 'amount' => $amount, 'class_code' => '00', 'class_desc' => $class,
+            'account' => '6', 'gl_account_desc' => 'Beban', 'profit_center' => $pc,
+            'profit_center_desc' => 'Unit', 'cost_center' => 'CC', 'cost_element' => 'CE',
+            'text' => 'Uji', 'amount' => $amount, 'class_code' => $code, 'class_desc' => $class,
         ];
 
         DB::table('beban_usaha_gl')->insert([
@@ -221,6 +221,9 @@ class Lm27aApiTest extends TestCase
             // Beban Administrasi: dipecah ke ADMI KS/KR memakai %Proporsi bulan itu.
             $gl('ADMIN', 5, 'Beban Konsultan', 1000),
             $gl('ADMIN', 6, 'Beban Konsultan', 2000),
+            // Beban Ops Lainnya: A119@5E12 (KSO Kumai) masuk tab KARET, sisanya Sawit.
+            $gl('BOL', 6, 'Biaya Pengurusan Kebun Plasma', 500, 'A109', '5E01000001'),
+            $gl('BOL', 6, 'Biaya KSO Kumai', 200, 'A119', '5E12000001'),
         ]);
         // %Proporsi: Mei 60% sawit / 40% karet, Juni 75% / 25%.
         DB::table('beban_usaha_proporsi')->insert([
@@ -243,8 +246,16 @@ class Lm27aApiTest extends TestCase
         $this->assertEqualsWithDelta(-2100, $data['values']['administrasi_kandir']['ks'], 0.001);
         $this->assertEqualsWithDelta(-900, $data['values']['administrasi_kandir']['kr'], 0.001);
 
+        // Biaya Lain - Lain = baris "Total" tab KELAPA SAWIT & KARET Beban Ops
+        // Lainnya; KSO Kumai (A119@5E12) masuk Karet, sisanya Sawit.
+        $this->assertEqualsWithDelta(-500, $data['values']['biaya_lain_lain']['ks'], 0.001);
+        $this->assertEqualsWithDelta(-200, $data['values']['biaya_lain_lain']['kr'], 0.001);
+
         // …dan harus sama dengan yang dihitung halaman Beban itu sendiri.
         $beban = app(\App\Http\Controllers\Api\BebanUsahaDataController::class);
+        $this->assertEqualsWithDelta(
+            -$beban->bebanOpsLainnyaSd(2026, 6)['kr'], $data['values']['biaya_lain_lain']['kr'], 0.001
+        );
         $this->assertEqualsWithDelta(
             -$beban->bebanPenjualanSd(2026, 6)['ks'], $data['values']['biaya_penjualan']['ks'], 0.001
         );

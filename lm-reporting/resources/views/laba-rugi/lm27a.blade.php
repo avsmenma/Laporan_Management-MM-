@@ -185,13 +185,15 @@ function lm27aApp() {
                 if (!v) return;
                 out[k] = { ks: Number(v.ks || 0), kr: Number(v.kr || 0) };
             };
-            // Blok Biaya Usaha (juga bertanda minus dari server):
+            // Blok Biaya Usaha & Biaya Lain - Lain (juga bertanda minus dari server):
             //   Biaya Penjualan       ← halaman Beban Penjualan ("Jumlah" per seksi)
             //   - Administrasi Kandir ← Beban Administrasi tab ADMI KS/KR
             //     baris "Jumlah beban administrasi Include Penyusutan"
+            //   Biaya Lain - Lain     ← Beban Ops Lainnya tab KELAPA SAWIT/KARET
+            //     baris "Total"
             [
                 'persediaan_awal', 'biaya_produksi', 'penyusutan', 'persediaan_akhir',
-                'biaya_penjualan', 'administrasi_kandir',
+                'biaya_penjualan', 'administrasi_kandir', 'biaya_lain_lain',
             ].forEach(ambil);
 
             // Harga Pokok Penjualan = jumlah SELURUH baris blok itu (Persediaan Awal
@@ -277,7 +279,7 @@ function lm27aApp() {
                 t('Laba (Rugi) Usaha Setelah Biaya Bunga', 'laba_usaha_bunga'),
                 gv('Pendapatan / Biaya Lain - Lain'),
                 d('Pendapatan Lain - Lain'),
-                d('Biaya Lain - Lain'),
+                d('Biaya Lain - Lain', 'biaya_lain_lain'),
                 t('Jumlah Pendapatan / Biaya Lain - Lain'),
                 t('Laba (Rugi) sebelum Pajak', null, 'green'),
                 sb('Pajak Perseroan'),
