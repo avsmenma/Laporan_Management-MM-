@@ -34,14 +34,23 @@ use Illuminate\Support\Facades\DB;
  *   "Persediaan Akhir" — baris "Jumlah Persediaan" kolom NILAI PERSEDIAAN AKHIR
  *   (Rp) halaman yang sama, lewat PersediaanController::nilaiAkhirJumlah().
  *
- * ⚠️ Tanda: tiga baris biaya (Persediaan Awal, Biaya Produksi, Penyusutan)
- * dikirim NEGATIF atas permintaan user, sehingga "Harga Pokok Penjualan" cukup
- * MENJUMLAHKAN seluruh blok dan "Laba (Rugi) Kotor" = Jumlah Penjualan + Harga
- * Pokok Penjualan. Penjumlahan kedua total itu dilakukan di blade.
+ * Blok BIAYA USAHA (sumber SAMA dengan halamannya masing-masing, kolom
+ * "sd Bulan {n}" → Realisasi):
+ *   "Biaya Penjualan"        — /laba-rugi/beban-penjualan, baris "Jumlah" seksi
+ *                              Kelapa Sawit / Karet.
+ *   "- Administrasi Kandir"  — /laba-rugi/beban-administrasi tab ADMI KS & ADMI KR,
+ *                              baris "Jumlah beban administrasi Include Penyusutan".
+ *
+ * ⚠️ Tanda: seluruh baris biaya (Persediaan Awal, Biaya Produksi, Penyusutan,
+ * Biaya Penjualan, Administrasi Kandir) dikirim NEGATIF atas permintaan user,
+ * sehingga "Harga Pokok Penjualan" cukup MENJUMLAHKAN seluruh blok dan
+ * "Laba (Rugi) Kotor" = Jumlah Penjualan + Harga Pokok Penjualan. Penjumlahan
+ * kedua total itu dilakukan di blade.
  *
  * Belum ada sumber (dirender '-' di UI): baris Ekspor (template LM-34 tidak punya
- * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, Order Produksi, blok Biaya
- * Usaha, dan seterusnya.
+ * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, Order Produksi,
+ * "- Administrasi Kebun", dan seterusnya. Baris total blok Biaya Usaha ke bawah
+ * juga masih '-' — belum semua komponennya bersumber.
  */
 class Lm27aController extends Controller
 {
@@ -106,6 +115,7 @@ class Lm27aController extends Controller
         $month = (int) $month;
 
         $lm13 = $this->lm13Values($year, $month);
+        $beban = app(BebanUsahaDataController::class);
 
         return response()->json([
             'periods' => $periods,
@@ -121,6 +131,9 @@ class Lm27aController extends Controller
                 'biaya_produksi' => $this->negatif($lm13['biaya_produksi']),
                 'penyusutan' => $this->negatif($lm13['penyusutan']),
                 'persediaan_akhir' => $this->persediaanAkhir($year, $month),
+                // Blok Biaya Usaha — juga biaya, jadi bertanda minus.
+                'biaya_penjualan' => $this->negatif($beban->bebanPenjualanSd($year, $month)),
+                'administrasi_kandir' => $this->negatif($beban->bebanAdministrasiSd($year, $month)),
                 // Kolom budidaya yang komponen Harga Pokok Penjualan-nya lengkap;
                 // hanya kolom ini yang dihitung HPP & Laba (Rugi) Kotor-nya.
                 'hpp_kolom' => $lm13['siap'],

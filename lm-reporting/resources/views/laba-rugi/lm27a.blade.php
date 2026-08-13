@@ -88,10 +88,11 @@
 <script>
 function lm27aApp() {
     return {
-        // Baris "Lokal" (sumber sama dengan LM 34), "Persediaan Awal" (halaman
-        // Persediaan), serta "Biaya Produksi" & "Penyusutan" (halaman LM
-        // Eksploitasi) ditarik dari /report-data/laba-rugi/lm27a. Baris lain belum
-        // ada sumber → tetap '-'.
+        // Nilai tiap baris ditarik dari /report-data/laba-rugi/lm27a, semuanya
+        // memakai jalur hitung halaman sumbernya: Lokal (LM 34), Persediaan
+        // Awal/Akhir (halaman Persediaan), Biaya Produksi & Penyusutan (LM
+        // Eksploitasi), Biaya Penjualan (Beban Penjualan), Administrasi Kandir
+        // (Beban Administrasi). Baris lain belum ada sumber → tetap '-'.
         // Default template Juni 2026; saat init diganti periode data TERBARU.
         month: 6,
         year: 2026,
@@ -184,7 +185,14 @@ function lm27aApp() {
                 if (!v) return;
                 out[k] = { ks: Number(v.ks || 0), kr: Number(v.kr || 0) };
             };
-            ['persediaan_awal', 'biaya_produksi', 'penyusutan', 'persediaan_akhir'].forEach(ambil);
+            // Blok Biaya Usaha (juga bertanda minus dari server):
+            //   Biaya Penjualan       ← halaman Beban Penjualan ("Jumlah" per seksi)
+            //   - Administrasi Kandir ← Beban Administrasi tab ADMI KS/KR
+            //     baris "Jumlah beban administrasi Include Penyusutan"
+            [
+                'persediaan_awal', 'biaya_produksi', 'penyusutan', 'persediaan_akhir',
+                'biaya_penjualan', 'administrasi_kandir',
+            ].forEach(ambil);
 
             // Harga Pokok Penjualan = jumlah SELURUH baris blok itu (Persediaan Awal
             // s/d Persediaan Akhir; Order Produksi belum ada sumber → 0), lalu
@@ -234,9 +242,9 @@ function lm27aApp() {
                 t('Harga Pokok Penjualan', 'hpp'),
                 t('Laba ( Rugi ) Kotor', 'laba_kotor'),
                 g('Biaya Usaha'),
-                d('Biaya Penjualan'),
+                d('Biaya Penjualan', 'biaya_penjualan'),
                 dh('Biaya Administrasi / Umum'),
-                d('- Administrasi Kandir'),
+                d('- Administrasi Kandir', 'administrasi_kandir'),
                 d('- Administrasi Kebun'),
                 t('Jumlah Biaya Usaha'),
                 t('Laba ( Rugi ) Usaha'),

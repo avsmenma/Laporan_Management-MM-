@@ -428,6 +428,47 @@ class BebanUsahaDataController extends Controller
         }
     }
 
+    /**
+     * Baris "Jumlah" seksi Karet & Kelapa Sawit halaman Beban Penjualan, kolom
+     * "sd Bulan {n} {tahun}" → Realisasi. Dipakai baris "Biaya Penjualan" LM-27A
+     * supaya angkanya persis sama dengan halaman itu.
+     *
+     * Memakai subtotal PER SEKSI, bukan baris "Jumlah Seluruh": untuk sekarang
+     * hasilnya sama (seluruh data PENJ masuk seksi Kelapa Sawit) tetapi tetap
+     * benar per kolom budidaya bila seksi Karet terisi kelak.
+     *
+     * @return array<string, float>
+     */
+    public function bebanPenjualanSd(int $year, int $month): array
+    {
+        [, , $subtotals] = self::penjRowLayout();
+        $rows = $this->penjValues($year, $month)['all'];
+
+        return [
+            'ks' => (float) ($rows[$subtotals['860.1']]['sd'] ?? 0),
+            'kr' => (float) ($rows[$subtotals['860.0']]['sd'] ?? 0),
+        ];
+    }
+
+    /**
+     * Baris "Jumlah beban administrasi Include Penyusutan" tab ADMI KS & ADMI KR
+     * halaman Beban Administrasi, kolom "sd Bulan {n} {tahun}" → Realisasi
+     * (= Summary × %Proporsi bulan itu). Dipakai baris "- Administrasi Kandir"
+     * LM-27A.
+     *
+     * @return array<string, float>
+     */
+    public function bebanAdministrasiSd(int $year, int $month): array
+    {
+        $iTotal = $this->findIndex(BebanUsahaController::rowsBebanAdministrasi(), 'total');
+        $tabs = $this->adminValues($year, $month);
+
+        return [
+            'ks' => (float) ($tabs['ks'][$iTotal]['sd'] ?? 0),
+            'kr' => (float) ($tabs['kr'][$iTotal]['sd'] ?? 0),
+        ];
+    }
+
     /** Indeks baris pertama bertipe $type mulai dari $from. */
     private function findIndex(array $rows, string $type, int $from = 0): int
     {

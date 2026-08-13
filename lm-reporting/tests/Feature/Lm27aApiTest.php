@@ -201,6 +201,58 @@ class Lm27aApiTest extends TestCase
         $this->assertEqualsWithDelta(0, $data['values']['persediaan_akhir']['kr'], 0.001);
     }
 
+    public function test_biaya_usaha_dari_halaman_beban(): void
+    {
+        $this->seedPenjualan();
+
+        $gl = fn (string $type, int $period, string $class, float $amount): array => [
+            'report_type' => $type, 'document_number' => 'DOC-1',
+            'posting_date' => sprintf('2026-%02d-10', $period), 'year' => 2026, 'period' => $period,
+            'account' => '6', 'gl_account_desc' => 'Beban', 'profit_center' => '5R00000001',
+            'profit_center_desc' => 'Kandir', 'cost_center' => 'CC', 'cost_element' => 'CE',
+            'text' => 'Uji', 'amount' => $amount, 'class_code' => '00', 'class_desc' => $class,
+        ];
+
+        DB::table('beban_usaha_gl')->insert([
+            // Beban Penjualan: kumulatif s.d Juni = 300 + 700 (Juli tidak ikut).
+            $gl('PENJ', 5, 'Pelabuhan / EMKL', 300),
+            $gl('PENJ', 6, 'Pelabuhan / EMKL', 700),
+            $gl('PENJ', 7, 'Pelabuhan / EMKL', 9999),
+            // Beban Administrasi: dipecah ke ADMI KS/KR memakai %Proporsi bulan itu.
+            $gl('ADMIN', 5, 'Beban Konsultan', 1000),
+            $gl('ADMIN', 6, 'Beban Konsultan', 2000),
+        ]);
+        // %Proporsi: Mei 60% sawit / 40% karet, Juni 75% / 25%.
+        DB::table('beban_usaha_proporsi')->insert([
+            ['year' => 2026, 'month' => 5, 'uraian' => 'ABS Sawit', 'total_nilai' => 100, 'nilai_proporsi' => 60],
+            ['year' => 2026, 'month' => 5, 'uraian' => 'ABS Karet', 'total_nilai' => 100, 'nilai_proporsi' => 40],
+            ['year' => 2026, 'month' => 6, 'uraian' => 'ABS Sawit', 'total_nilai' => 100, 'nilai_proporsi' => 75],
+            ['year' => 2026, 'month' => 6, 'uraian' => 'ABS Karet', 'total_nilai' => 100, 'nilai_proporsi' => 25],
+        ]);
+
+        $data = $this->actingAs($this->viewer())
+            ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=6')->assertOk()->json();
+
+        // Biaya Penjualan = baris "Jumlah" seksi Kelapa Sawit; seksi Karet kosong.
+        // Biaya → dikirim negatif.
+        $this->assertEqualsWithDelta(-1000, $data['values']['biaya_penjualan']['ks'], 0.001);
+        $this->assertEqualsWithDelta(0, $data['values']['biaya_penjualan']['kr'], 0.001);
+
+        // Administrasi Kandir = Σ (nilai bulan × %proporsi bulan itu):
+        // ks = 1000×60% + 2000×75% = 2.100; kr = 1000×40% + 2000×25% = 900.
+        $this->assertEqualsWithDelta(-2100, $data['values']['administrasi_kandir']['ks'], 0.001);
+        $this->assertEqualsWithDelta(-900, $data['values']['administrasi_kandir']['kr'], 0.001);
+
+        // …dan harus sama dengan yang dihitung halaman Beban itu sendiri.
+        $beban = app(\App\Http\Controllers\Api\BebanUsahaDataController::class);
+        $this->assertEqualsWithDelta(
+            -$beban->bebanPenjualanSd(2026, 6)['ks'], $data['values']['biaya_penjualan']['ks'], 0.001
+        );
+        $this->assertEqualsWithDelta(
+            -$beban->bebanAdministrasiSd(2026, 6)['ks'], $data['values']['administrasi_kandir']['ks'], 0.001
+        );
+    }
+
     public function test_baris_lm13_nol_bila_periode_tanpa_batch(): void
     {
         $this->seedPenjualan();
