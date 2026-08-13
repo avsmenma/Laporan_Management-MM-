@@ -236,6 +236,19 @@ function lm27aApp() {
             const usahaBunga = {};
             const lain = {};
             const sebelumPajak = {};
+            // Penutup laporan (empat rumus dari user):
+            //   Laba (Rugi) setelah Pajak           = Laba (Rugi) sebelum Pajak − Pajak Perseroan
+            //   Laba (Rugi) setelah Pajak Tangguhan = Laba (Rugi) setelah Pajak − Pajak Tangguhan
+            //   Jumlah Pendapatan Komprehensif Lain = Σ 3 baris di atasnya
+            //   Laba (Rugi) Komprehensif = Laba (Rugi) setelah Pajak Tangguhan
+            //                              + Jumlah Pendapatan Komprehensif Lain
+            // ⚠️ Dua baris pajak DIKURANGKAN (bukan dijumlah seperti baris biaya
+            // lain) — memang begitu aturannya: nilai pajak diisi positif. Jangan
+            // "diseragamkan" jadi penjumlahan.
+            const setelahPajak = {};
+            const setelahTangguhan = {};
+            const oci = {};
+            const komprehensif = {};
             ['ks', 'kr'].forEach((c) => {
                 const kol = (k) => Number((out[k] || {})[c] || 0);
                 adm[c] = kol('administrasi_kandir') + kol('administrasi_kebun');
@@ -245,6 +258,10 @@ function lm27aApp() {
                 usahaBunga[c] = (usaha[c] == null) ? null : usaha[c] + kol('biaya_bunga');
                 lain[c] = kol('pendapatan_lain_lain') + kol('biaya_lain_lain');
                 sebelumPajak[c] = (usahaBunga[c] == null) ? null : usahaBunga[c] + lain[c];
+                setelahPajak[c] = (sebelumPajak[c] == null) ? null : sebelumPajak[c] - kol('pajak_perseroan');
+                setelahTangguhan[c] = (setelahPajak[c] == null) ? null : setelahPajak[c] - kol('pajak_tangguhan');
+                oci[c] = kol('oci_nilai_wajar') + kol('oci_aktuaria') + kol('oci_pajak_tangguhan');
+                komprehensif[c] = (setelahTangguhan[c] == null) ? null : setelahTangguhan[c] + oci[c];
             });
             out.biaya_adm_umum = adm;
             out.jumlah_biaya_usaha = jbu;
@@ -252,6 +269,10 @@ function lm27aApp() {
             out.laba_usaha_bunga = usahaBunga;
             out.jumlah_lain_lain = lain;
             out.laba_sebelum_pajak = sebelumPajak;
+            out.laba_setelah_pajak = setelahPajak;
+            out.laba_setelah_pajak_tangguhan = setelahTangguhan;
+            out.jumlah_oci = oci;
+            out.laba_komprehensif = komprehensif;
             return out;
         },
 
@@ -260,7 +281,7 @@ function lm27aApp() {
         rows() {
             const g = (u) => ({ u, _type: 'group' });   // judul blok: tebal + garis bawah
             const gv = (u) => ({ u, _type: 'gvalue' }); // judul blok bernilai: tebal saja
-            const sb = (u) => ({ u, _type: 'sub' });    // baris setingkat judul blok, biasa
+            const sb = (u, k) => ({ u, _type: 'sub', _k: k || null }); // baris setingkat judul blok, biasa
             const d = (u, k) => ({ u, _type: 'detail', _k: k || null });  // rincian
             const dh = (u, k) => ({ u, _type: 'dhead', _k: k || null }); // rincian bertebal + garis bawah
             const t = (u, k, fill) => ({ u, _type: 'total', _k: k || null, _fill: fill || null });
@@ -292,16 +313,16 @@ function lm27aApp() {
                 d('Biaya Lain - Lain', 'biaya_lain_lain'),
                 t('Jumlah Pendapatan / Biaya Lain - Lain', 'jumlah_lain_lain'),
                 t('Laba (Rugi) sebelum Pajak', 'laba_sebelum_pajak', 'green'),
-                sb('Pajak Perseroan'),
-                t('Laba (Rugi) setelah Pajak'),
-                sb('Pajak Tangguhan'),
-                t('Laba (Rugi) setelah Pajak Tangguhan', null, 'gold'),
+                sb('Pajak Perseroan', 'pajak_perseroan'),
+                t('Laba (Rugi) setelah Pajak', 'laba_setelah_pajak'),
+                sb('Pajak Tangguhan', 'pajak_tangguhan'),
+                t('Laba (Rugi) setelah Pajak Tangguhan', 'laba_setelah_pajak_tangguhan', 'gold'),
                 g('Pendapatan Komprehensif Lain :'),
-                sb('Selisih Nilai Wajar Asset Keuangan'),
-                sb('Keuntungan ( Kerugian ) Aktuaria'),
-                sb('Penyesuaian Pajak tangguhan atas OCI tahun 2021'),
-                t('Jumlah Pendapatan Komprehensif Lain', null, 'grey'),
-                t('Laba (Rugi) Komprehensif', null, 'grey'),
+                sb('Selisih Nilai Wajar Asset Keuangan', 'oci_nilai_wajar'),
+                sb('Keuntungan ( Kerugian ) Aktuaria', 'oci_aktuaria'),
+                sb('Penyesuaian Pajak tangguhan atas OCI tahun 2021', 'oci_pajak_tangguhan'),
+                t('Jumlah Pendapatan Komprehensif Lain', 'jumlah_oci', 'grey'),
+                t('Laba (Rugi) Komprehensif', 'laba_komprehensif', 'grey'),
             ];
 
             // Isi nilai + kolom Jumlah (= Kelapa Sawit + Karet) dan kolom %.
