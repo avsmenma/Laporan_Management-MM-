@@ -221,21 +221,25 @@ function lm27aApp() {
             //   Biaya Administrasi / Umum = Administrasi Kandir + Administrasi Kebun
             //   Jumlah Biaya Usaha        = Biaya Penjualan + Biaya Administrasi / Umum
             //   Laba ( Rugi ) Usaha       = Laba ( Rugi ) Kotor + Jumlah Biaya Usaha
-            // "- Administrasi Kebun" belum ada sumbernya → dihitung 0. Laba (Rugi)
-            // Usaha butuh Laba Kotor, jadi kolom tanpa Laba Kotor tetap '-'.
+            //   Laba (Rugi) Usaha Setelah Biaya Bunga = Laba ( Rugi ) Usaha + Biaya Bunga
+            // "- Administrasi Kebun" & "Biaya Bunga" belum ada sumbernya → dihitung 0.
+            // Dua baris laba butuh Laba Kotor, jadi kolom tanpa Laba Kotor tetap '-'.
             const adm = {};
             const jbu = {};
             const usaha = {};
+            const usahaBunga = {};
             ['ks', 'kr'].forEach((c) => {
                 const kol = (k) => Number((out[k] || {})[c] || 0);
                 adm[c] = kol('administrasi_kandir') + kol('administrasi_kebun');
                 jbu[c] = kol('biaya_penjualan') + adm[c];
                 const kotor = (out.laba_kotor || {})[c];
                 usaha[c] = (kotor == null) ? null : kotor + jbu[c];
+                usahaBunga[c] = (usaha[c] == null) ? null : usaha[c] + kol('biaya_bunga');
             });
             out.biaya_adm_umum = adm;
             out.jumlah_biaya_usaha = jbu;
             out.laba_usaha = usaha;
+            out.laba_usaha_bunga = usahaBunga;
             return out;
         },
 
@@ -269,8 +273,8 @@ function lm27aApp() {
                 d('- Administrasi Kebun', 'administrasi_kebun'),
                 t('Jumlah Biaya Usaha', 'jumlah_biaya_usaha'),
                 t('Laba ( Rugi ) Usaha', 'laba_usaha'),
-                d('Biaya Bunga'),
-                t('Laba (Rugi) Usaha Setelah Biaya Bunga'),
+                d('Biaya Bunga', 'biaya_bunga'),
+                t('Laba (Rugi) Usaha Setelah Biaya Bunga', 'laba_usaha_bunga'),
                 gv('Pendapatan / Biaya Lain - Lain'),
                 d('Pendapatan Lain - Lain'),
                 d('Biaya Lain - Lain'),
