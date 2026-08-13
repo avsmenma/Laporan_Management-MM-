@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Report\Lm13Service;
+use App\Models\Batch;
+use App\Models\RefUnit;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -92,6 +95,67 @@ class Lm27aApiTest extends TestCase
         $lain = $this->actingAs($this->viewer())
             ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=1')->assertOk()->json();
         $this->assertSame($data['values']['persediaan_awal'], $lain['values']['persediaan_awal']);
+    }
+
+    public function test_penyusutan_sama_dengan_halaman_lm_eksploitasi(): void
+    {
+        $this->seed();
+        $this->seedPenjualan();
+
+        $batch = Batch::query()->create(['code' => 'Batch #2026-06', 'year' => 2026, 'month' => 6, 'status' => 'final']);
+        $units = [
+            ['5E01', 'KS', 61, 30_000_000_000.0],
+            ['5E02', 'KS', 61, 11_950_088_015.0],
+            ['5E06', 'KR', 41, 1_603_272_138.0],
+        ];
+
+        foreach ($units as [$code, $komoditi, $urutan, $sd]) {
+            $unit = RefUnit::query()->where('code', $code)->firstOrFail();
+            app(Lm13Service::class)->generate($batch, $unit, $komoditi);
+
+            $tpl = DB::table('lm_template_row')->where('report_type', 'LM13')
+                ->where('komoditi', $komoditi)->where('urutan', $urutan)->first();
+            // Kunci konstanta PENYUSUTAN_BUDIDAYA: urutan itu memang barisnya.
+            $this->assertSame('Jumlah Beban Penyusutan', $tpl->uraian);
+
+            $affected = DB::table('report_lm13')
+                ->where('batch_id', $batch->id)->where('unit_id', $unit->id)
+                ->where('template_id', $tpl->id)->where('blok', 'OLAH_JUAL')
+                ->update(['sd_real_thn_ini' => $sd]);
+            $this->assertSame(1, $affected, "Baris urutan {$urutan} OLAH_JUAL {$code} harus ada");
+        }
+
+        $user = $this->viewer();
+        $data = $this->actingAs($user)
+            ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=6')->assertOk()->json();
+
+        // Konsolidasi "Semua Unit": Kelapa Sawit = 5E01 + 5E02.
+        $this->assertEqualsWithDelta(41_950_088_015.0, $data['values']['penyusutan']['ks'], 0.001);
+        $this->assertEqualsWithDelta(1_603_272_138.0, $data['values']['penyusutan']['kr'], 0.001);
+
+        // …dan harus identik dengan yang tampil di halaman LM Eksploitasi
+        // (baris "Jumlah Beban Penyusutan", blok Kebun Sendiri + Pihak III, Real s.d).
+        foreach ([['KS', 61, 'ks'], ['KR', 41, 'kr']] as [$komoditi, $urutan, $col]) {
+            $lm13 = $this->actingAs($user)
+                ->getJson("/report-data/lm13?batch={$batch->id}&unit=ALL&komoditi={$komoditi}")
+                ->assertOk()->json('rows');
+            $row = collect($lm13)->first(
+                fn ($r) => (int) $r['urutan'] === $urutan && $r['block'] === 'OLAH_JUAL'
+            );
+            $this->assertEqualsWithDelta((float) $row['sd_jumlah'], $data['values']['penyusutan'][$col], 0.001);
+        }
+    }
+
+    public function test_penyusutan_nol_bila_periode_tanpa_batch(): void
+    {
+        $this->seedPenjualan();
+
+        // Juli 2026 punya data penjualan tetapi tidak punya batch LM13.
+        $data = $this->actingAs($this->viewer())
+            ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=7')->assertOk()->json();
+
+        $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['ks'], 0.001);
+        $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['kr'], 0.001);
     }
 
     public function test_tanpa_parameter_adopsi_periode_terbaru(): void

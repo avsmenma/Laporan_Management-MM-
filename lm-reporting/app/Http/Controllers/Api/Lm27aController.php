@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Domain\Report\PersediaanAwalTahun;
 use App\Http\Controllers\Api\Concerns\AuthorizesReportRequests;
 use App\Http\Controllers\Controller;
+use App\Models\Batch;
+use App\Models\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,9 +23,13 @@ use Illuminate\Support\Facades\DB;
  *   Jumlah       = Jumlah Lokal ( A + B + C )
  * Pemetaan baris→sumber diambil dari Lm34Controller supaya satu sumber kebenaran.
  *
- * Blok HARGA POKOK PENJUALAN baris "Persediaan Awal" diambil dari sumber yang
- * SAMA dengan /laba-rugi/persediaan (konstanta App\Domain\Report\PersediaanAwalTahun),
- * yaitu baris "Jumlah Persediaan" kolom PERSEDIAAN AWAL TAHUN (Rp) per tab.
+ * Blok HARGA POKOK PENJUALAN:
+ *   "Persediaan Awal" — sumber SAMA dengan /laba-rugi/persediaan (konstanta
+ *   App\Domain\Report\PersediaanAwalTahun), yaitu baris "Jumlah Persediaan" kolom
+ *   PERSEDIAAN AWAL TAHUN (Rp) per tab.
+ *   "Penyusutan" — sumber SAMA dengan /kebun (LM Eksploitasi): baris "Jumlah Beban
+ *   Penyusutan" kolom "s.d Bulan → Real s.d" blok "Kebun Sendiri + Pihak III",
+ *   unit "Semua Unit", lewat ReportController::lm13Rows().
  *
  * Belum ada sumber (dirender '-' di UI): baris Ekspor (template LM-34 tidak punya
  * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, sisa blok Harga Pokok
@@ -43,6 +49,16 @@ class Lm27aController extends Controller
     private const LOKAL_BUDIDAYA = [
         'ks' => ['jml_tbs', 'jml_a'],
         'kr' => ['jml_c'],
+    ];
+
+    /**
+     * Kolom budidaya → [komoditi LM13, urutan baris "Jumlah Beban Penyusutan"].
+     * Urutan baris berbeda antar komoditi karena templatnya memang beda panjang
+     * (lihat `seed_lm_template_row.sql`); diuji di Lm27aApiTest.
+     */
+    private const PENYUSUTAN_BUDIDAYA = [
+        'ks' => ['KS', 61],
+        'kr' => ['KR', 41],
     ];
 
     public function index(Request $request): JsonResponse
@@ -79,8 +95,55 @@ class Lm27aController extends Controller
             'values' => [
                 'lokal' => $this->lokal($year, $month),
                 'persediaan_awal' => $this->persediaanAwal(),
+                'penyusutan' => $this->penyusutan($year, $month),
             ],
         ]);
+    }
+
+    /**
+     * Baris "Penyusutan" per kolom budidaya = baris "Jumlah Beban Penyusutan"
+     * halaman LM Eksploitasi (/kebun) kolom "s.d Bulan {n} → Real s.d", blok
+     * "Kebun Sendiri + Pihak III" (`blok = OLAH_JUAL`), unit "Semua Unit".
+     *
+     * Sengaja lewat ReportController::lm13Rows() — BUKAN query langsung ke
+     * `report_lm13` — karena baris "Beban Penyusutan Overhead Pengolahan" baru
+     * diisi di lapisan presentasi (dari Alokasi Biaya Olah), sehingga subtotal di
+     * tabel lebih kecil daripada yang tampil di halaman.
+     *
+     * @return array<string, float>
+     */
+    private function penyusutan(int $year, int $month): array
+    {
+        $out = ['ks' => 0.0, 'kr' => 0.0];
+
+        // Batch unik per (year, month) — sama seperti pemilihan batch di halaman
+        // LM Eksploitasi. Periode tanpa batch → 0 (tampil '-').
+        $batch = Batch::query()->where('year', $year)->where('month', $month)->first();
+        if ($batch === null) {
+            return $out;
+        }
+
+        // Viewer hanya boleh melihat batch final/locked. Bila belum, baris ini
+        // dibiarkan 0 — bukan menggagalkan seluruh halaman LM-27A (blok Penjualan
+        // tidak bergantung batch).
+        $user = auth()->user();
+        if ($user && $user->hasRole(Role::VIEWER) && ! in_array($batch->status, ['final', 'locked'], true)) {
+            return $out;
+        }
+
+        $report = app(ReportController::class);
+        foreach (self::PENYUSUTAN_BUDIDAYA as $col => [$komoditi, $urutan]) {
+            $rows = $report->lm13Rows($batch, $komoditi);
+            if ($rows === null) {
+                continue;
+            }
+            $row = $rows->first(
+                fn ($r) => (int) ($r->urutan ?? 0) === $urutan && ($r->blok ?? null) === 'OLAH_JUAL'
+            );
+            $out[$col] = $row !== null ? (float) $row->sd_real_thn_ini : 0.0;
+        }
+
+        return $out;
     }
 
     /**
