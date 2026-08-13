@@ -112,6 +112,48 @@ class ReportController extends Controller
 
         $this->checkBatchAccess($batch);
 
+        $area = $isAll
+            ? $this->lm13AreaValuesAll($batch, $komoditi)
+            : $this->lm13AreaValues($batch, $unit, $komoditi);
+
+        $rows = $this->lm13Rows($batch, $komoditi, $isAll ? null : $unit, $area);
+
+        if ($rows === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data laporan LM13 tidak ditemukan. Silakan generate terlebih dahulu.',
+            ], 404);
+        }
+
+        $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
+        $meta['area'] = $area;
+
+        return response()->json([
+            'success' => true,
+            'meta' => $meta,
+            'columns' => $this->getLm13Columns(),
+            'rows' => $rows->map(fn ($row) => $this->formatLm13Row($row)),
+        ]);
+    }
+
+    /**
+     * Baris LM13 SETELAH seluruh lapisan presentasi — persis angka yang tampil di
+     * halaman LM Eksploitasi. Dipublikkan supaya halaman lain (mis. LM-27A baris
+     * "Penyusutan") memakai jalur hitung yang SAMA, bukan membaca `report_lm13`
+     * mentah: beberapa baris (Beban Pengolahan, Penyusutan Pengolahan, Pembelian
+     * TBS Pihak III) baru terisi di sini, jadi subtotalnya berbeda dari tabel.
+     *
+     * $unit null = konsolidasi "Semua Unit" (SUM lintas kebun). $area boleh diisi
+     * pemanggil bila sudah dihitung (penyebut baris "... per Ha").
+     *
+     * @param  array<string, float>|null  $area
+     * @return \Illuminate\Support\Collection<int, object>|null  null bila batch belum digenerate
+     */
+    public function lm13Rows(Batch $batch, string $komoditi, ?RefUnit $unit = null, ?array $area = null): ?\Illuminate\Support\Collection
+    {
+        $komoditi = strtoupper($komoditi);
+        $isAll = $unit === null;
+
         $rows = $isAll
             ? $this->aggregateLm13Rows($batch, $komoditi)
             : DB::table('report_lm13')
@@ -132,25 +174,22 @@ class ReportController extends Controller
                 ->get();
 
         if ($rows->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data laporan LM13 tidak ditemukan. Silakan generate terlebih dahulu.',
-            ], 404);
+            return null;
         }
 
         // Tarik nilai produksi per grup (- Kebun Inti) dari halaman Produksi
         // (tabel produksi_pks), lalu hitung ulang subtotal & HPP yang terdampak.
-        $rows = $this->applyProduksiToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
+        $rows = $this->applyProduksiToLm13($rows, $batch, $unit, $komoditi, $isAll);
 
         // Isi baris "Beban Langsung/Overhead/Penyusutan Pengolahan" dari halaman
         // Alokasi Biaya Olah (JLH per Kebun), lalu hitung ulang subtotal Beban
         // Pengolahan/Penyusutan/Produksi Kebun Inti. Lapisan presentasi.
-        $rows = $this->applyAlokasiOlahToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
+        $rows = $this->applyAlokasiOlahToLm13($rows, $batch, $unit, $komoditi, $isAll);
 
         // Isi baris "Pembelian TBS Plasma/Pihak III" & "Biaya Pengolahan Pihak III"
         // dari data Pembelian TBS + Alokasi Biaya Olah (peta PKS→Kebun), lalu hitung
         // ulang "Jumlah Biaya Produksi". Lapisan presentasi.
-        $rows = $this->applyPembelianTbsToLm13($rows, $batch, $isAll ? null : $unit, $komoditi, $isAll);
+        $rows = $this->applyPembelianTbsToLm13($rows, $batch, $unit, $komoditi, $isAll);
 
         // Sisipkan baris "Jumlah" untuk seksi A (Saldo Awal) — turunan dari baris
         // detail yang sudah terverifikasi, tidak mengubah template/mesin hitung.
@@ -160,23 +199,14 @@ class ReportController extends Controller
         // "Beban Produksi" dijadikan judul grup "G".
         $rows = $this->adjustLm13SawitRows($rows, $komoditi);
 
-        $meta = $this->buildMeta($batch, $unit, 'LM13', $komoditi);
-        $area = $isAll
+        $area ??= $isAll
             ? $this->lm13AreaValuesAll($batch, $komoditi)
             : $this->lm13AreaValues($batch, $unit, $komoditi);
-        $meta['area'] = $area;
 
         // Hitung baris "... per Ha" dengan penyebut "Luas Area Kebun TM Inti" yang
         // sama (dari areal_blok). Penyebut mesin hitung (alokasi_areal) masih kosong,
         // jadi rasio ini diisi di lapisan presentasi agar konsisten dengan Luas Area.
-        $rows = $this->applyPerHaToLm13($rows, (float) ($area['real_thn_ini'] ?? 0), $komoditi);
-
-        return response()->json([
-            'success' => true,
-            'meta' => $meta,
-            'columns' => $this->getLm13Columns(),
-            'rows' => $rows->map(fn ($row) => $this->formatLm13Row($row)),
-        ]);
+        return $this->applyPerHaToLm13($rows, (float) ($area['real_thn_ini'] ?? 0), $komoditi);
     }
 
     /**
