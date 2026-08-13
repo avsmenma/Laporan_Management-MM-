@@ -363,16 +363,25 @@ pada baris-baris itu.
 **12. RKO dan RKAP diimpor terpisah** (`rko_*` → `budget_rko`, `rkap_*` → `budget_rkap`).
 Sebelumnya satu berkas mengisi keduanya sehingga RKO selalu = RKAP.
 
-**13. Angka manual yang dipakai lebih dari satu halaman disimpan di kelas PHP, bukan konstanta
-JavaScript di blade** — contoh pertama `app/Domain/Report/PersediaanAwalTahun.php` (saldo
-PERSEDIAAN AWAL TAHUN, dipakai halaman Persediaan **dan** baris "Persediaan Awal" LM-27A).
+**13. Angka & struktur yang dipakai lebih dari satu halaman disimpan di kelas PHP, bukan
+konstanta JavaScript di blade** — `app/Domain/Report/PersediaanAwalTahun.php` (saldo PERSEDIAAN
+AWAL TAHUN) dan `app/Domain/Report/PersediaanStruktur.php` (daftar produk & unit tiap tab),
+keduanya dipakai halaman Persediaan **dan** baris "Persediaan Awal"/"Persediaan Akhir" LM-27A.
 *Alternatif yang ditolak:* menyalin angkanya ke dua tempat (dulu memang begitu, dan keduanya
 harus disamakan manual setiap kali user mengoreksi).
-*Konsekuensi:* halaman Persediaan menerima konstanta lewat argumen kedua
-`persediaanApp(@js($psdPenyesuaian), @js($psdAwalTahun))` — kalau menambah konstanta manual baru
-yang dipakai dua halaman, ikuti pola ini. Label produk & nama unit di kelas WAJIB sama persis
-dengan `cfg()` di blade Persediaan; kalau meleset, nilainya tetap masuk `jumlahRp()` (LM-27A)
-tetapi hilang dari baris rincian → dua halaman berselisih tanpa peringatan.
+*Konsekuensi:* halaman Persediaan menerima keduanya sebagai argumen
+`persediaanApp(@js($psdPenyesuaian), @js($psdAwalTahun), @js($psdStruktur))` — kalau menambah
+data serupa yang dipakai dua halaman, ikuti pola ini. Nama unit & label produk di
+`PersediaanAwalTahun` WAJIB sama persis dengan `PersediaanStruktur`; kalau meleset, nilainya
+tetap masuk `jumlahRp()` (LM-27A) tetapi hilang dari baris rincian → dua halaman berselisih
+tanpa peringatan.
+
+**14. Baris total LM-27A hanya dihitung bila SELURUH komponennya bersumber** — `values.hpp_kolom`
+dari `Api\Lm27aController` menyebut kolom budidaya mana yang boleh dijumlahkan; kolom lain
+dirender `-`. *Alasan:* menjumlahkan blok yang separuh baris­nya belum ada sumber menghasilkan
+total yang terlihat sah tetapi salah (pernah terjadi: periode tanpa batch LM13 menampilkan Laba
+Kotor 1,13 T). *Konsekuensi:* setiap kali sebuah baris komponen mendapat sumber baru, perbarui
+juga daftar itu.
 
 ---
 
@@ -507,6 +516,12 @@ Pekerjaan terakhir (selesai & sudah di-deploy): **mengisi blok Harga Pokok Penju
 - `c09837d` — baris **"Biaya Produksi"** = "Jumlah Biaya Produksi" halaman LM Eksploitasi
   **dikurangi** "Jumlah Beban Penyusutan" (aturan pemilik project: di LM-27A penyusutan berdiri
   sebagai baris tersendiri). Juli 2026: 1.264.270.936.505 − 80.825.741.670 = 1.183.445.194.835.
+- `ee9095a` + `07bf643` + `9f45a4d` — baris **"Persediaan Akhir"** (dari halaman Persediaan kolom
+  NILAI PERSEDIAAN AKHIR, lewat `PersediaanStruktur` + `PersediaanController::nilaiAkhirJumlah()`),
+  **tanda minus + format kurung** untuk tiga baris biaya, serta dua rumus total:
+  Harga Pokok Penjualan = jumlah seluruh baris bloknya, Laba (Rugi) Kotor = Jumlah Penjualan +
+  Harga Pokok Penjualan. Juli 2026 Kelapa Sawit: HPP (1.228.470.741.295), Laba Kotor
+  176.093.262.566.
 
 **Tidak ada pekerjaan yang tergantung setengah jalan.** Langkah berikutnya menunggu arahan
 pemilik project; kandidat terdekat ada di §12.
@@ -522,12 +537,13 @@ hanya letaknya kini di PHP; nilainya milik tahun buku 2026 dan ditampilkan untuk
 
 **Prioritas yang dinyatakan pemilik project (2026-08-12): melengkapi LM-27A.**
 Yang sudah terisi: blok Penjualan→Lokal (dari `penjualan_produk`, memakai pemetaan yang sama
-dengan LM 34 lewat `Lm34Controller::detailKeysOf()`), Harga Pokok Penjualan→Persediaan Awal
-(dari `PersediaanAwalTahun`), serta Harga Pokok Penjualan→Biaya Produksi & Penyusutan (dari
-`ReportController::lm13Rows()`; kolom Karet keduanya masih kosong — lihat §10). Sisanya —
-Order Produksi, Persediaan Akhir, seluruh Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai
-Laba (Rugi) — masih `-`, termasuk semua baris totalnya (baris total sengaja dibiarkan `-` selama
-komponennya belum lengkap, supaya tidak menampilkan total yang menyesatkan).
+dengan LM 34 lewat `Lm34Controller::detailKeysOf()`) dan **seluruh blok Harga Pokok Penjualan
+kolom Kelapa Sawit** — Persediaan Awal & Persediaan Akhir dari halaman Persediaan, Biaya Produksi
+& Penyusutan dari `ReportController::lm13Rows()`, ditutup dua baris total (Harga Pokok Penjualan,
+Laba (Rugi) Kotor). Kolom Karet blok itu masih kosong (lihat §10). Sisanya — Order Produksi,
+seluruh Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai Laba (Rugi) — masih `-`, termasuk baris
+totalnya (baris total sengaja dibiarkan `-` selama komponennya belum lengkap, supaya tidak
+menampilkan total yang menyesatkan — lihat §7 no.14).
 
 Pola yang sudah terbentuk untuk melengkapinya: setiap baris LM-27A ditarik dari **jalur hitung
 halaman yang sudah ada** (bukan query mentah), supaya angkanya tidak bisa berbeda dari halaman
