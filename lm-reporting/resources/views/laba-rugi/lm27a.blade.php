@@ -89,8 +89,9 @@
 function lm27aApp() {
     return {
         // Baris "Lokal" (sumber sama dengan LM 34), "Persediaan Awal" (halaman
-        // Persediaan), dan "Penyusutan" (halaman LM Eksploitasi) ditarik dari
-        // /report-data/laba-rugi/lm27a. Baris lain belum ada sumber → tetap '-'.
+        // Persediaan), serta "Biaya Produksi" & "Penyusutan" (halaman LM
+        // Eksploitasi) ditarik dari /report-data/laba-rugi/lm27a. Baris lain belum
+        // ada sumber → tetap '-'.
         // Default template Juni 2026; saat init diganti periode data TERBARU.
         month: 6,
         year: 2026,
@@ -172,8 +173,12 @@ function lm27aApp() {
             // belum ada sumbernya, jadi totalnya akan menyesatkan.
             const pa = this.values.persediaan_awal;
             if (pa) out.persediaan_awal = { ks: Number(pa.ks || 0), kr: Number(pa.kr || 0) };
-            // Penyusutan = baris "Jumlah Beban Penyusutan" halaman LM Eksploitasi
-            // (/kebun) kolom "s.d Bulan → Real s.d", blok Kebun Sendiri + Pihak III.
+            // Biaya Produksi & Penyusutan = baris "Jumlah Biaya Produksi" (sudah
+            // dikurangi penyusutan) dan "Jumlah Beban Penyusutan" halaman LM
+            // Eksploitasi (/kebun), kolom "s.d Bulan → Real s.d", blok Kebun
+            // Sendiri + Pihak III.
+            const bp = this.values.biaya_produksi;
+            if (bp) out.biaya_produksi = { ks: Number(bp.ks || 0), kr: Number(bp.kr || 0) };
             const py = this.values.penyusutan;
             if (py) out.penyusutan = { ks: Number(py.ks || 0), kr: Number(py.kr || 0) };
             return out;
@@ -196,7 +201,7 @@ function lm27aApp() {
                 t('Jumlah Penjualan', 'jml_penjualan'),
                 g('Harga Pokok Penjualan'),
                 d('Persediaan Awal', 'persediaan_awal'),
-                d('Biaya Produksi'),
+                d('Biaya Produksi', 'biaya_produksi'),
                 d('Penyusutan', 'penyusutan'),
                 d('Order Produksi'),
                 d('Persediaan Akhir'),

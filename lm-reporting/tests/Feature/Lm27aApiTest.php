@@ -97,32 +97,41 @@ class Lm27aApiTest extends TestCase
         $this->assertSame($data['values']['persediaan_awal'], $lain['values']['persediaan_awal']);
     }
 
-    public function test_penyusutan_sama_dengan_halaman_lm_eksploitasi(): void
+    public function test_biaya_produksi_dan_penyusutan_dari_halaman_lm_eksploitasi(): void
     {
         $this->seed();
         $this->seedPenjualan();
 
         $batch = Batch::query()->create(['code' => 'Batch #2026-06', 'year' => 2026, 'month' => 6, 'status' => 'final']);
+        // [unit, komoditi, baris penyusutan, baris sumber biaya produksi] — tiap
+        // baris [urutan, uraian, nilai s.d]. Untuk KS nilai ditanam di urutan 62
+        // ("Jumlah Beban Produksi Kebun Inti"), BUKAN 68, karena "Jumlah Biaya
+        // Produksi" selalu dihitung ulang = 62 + 67 di lapisan presentasi.
         $units = [
-            ['5E01', 'KS', 61, 30_000_000_000.0],
-            ['5E02', 'KS', 61, 11_950_088_015.0],
-            ['5E06', 'KR', 41, 1_603_272_138.0],
+            ['5E01', 'KS', [61, 'Jumlah Beban Penyusutan', 30_000_000_000.0], [62, 'Jumlah Beban Produksi Kebun Inti', 900_000_000_000.0]],
+            ['5E02', 'KS', [61, 'Jumlah Beban Penyusutan', 11_950_088_015.0], [62, 'Jumlah Beban Produksi Kebun Inti', 364_270_936_505.0]],
+            ['5E06', 'KR', [41, 'Jumlah Beban Penyusutan', 1_603_272_138.0], [48, 'Jumlah Biaya Produksi', 25_000_000_000.0]],
         ];
 
-        foreach ($units as [$code, $komoditi, $urutan, $sd]) {
+        foreach ($units as [$code, $komoditi, $peny, $prod]) {
             $unit = RefUnit::query()->where('code', $code)->firstOrFail();
             app(Lm13Service::class)->generate($batch, $unit, $komoditi);
 
-            $tpl = DB::table('lm_template_row')->where('report_type', 'LM13')
-                ->where('komoditi', $komoditi)->where('urutan', $urutan)->first();
-            // Kunci konstanta PENYUSUTAN_BUDIDAYA: urutan itu memang barisnya.
-            $this->assertSame('Jumlah Beban Penyusutan', $tpl->uraian);
+            $set = function (array $baris) use ($batch, $unit, $komoditi, $code): void {
+                [$urutan, $uraian, $sd] = $baris;
+                $tpl = DB::table('lm_template_row')->where('report_type', 'LM13')
+                    ->where('komoditi', $komoditi)->where('urutan', $urutan)->first();
+                // Kunci urutan baris (a.l. konstanta LM13_BUDIDAYA).
+                $this->assertSame($uraian, $tpl->uraian);
 
-            $affected = DB::table('report_lm13')
-                ->where('batch_id', $batch->id)->where('unit_id', $unit->id)
-                ->where('template_id', $tpl->id)->where('blok', 'OLAH_JUAL')
-                ->update(['sd_real_thn_ini' => $sd]);
-            $this->assertSame(1, $affected, "Baris urutan {$urutan} OLAH_JUAL {$code} harus ada");
+                $affected = DB::table('report_lm13')
+                    ->where('batch_id', $batch->id)->where('unit_id', $unit->id)
+                    ->where('template_id', $tpl->id)->where('blok', 'OLAH_JUAL')
+                    ->update(['sd_real_thn_ini' => $sd]);
+                $this->assertSame(1, $affected, "Baris urutan {$urutan} OLAH_JUAL {$code} harus ada");
+            };
+            $set($peny);
+            $set($prod);
         }
 
         $user = $this->viewer();
@@ -130,25 +139,30 @@ class Lm27aApiTest extends TestCase
             ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=6')->assertOk()->json();
 
         // Konsolidasi "Semua Unit": Kelapa Sawit = 5E01 + 5E02.
-        $this->assertEqualsWithDelta(41_950_088_015.0, $data['values']['penyusutan']['ks'], 0.001);
+        $penyusutan = 41_950_088_015.0;
+        $biayaProduksi = 1_264_270_936_505.0;
+        $this->assertEqualsWithDelta($penyusutan, $data['values']['penyusutan']['ks'], 0.001);
+        // Biaya Produksi LM-27A = Jumlah Biaya Produksi − Jumlah Beban Penyusutan.
+        $this->assertEqualsWithDelta($biayaProduksi - $penyusutan, $data['values']['biaya_produksi']['ks'], 0.001);
 
-        // …dan harus identik dengan yang tampil di halaman LM Eksploitasi
-        // (baris "Jumlah Beban Penyusutan", blok Kebun Sendiri + Pihak III, Real s.d).
-        $lm13 = $this->actingAs($user)
+        // …dan sumbernya harus identik dengan yang tampil di halaman LM Eksploitasi
+        // (blok Kebun Sendiri + Pihak III, kolom Real s.d).
+        $lm13 = collect($this->actingAs($user)
             ->getJson("/report-data/lm13?batch={$batch->id}&unit=ALL&komoditi=KS")
-            ->assertOk()->json('rows');
-        $row = collect($lm13)->first(
-            fn ($r) => (int) $r['urutan'] === 61 && $r['block'] === 'OLAH_JUAL'
-        );
-        $this->assertEqualsWithDelta((float) $row['sd_jumlah'], $data['values']['penyusutan']['ks'], 0.001);
+            ->assertOk()->json('rows'));
+        $sd = fn (int $urutan) => (float) $lm13->first(
+            fn ($r) => (int) $r['urutan'] === $urutan && $r['block'] === 'OLAH_JUAL'
+        )['sd_jumlah'];
+        $this->assertEqualsWithDelta($sd(61), $data['values']['penyusutan']['ks'], 0.001);
+        $this->assertEqualsWithDelta($sd(68) - $sd(61), $data['values']['biaya_produksi']['ks'], 0.001);
 
-        // Karet SENGAJA 0 walaupun datanya ada: sumber "Beban Penyusutan Overhead
-        // Pengolahan" KR masih memakai alokasi biaya olah PKS (sawit).
-        // Lihat Lm27aController::PENYUSUTAN_BUDIDAYA.
+        // Karet SENGAJA 0 walaupun datanya ada: baris pengolahan KM masih memakai
+        // alokasi biaya olah PKS (sawit). Lihat Lm27aController::LM13_BUDIDAYA.
         $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['kr'], 0.001);
+        $this->assertEqualsWithDelta(0, $data['values']['biaya_produksi']['kr'], 0.001);
     }
 
-    public function test_penyusutan_nol_bila_periode_tanpa_batch(): void
+    public function test_baris_lm13_nol_bila_periode_tanpa_batch(): void
     {
         $this->seedPenjualan();
 
@@ -156,8 +170,10 @@ class Lm27aApiTest extends TestCase
         $data = $this->actingAs($this->viewer())
             ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=7')->assertOk()->json();
 
-        $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['ks'], 0.001);
-        $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['kr'], 0.001);
+        foreach (['penyusutan', 'biaya_produksi'] as $key) {
+            $this->assertEqualsWithDelta(0, $data['values'][$key]['ks'], 0.001);
+            $this->assertEqualsWithDelta(0, $data['values'][$key]['kr'], 0.001);
+        }
     }
 
     public function test_tanpa_parameter_adopsi_periode_terbaru(): void

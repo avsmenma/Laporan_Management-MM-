@@ -27,10 +27,10 @@ use Illuminate\Support\Facades\DB;
  *   "Persediaan Awal" — sumber SAMA dengan /laba-rugi/persediaan (konstanta
  *   App\Domain\Report\PersediaanAwalTahun), yaitu baris "Jumlah Persediaan" kolom
  *   PERSEDIAAN AWAL TAHUN (Rp) per tab.
- *   "Penyusutan" — sumber SAMA dengan /kebun (LM Eksploitasi): baris "Jumlah Beban
- *   Penyusutan" kolom "s.d Bulan → Real s.d" blok "Kebun Sendiri + Pihak III",
- *   unit "Semua Unit", lewat ReportController::lm13Rows(). Kolom Karet masih '-'
- *   (lihat PENYUSUTAN_BUDIDAYA).
+ *   "Biaya Produksi" & "Penyusutan" — sumber SAMA dengan /kebun (LM Eksploitasi),
+ *   kolom "s.d Bulan → Real s.d" blok "Kebun Sendiri + Pihak III", unit "Semua
+ *   Unit", lewat ReportController::lm13Rows(). Kolom Karet keduanya masih '-'
+ *   (lihat LM13_BUDIDAYA).
  *
  * Belum ada sumber (dirender '-' di UI): baris Ekspor (template LM-34 tidak punya
  * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, sisa blok Harga Pokok
@@ -53,21 +53,22 @@ class Lm27aController extends Controller
     ];
 
     /**
-     * Kolom budidaya → [komoditi LM13, urutan baris "Jumlah Beban Penyusutan"].
-     * Urutan baris berbeda antar komoditi karena templatnya memang beda panjang
-     * (lihat `seed_lm_template_row.sql`); diuji di Lm27aApiTest.
+     * Kolom budidaya → baris LM13 yang dipakai LM-27A: komoditi + urutan baris
+     * "Jumlah Beban Penyusutan" dan "Jumlah Biaya Produksi". Urutan berbeda antar
+     * komoditi karena templatnya memang beda panjang (KR: 41 & 48 — lihat
+     * `seed_lm_template_row.sql`); diuji di Lm27aApiTest.
      *
-     * ⚠️ 'kr' SENGAJA TIDAK diikutkan. Di halaman LM Eksploitasi, baris "Beban
-     * Penyusutan Overhead Pengolahan" komoditi KR diisi dari Alokasi Biaya Olah
-     * yang sumbernya PKS/sawit (`AlokasiBiayaOlahController::jlhPerKebunLm13()`
-     * tidak menerima parameter komoditi), sehingga nilainya sama persis dengan
-     * kolom Sawit dan subtotal Karet ikut menggelembung. Contoh Juli 2026 di
-     * server: KR pengolahan 38.875.653.655 = angka Sawit, padahal penyusutan
-     * kebun karetnya hanya 2.211.421.100. Isi kolom Karet di sini setelah sumber
-     * itu dipisahkan per komoditi.
+     * ⚠️ 'kr' SENGAJA TIDAK diikutkan. Di halaman LM Eksploitasi, baris pengolahan
+     * komoditi KR (Beban Langsung/Overhead/Penyusutan Pengolahan) diisi dari Alokasi
+     * Biaya Olah yang sumbernya PKS/sawit (`AlokasiBiayaOlahController::jlhPerKebunLm13()`
+     * tidak menerima parameter komoditi), sehingga nilainya sama persis dengan kolom
+     * Sawit dan kedua subtotal Karet ikut menggelembung. Contoh Juli 2026 di server:
+     * KR penyusutan pengolahan 38.875.653.655 = angka Sawit, padahal penyusutan kebun
+     * karetnya hanya 2.211.421.100. Isi kolom Karet di sini setelah sumber itu
+     * dipisahkan per komoditi.
      */
-    private const PENYUSUTAN_BUDIDAYA = [
-        'ks' => ['KS', 61],
+    private const LM13_BUDIDAYA = [
+        'ks' => ['komoditi' => 'KS', 'penyusutan' => 61, 'biaya_produksi' => 68],
     ];
 
     public function index(Request $request): JsonResponse
@@ -97,6 +98,8 @@ class Lm27aController extends Controller
         $year = (int) $year;
         $month = (int) $month;
 
+        $lm13 = $this->lm13Values($year, $month);
+
         return response()->json([
             'periods' => $periods,
             'year' => $year,
@@ -104,29 +107,41 @@ class Lm27aController extends Controller
             'values' => [
                 'lokal' => $this->lokal($year, $month),
                 'persediaan_awal' => $this->persediaanAwal(),
-                'penyusutan' => $this->penyusutan($year, $month),
+                'biaya_produksi' => $lm13['biaya_produksi'],
+                'penyusutan' => $lm13['penyusutan'],
             ],
         ]);
     }
 
     /**
-     * Baris "Penyusutan" per kolom budidaya = baris "Jumlah Beban Penyusutan"
-     * halaman LM Eksploitasi (/kebun) kolom "s.d Bulan {n} → Real s.d", blok
-     * "Kebun Sendiri + Pihak III" (`blok = OLAH_JUAL`), unit "Semua Unit".
+     * Baris LM-27A yang bersumber dari halaman LM Eksploitasi (/kebun), kolom
+     * "s.d Bulan {n} → Real s.d" (`sd_real_thn_ini`), blok "Kebun Sendiri +
+     * Pihak III" (`blok = OLAH_JUAL`), unit "Semua Unit":
+     *
+     *   "Penyusutan"    = baris "Jumlah Beban Penyusutan" apa adanya.
+     *   "Biaya Produksi" = baris "Jumlah Biaya Produksi" DIKURANGI baris
+     *                      "Jumlah Beban Penyusutan" (aturan user) — di LM-27A
+     *                      penyusutan berdiri sebagai baris tersendiri, jadi harus
+     *                      dikeluarkan dari biaya produksi agar tidak dobel.
+     *                      Juli 2026: 1.264.270.936.505 − 80.825.741.670
+     *                               = 1.183.445.194.835.
      *
      * Sengaja lewat ReportController::lm13Rows() — BUKAN query langsung ke
-     * `report_lm13` — karena baris "Beban Penyusutan Overhead Pengolahan" baru
-     * diisi di lapisan presentasi (dari Alokasi Biaya Olah), sehingga subtotal di
-     * tabel lebih kecil daripada yang tampil di halaman.
+     * `report_lm13` — karena baris pengolahan & pembelian TBS Pihak III baru diisi
+     * di lapisan presentasi, sehingga subtotal di tabel lebih kecil daripada yang
+     * tampil di halaman.
      *
      * Hanya kolom Kelapa Sawit yang diisi; alasan kolom Karet dikosongkan ada di
-     * PENYUSUTAN_BUDIDAYA.
+     * LM13_BUDIDAYA.
      *
-     * @return array<string, float>
+     * @return array<string, array<string, float>>
      */
-    private function penyusutan(int $year, int $month): array
+    private function lm13Values(int $year, int $month): array
     {
-        $out = ['ks' => 0.0, 'kr' => 0.0];
+        $out = [
+            'biaya_produksi' => ['ks' => 0.0, 'kr' => 0.0],
+            'penyusutan' => ['ks' => 0.0, 'kr' => 0.0],
+        ];
 
         // Batch unik per (year, month) — sama seperti pemilihan batch di halaman
         // LM Eksploitasi. Periode tanpa batch → 0 (tampil '-').
@@ -144,15 +159,22 @@ class Lm27aController extends Controller
         }
 
         $report = app(ReportController::class);
-        foreach (self::PENYUSUTAN_BUDIDAYA as $col => [$komoditi, $urutan]) {
-            $rows = $report->lm13Rows($batch, $komoditi);
+        foreach (self::LM13_BUDIDAYA as $col => $ref) {
+            $rows = $report->lm13Rows($batch, $ref['komoditi']);
             if ($rows === null) {
                 continue;
             }
-            $row = $rows->first(
-                fn ($r) => (int) ($r->urutan ?? 0) === $urutan && ($r->blok ?? null) === 'OLAH_JUAL'
-            );
-            $out[$col] = $row !== null ? (float) $row->sd_real_thn_ini : 0.0;
+            $nilai = function (int $urutan) use ($rows): float {
+                $row = $rows->first(
+                    fn ($r) => (int) ($r->urutan ?? 0) === $urutan && ($r->blok ?? null) === 'OLAH_JUAL'
+                );
+
+                return $row !== null ? (float) $row->sd_real_thn_ini : 0.0;
+            };
+
+            $penyusutan = $nilai($ref['penyusutan']);
+            $out['penyusutan'][$col] = $penyusutan;
+            $out['biaya_produksi'][$col] = $nilai($ref['biaya_produksi']) - $penyusutan;
         }
 
         return $out;
