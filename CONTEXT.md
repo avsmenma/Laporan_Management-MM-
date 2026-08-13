@@ -516,6 +516,10 @@ Pekerjaan terakhir (selesai & sudah di-deploy): **mengisi blok Harga Pokok Penju
 - `c09837d` — baris **"Biaya Produksi"** = "Jumlah Biaya Produksi" halaman LM Eksploitasi
   **dikurangi** "Jumlah Beban Penyusutan" (aturan pemilik project: di LM-27A penyusutan berdiri
   sebagai baris tersendiri). Juli 2026: 1.264.270.936.505 − 80.825.741.670 = 1.183.445.194.835.
+- `615fefb` — blok **Biaya Usaha**: "Biaya Penjualan" (dari halaman Beban Penjualan, baris
+  "Jumlah" per seksi) dan "- Administrasi Kandir" (dari Beban Administrasi tab ADMI KS/KR,
+  baris "Jumlah beban administrasi Include Penyusutan"), keduanya bertanda minus.
+  Juni 2026: (4.174.275.496) dan (111.709.495.891) / Karet (123.484.084).
 - `ee9095a` + `07bf643` + `9f45a4d` — baris **"Persediaan Akhir"** (dari halaman Persediaan kolom
   NILAI PERSEDIAAN AKHIR, lewat `PersediaanStruktur` + `PersediaanController::nilaiAkhirJumlah()`),
   **tanda minus + format kurung** untuk tiga baris biaya, serta dua rumus total:
@@ -540,10 +544,11 @@ Yang sudah terisi: blok Penjualan→Lokal (dari `penjualan_produk`, memakai peme
 dengan LM 34 lewat `Lm34Controller::detailKeysOf()`) dan **seluruh blok Harga Pokok Penjualan
 kolom Kelapa Sawit** — Persediaan Awal & Persediaan Akhir dari halaman Persediaan, Biaya Produksi
 & Penyusutan dari `ReportController::lm13Rows()`, ditutup dua baris total (Harga Pokok Penjualan,
-Laba (Rugi) Kotor). Kolom Karet blok itu masih kosong (lihat §10). Sisanya — Order Produksi,
-seluruh Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai Laba (Rugi) — masih `-`, termasuk baris
-totalnya (baris total sengaja dibiarkan `-` selama komponennya belum lengkap, supaya tidak
-menampilkan total yang menyesatkan — lihat §7 no.14).
+Laba (Rugi) Kotor). Kolom Karet blok itu masih kosong (lihat §10). Blok **Biaya Usaha** sudah
+punya "Biaya Penjualan" & "- Administrasi Kandir" (dari halaman Beban Penjualan & Beban
+Administrasi). Sisanya — Order Produksi, "- Administrasi Kebun", Pendapatan/Biaya Lain-lain,
+sampai Laba (Rugi) — masih `-`, termasuk baris totalnya (baris total sengaja dibiarkan `-` selama
+komponennya belum lengkap, supaya tidak menampilkan total yang menyesatkan — lihat §7 no.14).
 
 Pola yang sudah terbentuk untuk melengkapinya: setiap baris LM-27A ditarik dari **jalur hitung
 halaman yang sudah ada** (bukan query mentah), supaya angkanya tidak bisa berbeda dari halaman
