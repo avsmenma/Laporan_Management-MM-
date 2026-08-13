@@ -553,8 +553,15 @@ konfirmasi pemilik project). Sisanya — Order Produksi, Biaya Bunga, Pendapatan
 sampai Laba (Rugi) Komprehensif — masih `-`, termasuk baris totalnya (baris total sengaja
 dibiarkan `-` selama komponennya belum lengkap — lihat §7 no.14).
 
-Pola tanda yang sudah disepakati: **setiap baris biaya dikirim negatif** dan dirender dalam
-kurung, sehingga semua baris total cukup penjumlahan — jangan mengubahnya jadi pengurangan.
+**Seluruh baris total LM-27A sudah berumus** (sampai "Laba (Rugi) Komprehensif"); yang tersisa
+adalah mengisi baris komponennya. Pola tanda yang sudah disepakati: **setiap baris biaya dikirim
+negatif** dan dirender dalam kurung, sehingga semua baris total cukup penjumlahan — jangan
+mengubahnya jadi pengurangan. Perkecualian: "Laba (Rugi) setelah Pajak" & "Laba (Rugi) setelah
+Pajak Tangguhan" memang MENGURANGKAN baris pajaknya (nilai pajak diisi positif).
+
+Baris komponen yang belum ada sumbernya (dihitung 0 di semua total): Ekspor, Perubahan Nilai
+Wajar Aset Biologis, Order Produksi, "- Administrasi Kebun", Biaya Bunga, Pendapatan Lain-Lain,
+Pajak Perseroan, Pajak Tangguhan, dan 3 baris Pendapatan Komprehensif Lain.
 
 Pola yang sudah terbentuk untuk melengkapinya: setiap baris LM-27A ditarik dari **jalur hitung
 halaman yang sudah ada** (bukan query mentah), supaya angkanya tidak bisa berbeda dari halaman
