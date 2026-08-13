@@ -88,8 +88,9 @@
 <script>
 function lm27aApp() {
     return {
-        // Blok Penjualan baris "Lokal" ditarik dari /report-data/laba-rugi/lm27a
-        // (sumber sama dengan LM 34). Baris lain belum ada sumber → tetap '-'.
+        // Baris "Lokal" (sumber sama dengan LM 34) dan "Persediaan Awal" (sumber
+        // sama dengan halaman Persediaan) ditarik dari /report-data/laba-rugi/lm27a.
+        // Baris lain belum ada sumber → tetap '-'.
         // Default template Juni 2026; saat init diganti periode data TERBARU.
         month: 6,
         year: 2026,
@@ -156,13 +157,21 @@ function lm27aApp() {
         nilaiBaris() {
             const out = {};
             const lokal = this.values.lokal;
-            if (!lokal) return out;
-            const ks = Number(lokal.ks || 0);
-            const kr = Number(lokal.kr || 0);
-            out.lokal = { ks, kr };
-            // Jumlah Penjualan = Ekspor + Lokal + Perubahan Nilai Wajar Aset
-            // Biologis; dua baris itu belum ada sumber → dihitung 0.
-            out.jml_penjualan = { ks, kr };
+            if (lokal) {
+                const ks = Number(lokal.ks || 0);
+                const kr = Number(lokal.kr || 0);
+                out.lokal = { ks, kr };
+                // Jumlah Penjualan = Ekspor + Lokal + Perubahan Nilai Wajar Aset
+                // Biologis; dua baris itu belum ada sumber → dihitung 0.
+                out.jml_penjualan = { ks, kr };
+            }
+            // Persediaan Awal = baris "Jumlah Persediaan" kolom PERSEDIAAN AWAL
+            // TAHUN (Rp) di /laba-rugi/persediaan (tab KELAPA SAWIT & KARET).
+            // Baris total "Harga Pokok Penjualan" SENGAJA belum diisi: komponen
+            // lain (Biaya Produksi, Penyusutan, Order Produksi, Persediaan Akhir)
+            // belum ada sumbernya, jadi totalnya akan menyesatkan.
+            const pa = this.values.persediaan_awal;
+            if (pa) out.persediaan_awal = { ks: Number(pa.ks || 0), kr: Number(pa.kr || 0) };
             return out;
         },
 
@@ -182,7 +191,7 @@ function lm27aApp() {
                 d('Perubahan Nilai Wajar Aset Biologis', 'pnw'),
                 t('Jumlah Penjualan', 'jml_penjualan'),
                 g('Harga Pokok Penjualan'),
-                d('Persediaan Awal'),
+                d('Persediaan Awal', 'persediaan_awal'),
                 d('Biaya Produksi'),
                 d('Penyusutan'),
                 d('Order Produksi'),

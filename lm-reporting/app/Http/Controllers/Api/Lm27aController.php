@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Domain\Report\PersediaanAwalTahun;
 use App\Http\Controllers\Api\Concerns\AuthorizesReportRequests;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -20,9 +21,13 @@ use Illuminate\Support\Facades\DB;
  *   Jumlah       = Jumlah Lokal ( A + B + C )
  * Pemetaan baris→sumber diambil dari Lm34Controller supaya satu sumber kebenaran.
  *
+ * Blok HARGA POKOK PENJUALAN baris "Persediaan Awal" diambil dari sumber yang
+ * SAMA dengan /laba-rugi/persediaan (konstanta App\Domain\Report\PersediaanAwalTahun),
+ * yaitu baris "Jumlah Persediaan" kolom PERSEDIAAN AWAL TAHUN (Rp) per tab.
+ *
  * Belum ada sumber (dirender '-' di UI): baris Ekspor (template LM-34 tidak punya
- * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, serta seluruh blok Harga
- * Pokok Penjualan, Biaya Usaha, dan seterusnya.
+ * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, sisa blok Harga Pokok
+ * Penjualan (termasuk barisan totalnya), Biaya Usaha, dan seterusnya.
  */
 class Lm27aController extends Controller
 {
@@ -71,8 +76,30 @@ class Lm27aController extends Controller
             'periods' => $periods,
             'year' => $year,
             'month' => $month,
-            'values' => ['lokal' => $this->lokal($year, $month)],
+            'values' => [
+                'lokal' => $this->lokal($year, $month),
+                'persediaan_awal' => $this->persediaanAwal(),
+            ],
         ]);
+    }
+
+    /**
+     * Baris "Persediaan Awal" per kolom budidaya = baris "Jumlah Persediaan"
+     * kolom PERSEDIAAN AWAL TAHUN (Rp) pada /laba-rugi/persediaan (tab KELAPA
+     * SAWIT & KARET) — Σ nilai semua unit + baris penyesuaian.
+     *
+     * Tidak bergantung filter periode: saldo awal tahun sama untuk semua bulan
+     * (LM-27A memang kumulatif 1 Januari s/d bulan filter), sama seperti kolom
+     * itu di halaman persediaan.
+     *
+     * @return array<string, float>
+     */
+    private function persediaanAwal(): array
+    {
+        return [
+            'ks' => PersediaanAwalTahun::jumlahRp('sawit'),
+            'kr' => PersediaanAwalTahun::jumlahRp('karet'),
+        ];
     }
 
     /**

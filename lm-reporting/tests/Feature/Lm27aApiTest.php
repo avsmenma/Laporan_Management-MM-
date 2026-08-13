@@ -76,6 +76,24 @@ class Lm27aApiTest extends TestCase
         $this->assertEqualsWithDelta(60, $data['values']['lokal']['kr'], 0.001);
     }
 
+    public function test_persediaan_awal_sama_dengan_halaman_persediaan(): void
+    {
+        $this->seedPenjualan();
+
+        $data = $this->actingAs($this->viewer())
+            ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=7')->assertOk()->json();
+
+        // Angka acuan = baris "Jumlah Persediaan" kolom PERSEDIAAN AWAL TAHUN (Rp)
+        // pada /laba-rugi/persediaan (Σ unit + baris penyesuaian).
+        $this->assertEqualsWithDelta(194983848689, $data['values']['persediaan_awal']['ks'], 0.001);
+        $this->assertEqualsWithDelta(241975496, $data['values']['persediaan_awal']['kr'], 0.001);
+
+        // Saldo awal tahun tidak berubah per bulan.
+        $lain = $this->actingAs($this->viewer())
+            ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=1')->assertOk()->json();
+        $this->assertSame($data['values']['persediaan_awal'], $lain['values']['persediaan_awal']);
+    }
+
     public function test_tanpa_parameter_adopsi_periode_terbaru(): void
     {
         $this->seedPenjualan();
