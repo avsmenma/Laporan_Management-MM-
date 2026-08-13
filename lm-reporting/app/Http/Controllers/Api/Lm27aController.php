@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\DB;
  *   PERSEDIAAN AWAL TAHUN (Rp) per tab.
  *   "Penyusutan" — sumber SAMA dengan /kebun (LM Eksploitasi): baris "Jumlah Beban
  *   Penyusutan" kolom "s.d Bulan → Real s.d" blok "Kebun Sendiri + Pihak III",
- *   unit "Semua Unit", lewat ReportController::lm13Rows().
+ *   unit "Semua Unit", lewat ReportController::lm13Rows(). Kolom Karet masih '-'
+ *   (lihat PENYUSUTAN_BUDIDAYA).
  *
  * Belum ada sumber (dirender '-' di UI): baris Ekspor (template LM-34 tidak punya
  * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, sisa blok Harga Pokok
@@ -55,10 +56,18 @@ class Lm27aController extends Controller
      * Kolom budidaya → [komoditi LM13, urutan baris "Jumlah Beban Penyusutan"].
      * Urutan baris berbeda antar komoditi karena templatnya memang beda panjang
      * (lihat `seed_lm_template_row.sql`); diuji di Lm27aApiTest.
+     *
+     * ⚠️ 'kr' SENGAJA TIDAK diikutkan. Di halaman LM Eksploitasi, baris "Beban
+     * Penyusutan Overhead Pengolahan" komoditi KR diisi dari Alokasi Biaya Olah
+     * yang sumbernya PKS/sawit (`AlokasiBiayaOlahController::jlhPerKebunLm13()`
+     * tidak menerima parameter komoditi), sehingga nilainya sama persis dengan
+     * kolom Sawit dan subtotal Karet ikut menggelembung. Contoh Juli 2026 di
+     * server: KR pengolahan 38.875.653.655 = angka Sawit, padahal penyusutan
+     * kebun karetnya hanya 2.211.421.100. Isi kolom Karet di sini setelah sumber
+     * itu dipisahkan per komoditi.
      */
     private const PENYUSUTAN_BUDIDAYA = [
         'ks' => ['KS', 61],
-        'kr' => ['KR', 41],
     ];
 
     public function index(Request $request): JsonResponse
@@ -109,6 +118,9 @@ class Lm27aController extends Controller
      * `report_lm13` — karena baris "Beban Penyusutan Overhead Pengolahan" baru
      * diisi di lapisan presentasi (dari Alokasi Biaya Olah), sehingga subtotal di
      * tabel lebih kecil daripada yang tampil di halaman.
+     *
+     * Hanya kolom Kelapa Sawit yang diisi; alasan kolom Karet dikosongkan ada di
+     * PENYUSUTAN_BUDIDAYA.
      *
      * @return array<string, float>
      */

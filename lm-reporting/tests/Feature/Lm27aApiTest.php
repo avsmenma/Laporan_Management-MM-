@@ -131,19 +131,21 @@ class Lm27aApiTest extends TestCase
 
         // Konsolidasi "Semua Unit": Kelapa Sawit = 5E01 + 5E02.
         $this->assertEqualsWithDelta(41_950_088_015.0, $data['values']['penyusutan']['ks'], 0.001);
-        $this->assertEqualsWithDelta(1_603_272_138.0, $data['values']['penyusutan']['kr'], 0.001);
 
         // …dan harus identik dengan yang tampil di halaman LM Eksploitasi
         // (baris "Jumlah Beban Penyusutan", blok Kebun Sendiri + Pihak III, Real s.d).
-        foreach ([['KS', 61, 'ks'], ['KR', 41, 'kr']] as [$komoditi, $urutan, $col]) {
-            $lm13 = $this->actingAs($user)
-                ->getJson("/report-data/lm13?batch={$batch->id}&unit=ALL&komoditi={$komoditi}")
-                ->assertOk()->json('rows');
-            $row = collect($lm13)->first(
-                fn ($r) => (int) $r['urutan'] === $urutan && $r['block'] === 'OLAH_JUAL'
-            );
-            $this->assertEqualsWithDelta((float) $row['sd_jumlah'], $data['values']['penyusutan'][$col], 0.001);
-        }
+        $lm13 = $this->actingAs($user)
+            ->getJson("/report-data/lm13?batch={$batch->id}&unit=ALL&komoditi=KS")
+            ->assertOk()->json('rows');
+        $row = collect($lm13)->first(
+            fn ($r) => (int) $r['urutan'] === 61 && $r['block'] === 'OLAH_JUAL'
+        );
+        $this->assertEqualsWithDelta((float) $row['sd_jumlah'], $data['values']['penyusutan']['ks'], 0.001);
+
+        // Karet SENGAJA 0 walaupun datanya ada: sumber "Beban Penyusutan Overhead
+        // Pengolahan" KR masih memakai alokasi biaya olah PKS (sawit).
+        // Lihat Lm27aController::PENYUSUTAN_BUDIDAYA.
+        $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['kr'], 0.001);
     }
 
     public function test_penyusutan_nol_bila_periode_tanpa_batch(): void
