@@ -504,6 +504,9 @@ Pekerjaan terakhir (selesai & sudah di-deploy): **mengisi blok Harga Pokok Penju
 - `4301f06` + `516c09a` + `d9e4ec6` — baris **"Penyusutan"** dihubungkan ke halaman LM
   Eksploitasi. `ReportController::lm13()` dipecah supaya `lm13Rows()` bisa dipakai halaman lain;
   Kelapa Sawit Juli 2026 = 80.825.741.670. Kolom Karet sengaja kosong (§10).
+- `c09837d` — baris **"Biaya Produksi"** = "Jumlah Biaya Produksi" halaman LM Eksploitasi
+  **dikurangi** "Jumlah Beban Penyusutan" (aturan pemilik project: di LM-27A penyusutan berdiri
+  sebagai baris tersendiri). Juli 2026: 1.264.270.936.505 − 80.825.741.670 = 1.183.445.194.835.
 
 **Tidak ada pekerjaan yang tergantung setengah jalan.** Langkah berikutnya menunggu arahan
 pemilik project; kandidat terdekat ada di §12.
@@ -520,8 +523,8 @@ hanya letaknya kini di PHP; nilainya milik tahun buku 2026 dan ditampilkan untuk
 **Prioritas yang dinyatakan pemilik project (2026-08-12): melengkapi LM-27A.**
 Yang sudah terisi: blok Penjualan→Lokal (dari `penjualan_produk`, memakai pemetaan yang sama
 dengan LM 34 lewat `Lm34Controller::detailKeysOf()`), Harga Pokok Penjualan→Persediaan Awal
-(dari `PersediaanAwalTahun`), dan Harga Pokok Penjualan→Penyusutan (dari
-`ReportController::lm13Rows()`, kolom Karet masih kosong — lihat §10). Sisanya — Biaya Produksi,
+(dari `PersediaanAwalTahun`), serta Harga Pokok Penjualan→Biaya Produksi & Penyusutan (dari
+`ReportController::lm13Rows()`; kolom Karet keduanya masih kosong — lihat §10). Sisanya —
 Order Produksi, Persediaan Akhir, seluruh Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai
 Laba (Rugi) — masih `-`, termasuk semua baris totalnya (baris total sengaja dibiarkan `-` selama
 komponennya belum lengkap, supaya tidak menampilkan total yang menyesatkan).
