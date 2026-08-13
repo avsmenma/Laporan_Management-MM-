@@ -31,10 +31,17 @@ use Illuminate\Support\Facades\DB;
  *   kolom "s.d Bulan → Real s.d" blok "Kebun Sendiri + Pihak III", unit "Semua
  *   Unit", lewat ReportController::lm13Rows(). Kolom Karet keduanya masih '-'
  *   (lihat LM13_BUDIDAYA).
+ *   "Persediaan Akhir" — baris "Jumlah Persediaan" kolom NILAI PERSEDIAAN AKHIR
+ *   (Rp) halaman yang sama, lewat PersediaanController::nilaiAkhirJumlah().
+ *
+ * ⚠️ Tanda: tiga baris biaya (Persediaan Awal, Biaya Produksi, Penyusutan)
+ * dikirim NEGATIF atas permintaan user, sehingga "Harga Pokok Penjualan" cukup
+ * MENJUMLAHKAN seluruh blok dan "Laba (Rugi) Kotor" = Jumlah Penjualan + Harga
+ * Pokok Penjualan. Penjumlahan kedua total itu dilakukan di blade.
  *
  * Belum ada sumber (dirender '-' di UI): baris Ekspor (template LM-34 tidak punya
- * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, sisa blok Harga Pokok
- * Penjualan (termasuk barisan totalnya), Biaya Usaha, dan seterusnya.
+ * seksi ekspor), Perubahan Nilai Wajar Aset Biologis, Order Produksi, blok Biaya
+ * Usaha, dan seterusnya.
  */
 class Lm27aController extends Controller
 {
@@ -106,11 +113,49 @@ class Lm27aController extends Controller
             'month' => $month,
             'values' => [
                 'lokal' => $this->lokal($year, $month),
-                'persediaan_awal' => $this->persediaanAwal(),
-                'biaya_produksi' => $lm13['biaya_produksi'],
-                'penyusutan' => $lm13['penyusutan'],
+                // Tiga baris biaya dikirim NEGATIF (aturan user, tampil dalam
+                // kurung) supaya Harga Pokok Penjualan cukup menjumlahkan blok
+                // ini apa adanya. "Persediaan Akhir" tetap positif karena memang
+                // mengurangi harga pokok.
+                'persediaan_awal' => $this->negatif($this->persediaanAwal()),
+                'biaya_produksi' => $this->negatif($lm13['biaya_produksi']),
+                'penyusutan' => $this->negatif($lm13['penyusutan']),
+                'persediaan_akhir' => $this->persediaanAkhir($year, $month),
+                // Kolom budidaya yang komponen Harga Pokok Penjualan-nya lengkap;
+                // hanya kolom ini yang dihitung HPP & Laba (Rugi) Kotor-nya.
+                'hpp_kolom' => array_keys(self::LM13_BUDIDAYA),
             ],
         ]);
+    }
+
+    /**
+     * Balik tanda tiap kolom budidaya (0 tetap 0, bukan -0).
+     *
+     * @param  array<string, float>  $nilai
+     * @return array<string, float>
+     */
+    private function negatif(array $nilai): array
+    {
+        return array_map(static fn (float $v) => $v == 0.0 ? 0.0 : -$v, $nilai);
+    }
+
+    /**
+     * Baris "Persediaan Akhir" = baris "Jumlah Persediaan" kolom NILAI PERSEDIAAN
+     * AKHIR (Rp) pada /laba-rugi/persediaan — nilai ZSTOCK periode itu ditambah
+     * baris "Penyesuaian atas nilai persediaan akhir".
+     *
+     * Kolom Karet dikosongkan: baris penyesuaian di halaman Persediaan tidak
+     * terpisah per komoditi, jadi mengisi kedua kolom akan menghitung penyesuaian
+     * itu dua kali pada kolom Jumlah.
+     *
+     * @return array<string, float>
+     */
+    private function persediaanAkhir(int $year, int $month): array
+    {
+        return [
+            'ks' => app(PersediaanController::class)->nilaiAkhirJumlah($year, $month, 'sawit'),
+            'kr' => 0.0,
+        ];
     }
 
     /**

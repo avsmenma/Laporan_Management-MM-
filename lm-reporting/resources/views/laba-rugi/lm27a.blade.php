@@ -108,7 +108,8 @@ function lm27aApp() {
         },
 
         // Sel angka: baris judul tanpa nilai → kosong; 0/null → '-';
-        // negatif memakai tanda minus di depan (persis format #,##0 di template).
+        // negatif dalam KURUNG gaya akuntansi (permintaan user) — mis. baris
+        // biaya blok Harga Pokok Penjualan yang memang bertanda minus.
         // $minDec dipakai kolom % agar desimal SELALU tampil (mis. 100,00).
         numFmt(maxDec, minDec = 0) {
             return (cell) => {
@@ -116,7 +117,8 @@ function lm27aApp() {
                 if (d._type === 'group') return '';
                 const v = cell.getValue();
                 if (v == null || Number(v) === 0) return '-';
-                return Number(v).toLocaleString('id-ID', { minimumFractionDigits: minDec, maximumFractionDigits: maxDec });
+                const teks = Math.abs(Number(v)).toLocaleString('id-ID', { minimumFractionDigits: minDec, maximumFractionDigits: maxDec });
+                return Number(v) < 0 ? '(' + teks + ')' : teks;
             };
         },
 
@@ -171,16 +173,40 @@ function lm27aApp() {
             // Baris total "Harga Pokok Penjualan" SENGAJA belum diisi: komponen
             // lain (Biaya Produksi, Penyusutan, Order Produksi, Persediaan Akhir)
             // belum ada sumbernya, jadi totalnya akan menyesatkan.
-            const pa = this.values.persediaan_awal;
-            if (pa) out.persediaan_awal = { ks: Number(pa.ks || 0), kr: Number(pa.kr || 0) };
-            // Biaya Produksi & Penyusutan = baris "Jumlah Biaya Produksi" (sudah
-            // dikurangi penyusutan) dan "Jumlah Beban Penyusutan" halaman LM
-            // Eksploitasi (/kebun), kolom "s.d Bulan → Real s.d", blok Kebun
-            // Sendiri + Pihak III.
-            const bp = this.values.biaya_produksi;
-            if (bp) out.biaya_produksi = { ks: Number(bp.ks || 0), kr: Number(bp.kr || 0) };
-            const py = this.values.penyusutan;
-            if (py) out.penyusutan = { ks: Number(py.ks || 0), kr: Number(py.kr || 0) };
+            // Blok Harga Pokok Penjualan. Tiga baris biaya sudah dikirim NEGATIF
+            // oleh server; "Persediaan Akhir" positif karena mengurangi harga pokok.
+            //   Persediaan Awal   ← halaman Persediaan (PERSEDIAAN AWAL TAHUN Rp)
+            //   Biaya Produksi    ← LM Eksploitasi "Jumlah Biaya Produksi" − penyusutan
+            //   Penyusutan        ← LM Eksploitasi "Jumlah Beban Penyusutan"
+            //   Persediaan Akhir  ← halaman Persediaan (NILAI PERSEDIAAN AKHIR Rp)
+            const ambil = (k) => {
+                const v = this.values[k];
+                if (!v) return;
+                out[k] = { ks: Number(v.ks || 0), kr: Number(v.kr || 0) };
+            };
+            ['persediaan_awal', 'biaya_produksi', 'penyusutan', 'persediaan_akhir'].forEach(ambil);
+
+            // Harga Pokok Penjualan = jumlah SELURUH baris blok itu (Persediaan Awal
+            // s/d Persediaan Akhir; Order Produksi belum ada sumber → 0), lalu
+            // Laba (Rugi) Kotor = Jumlah Penjualan + Harga Pokok Penjualan — dua
+            // rumus dari user, jalan karena baris biaya sudah bertanda minus.
+            //
+            // Hanya untuk kolom yang komponennya lengkap (values.hpp_kolom): kolom
+            // Karet masih kekurangan Biaya Produksi & Penyusutan, jadi totalnya akan
+            // menyesatkan bila tetap dihitung.
+            const siap = this.values.hpp_kolom || [];
+            if (siap.length) {
+                const hppRows = ['persediaan_awal', 'biaya_produksi', 'penyusutan', 'order_produksi', 'persediaan_akhir'];
+                const hpp = {};
+                const kotor = {};
+                ['ks', 'kr'].forEach((c) => {
+                    if (!siap.includes(c)) { hpp[c] = null; kotor[c] = null; return; }
+                    hpp[c] = hppRows.reduce((t, k) => t + Number((out[k] || {})[c] || 0), 0);
+                    kotor[c] = Number((out.jml_penjualan || {})[c] || 0) + hpp[c];
+                });
+                out.hpp = hpp;
+                out.laba_kotor = kotor;
+            }
             return out;
         },
 
@@ -204,9 +230,9 @@ function lm27aApp() {
                 d('Biaya Produksi', 'biaya_produksi'),
                 d('Penyusutan', 'penyusutan'),
                 d('Order Produksi'),
-                d('Persediaan Akhir'),
-                t('Harga Pokok Penjualan'),
-                t('Laba ( Rugi ) Kotor'),
+                d('Persediaan Akhir', 'persediaan_akhir'),
+                t('Harga Pokok Penjualan', 'hpp'),
+                t('Laba ( Rugi ) Kotor', 'laba_kotor'),
                 g('Biaya Usaha'),
                 d('Biaya Penjualan'),
                 dh('Biaya Administrasi / Umum'),

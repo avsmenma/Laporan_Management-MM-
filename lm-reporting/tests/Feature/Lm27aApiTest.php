@@ -87,9 +87,10 @@ class Lm27aApiTest extends TestCase
             ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=7')->assertOk()->json();
 
         // Angka acuan = baris "Jumlah Persediaan" kolom PERSEDIAAN AWAL TAHUN (Rp)
-        // pada /laba-rugi/persediaan (Σ unit + baris penyesuaian).
-        $this->assertEqualsWithDelta(194983848689, $data['values']['persediaan_awal']['ks'], 0.001);
-        $this->assertEqualsWithDelta(241975496, $data['values']['persediaan_awal']['kr'], 0.001);
+        // pada /laba-rugi/persediaan (Σ unit + baris penyesuaian), dikirim NEGATIF
+        // karena mengurangi laba (tampil dalam kurung).
+        $this->assertEqualsWithDelta(-194983848689, $data['values']['persediaan_awal']['ks'], 0.001);
+        $this->assertEqualsWithDelta(-241975496, $data['values']['persediaan_awal']['kr'], 0.001);
 
         // Saldo awal tahun tidak berubah per bulan.
         $lain = $this->actingAs($this->viewer())
@@ -138,12 +139,13 @@ class Lm27aApiTest extends TestCase
         $data = $this->actingAs($user)
             ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=6')->assertOk()->json();
 
-        // Konsolidasi "Semua Unit": Kelapa Sawit = 5E01 + 5E02.
+        // Konsolidasi "Semua Unit": Kelapa Sawit = 5E01 + 5E02. Keduanya dikirim
+        // NEGATIF (biaya) supaya Harga Pokok Penjualan tinggal menjumlahkan blok.
         $penyusutan = 41_950_088_015.0;
         $biayaProduksi = 1_264_270_936_505.0;
-        $this->assertEqualsWithDelta($penyusutan, $data['values']['penyusutan']['ks'], 0.001);
+        $this->assertEqualsWithDelta(-$penyusutan, $data['values']['penyusutan']['ks'], 0.001);
         // Biaya Produksi LM-27A = Jumlah Biaya Produksi − Jumlah Beban Penyusutan.
-        $this->assertEqualsWithDelta($biayaProduksi - $penyusutan, $data['values']['biaya_produksi']['ks'], 0.001);
+        $this->assertEqualsWithDelta(-($biayaProduksi - $penyusutan), $data['values']['biaya_produksi']['ks'], 0.001);
 
         // …dan sumbernya harus identik dengan yang tampil di halaman LM Eksploitasi
         // (blok Kebun Sendiri + Pihak III, kolom Real s.d).
@@ -153,13 +155,50 @@ class Lm27aApiTest extends TestCase
         $sd = fn (int $urutan) => (float) $lm13->first(
             fn ($r) => (int) $r['urutan'] === $urutan && $r['block'] === 'OLAH_JUAL'
         )['sd_jumlah'];
-        $this->assertEqualsWithDelta($sd(61), $data['values']['penyusutan']['ks'], 0.001);
-        $this->assertEqualsWithDelta($sd(68) - $sd(61), $data['values']['biaya_produksi']['ks'], 0.001);
+        $this->assertEqualsWithDelta(-$sd(61), $data['values']['penyusutan']['ks'], 0.001);
+        $this->assertEqualsWithDelta(-($sd(68) - $sd(61)), $data['values']['biaya_produksi']['ks'], 0.001);
+
+        // Hanya kolom Kelapa Sawit yang boleh dihitung Harga Pokok Penjualan-nya.
+        $this->assertSame(['ks'], $data['values']['hpp_kolom']);
 
         // Karet SENGAJA 0 walaupun datanya ada: baris pengolahan KM masih memakai
         // alokasi biaya olah PKS (sawit). Lihat Lm27aController::LM13_BUDIDAYA.
         $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['kr'], 0.001);
         $this->assertEqualsWithDelta(0, $data['values']['biaya_produksi']['kr'], 0.001);
+    }
+
+    public function test_persediaan_akhir_sama_dengan_halaman_persediaan(): void
+    {
+        $this->seedPenjualan();
+
+        // Nilai ZSTOCK: dua baris punya baris di halaman, satu (5E13 Kebun
+        // Batulicin) tidak → harus DIABAIKAN, sama seperti tabelnya.
+        DB::table('persediaan_nilai')->insert([
+            ['year' => 2026, 'period' => 6, 'plant_code' => '5F01', 'unit_name' => 'PKS Gunung Meliau', 'product' => 'Minyak Sawit', 'nilai_rp' => 200_000_000],
+            ['year' => 2026, 'period' => 6, 'plant_code' => '5F04', 'unit_name' => 'PKS Rimba Belian', 'product' => 'Inti Sawit', 'nilai_rp' => 50_000_000],
+            ['year' => 2026, 'period' => 6, 'plant_code' => '5E13', 'unit_name' => 'Kebun Batulicin', 'product' => 'Minyak Sawit', 'nilai_rp' => 999_000_000],
+        ]);
+        // Baris "Penyesuaian atas nilai persediaan akhir" (kolom PERSEDIAAN AKHIR).
+        DB::table('persediaan_penyesuaian')->insert([
+            'year' => 2026, 'month' => 6,
+            'plant_code' => 'Penyesuaian Nilai Akhir', 'product' => 'Penyesuaian Nilai Akhir',
+            'transfer_masuk' => 0, 'transfer_keluar' => 0, 'susut' => 0,
+            'sto_gr' => 0, 'sto_gi' => 0, 'nilai_akhir' => 7_000_000,
+        ]);
+
+        $data = $this->actingAs($this->viewer())
+            ->getJson('/report-data/laba-rugi/lm27a?year=2026&month=6')->assertOk()->json();
+
+        // = baris "Jumlah Persediaan" kolom NILAI PERSEDIAAN AKHIR tab KELAPA SAWIT.
+        $this->assertEqualsWithDelta(257_000_000, $data['values']['persediaan_akhir']['ks'], 0.001);
+        $this->assertEqualsWithDelta(
+            app(\App\Http\Controllers\Api\PersediaanController::class)->nilaiAkhirJumlah(2026, 6, 'sawit'),
+            $data['values']['persediaan_akhir']['ks'],
+            0.001
+        );
+        // Karet dikosongkan: baris penyesuaian tidak terpisah per komoditi, mengisi
+        // keduanya akan menghitungnya dua kali di kolom Jumlah.
+        $this->assertEqualsWithDelta(0, $data['values']['persediaan_akhir']['kr'], 0.001);
     }
 
     public function test_baris_lm13_nol_bila_periode_tanpa_batch(): void
