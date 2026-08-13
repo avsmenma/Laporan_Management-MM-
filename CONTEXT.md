@@ -478,6 +478,15 @@ perintah native (mis. pesan commit) — pakai here-string `@'…'@` dengan penut
 - `storage/app/private/import-staging` tidak pernah dibersihkan otomatis (pernah 141 MB).
 - Server lama (163) RAM 957 MB & disk pernah 78% penuh → impor berkas besar sebaiknya di 157.
 - Tanpa kunci unik di `persediaan_penyesuaian`, entri ganda tidak terdeteksi (lihat §7 no.9).
+- **LM13 Karet kemasukan angka pengolahan sawit.** `AlokasiBiayaOlahController::jlhPerKebunLm13()`
+  tidak menerima parameter komoditi (sumbernya `produksi_cpo_inti` + pool LM16 = PKS/sawit),
+  tetapi `ReportController::applyAlokasiOlahToLm13()` memakainya untuk komoditi KR juga.
+  Akibatnya baris "Beban Langsung/Overhead/Penyusutan Pengolahan" tab Karet bernilai sama persis
+  dengan tab Sawit. Bukti (server 157, Juli 2026): KR "Beban Penyusutan Overhead Pengolahan"
+  38.875.653.655 = angka Sawit, padahal penyusutan kebun karetnya 2.211.421.100.
+  Karena itu LM-27A baris "Penyusutan" kolom Karet sengaja dikosongkan
+  (`Lm27aController::PENYUSUTAN_BUDIDAYA`). Perbaikan: pisahkan sumber alokasi per komoditi,
+  baru isi kolom Karet.
 - Export Excel/CSV/PDF yang dijanjikan PRD belum ada sama sekali (dompdf terpasang, tidak dipakai).
 - Beberapa berkas kerja belum ter-commit / tidak di-*gitignore* (`check_data.php`,
   `check_all_tables.php`, `Logo PTPN 4.png`, folder `docs/` yang besar).
@@ -486,15 +495,15 @@ perintah native (mis. pesan commit) — pakai here-string `@'…'@` dengan penut
 
 ## 11. YANG SEDANG DIKERJAKAN
 
-Pekerjaan terakhir (selesai & sudah di-deploy, commit `f778470` + `f4ffe88`): **baris
-"Persediaan Awal" LM-27A dihubungkan ke halaman Persediaan**. Konstanta saldo awal tahun
-dipindah dari literal JavaScript di blade ke `app/Domain/Report/PersediaanAwalTahun.php`
-(lihat §7 no.13), lalu `Api\Lm27aController` memakainya: Kelapa Sawit 194.983.848.689,
-Karet 241.975.496. Berkas tersentuh: kelas baru itu,
-`app/Http/Controllers/Api/Lm27aController.php`,
-`resources/views/laba-rugi/lm27a.blade.php`,
-`resources/views/laba-rugi/persediaan.blade.php`,
-`tests/Feature/Lm27aApiTest.php`.
+Pekerjaan terakhir (selesai & sudah di-deploy): **mengisi blok Harga Pokok Penjualan LM-27A**.
+
+- `f778470` + `f4ffe88` — baris **"Persediaan Awal"** dihubungkan ke halaman Persediaan.
+  Konstanta saldo awal tahun dipindah dari literal JavaScript di blade ke
+  `app/Domain/Report/PersediaanAwalTahun.php` (lihat §7 no.13); Kelapa Sawit 194.983.848.689,
+  Karet 241.975.496.
+- `4301f06` + `516c09a` + `d9e4ec6` — baris **"Penyusutan"** dihubungkan ke halaman LM
+  Eksploitasi. `ReportController::lm13()` dipecah supaya `lm13Rows()` bisa dipakai halaman lain;
+  Kelapa Sawit Juli 2026 = 80.825.741.670. Kolom Karet sengaja kosong (§10).
 
 **Tidak ada pekerjaan yang tergantung setengah jalan.** Langkah berikutnya menunggu arahan
 pemilik project; kandidat terdekat ada di §12.
@@ -510,11 +519,16 @@ hanya letaknya kini di PHP; nilainya milik tahun buku 2026 dan ditampilkan untuk
 
 **Prioritas yang dinyatakan pemilik project (2026-08-12): melengkapi LM-27A.**
 Yang sudah terisi: blok Penjualan→Lokal (dari `penjualan_produk`, memakai pemetaan yang sama
-dengan LM 34 lewat `Lm34Controller::detailKeysOf()`) dan Harga Pokok Penjualan→Persediaan Awal
-(dari `PersediaanAwalTahun`). Sisanya — Biaya Produksi, Penyusutan, Order Produksi, Persediaan
-Akhir, seluruh Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai Laba (Rugi) — masih `-`,
-termasuk semua baris totalnya (baris total sengaja dibiarkan `-` selama komponennya belum
-lengkap, supaya tidak menampilkan total yang menyesatkan).
+dengan LM 34 lewat `Lm34Controller::detailKeysOf()`), Harga Pokok Penjualan→Persediaan Awal
+(dari `PersediaanAwalTahun`), dan Harga Pokok Penjualan→Penyusutan (dari
+`ReportController::lm13Rows()`, kolom Karet masih kosong — lihat §10). Sisanya — Biaya Produksi,
+Order Produksi, Persediaan Akhir, seluruh Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai
+Laba (Rugi) — masih `-`, termasuk semua baris totalnya (baris total sengaja dibiarkan `-` selama
+komponennya belum lengkap, supaya tidak menampilkan total yang menyesatkan).
+
+Pola yang sudah terbentuk untuk melengkapinya: setiap baris LM-27A ditarik dari **jalur hitung
+halaman yang sudah ada** (bukan query mentah), supaya angkanya tidak bisa berbeda dari halaman
+sumbernya. `lm13Rows()` adalah contohnya — pisahkan dulu jalur itu jadi metode publik bila perlu.
 Saat mengerjakannya: **jangan** membuat sumber data baru sendiri — angka LM-27A harus berasal
 dari halaman yang sudah ada (Beban Usaha, Persediaan, LM 34, LM13/LM16) supaya tidak muncul dua
 versi kebenaran.
