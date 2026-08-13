@@ -11,8 +11,11 @@
         'deleteUrl' => url('/laba-rugi/persediaan/penyesuaian'), // + /{id}
         'canEdit' => (bool) auth()->user()?->hasRole(\App\Models\Role::OPERATOR, \App\Models\Role::ADMIN),
     ];
+    // Saldo PERSEDIAAN AWAL TAHUN (manual) dibaca dari PHP supaya identik dengan
+    // baris "Persediaan Awal" LM-27A — satu sumber angka, lihat kelasnya.
+    $psdAwalTahun = \App\Domain\Report\PersediaanAwalTahun::untukView();
 @endphp
-<div x-data="persediaanApp(@js($psdPenyesuaian))" x-init="init()" class="psd-page">
+<div x-data="persediaanApp(@js($psdPenyesuaian), @js($psdAwalTahun))" x-init="init()" class="psd-page">
     <div class="filter-bar">
         <div class="filter-grid">
             {{-- Opsi dirender server (bukan x-for) supaya nilai awal Juli 2026 langsung terpilih --}}
@@ -114,7 +117,7 @@
 
 @push('scripts')
 <script>
-function persediaanApp(cfgPenyesuaian) {
+function persediaanApp(cfgPenyesuaian, awalTahunManual) {
     return {
         cfgPenyes: cfgPenyesuaian || null,
         penyRows: [],       // baris tab PENYESUAIAN (semua periode)
@@ -142,51 +145,11 @@ function persediaanApp(cfgPenyesuaian) {
         ],
 
         // ---- PERSEDIAAN AWAL TAHUN: nilai manual dari TEMPLATE PERSEDIAAN-1.xlsx ----
-        // Saldo awal tahun bersifat tetap (bukan tarikan data); hanya baris bernilai
-        // yang dicatat, sisanya 0 → tampil '-'. Bentuk: produk → unit → [Kg, Rp];
-        // (Rp/Kg) tidak disimpan karena diturunkan = Rp / Kg (persis formula sheet).
+        // Angkanya TIDAK ditulis di sini lagi, melainkan disuntik dari PHP
+        // (App\Domain\Report\PersediaanAwalTahun) karena LM-27A baris "Persediaan
+        // Awal" memakai jumlah yang sama. Bentuk: tab → produk → unit → [Kg, Rp];
         // penyesuaianRp = baris "Penyesuaian atas nilai persediaan akhir" kolom (Rp).
-        awalTahun: {
-            sawit: {
-                products: {
-                    '- Minyak Sawit': {
-                        'Tanah Merah': [712882, 12353944807],
-                        'PKS Gunung Meliau': [2030505, 23271461007],
-                        'PKS Rimba Belian': [737387, 7346163149],
-                        'PKS Ngabang': [1062012, 15599707349],
-                        'PKS Parindu': [1913260, 24541441053],
-                        'PKS Kembayan': [1118908, 18298558807],
-                        'PKS Pamukan': [82821, 1325320363],
-                        'PKS Pelaihari': [1937181, 20927291873],
-                        'PKS Long Pinang': [2829536, 49034667128],
-                    },
-                    '- Inti Sawit': {
-                        'PKS Gunung Meliau': [1031360, 5393442463],
-                        'PKS Rimba Belian': [697934, 4079867207],
-                        'PKS Ngabang': [320539, 2085112545],
-                        'PKS Parindu': [338739, 2521554971],
-                        'PKS Kembayan': [159524, 555201093],
-                        'PKS Pamukan': [36864, 164370461],
-                        'PKS Pelaihari': [149876, 524842609],
-                        'PKS Long Pinang': [489116, 1849985403],
-                    },
-                },
-                // Dikoreksi user 2026-08-10 (dulu −10.565.230.360) → Jumlah Persediaan
-                // jadi 194.983.848.689, sama dengan "Persediaan Awal" Kelapa Sawit LM-27A.
-                penyesuaianRp: 5110916401,
-            },
-            karet: {
-                products: {
-                    '- LUMP': {
-                        'Kebun Sintang': [10080, 2055906444],
-                        'Kebun Kumai': [10897, 479567444],
-                    },
-                },
-                // Dikoreksi user 2026-08-11 (dulu −2.005.715.276) → Jumlah Persediaan
-                // jadi 241.975.496, sama dengan "Persediaan Awal" Karet LM-27A.
-                penyesuaianRp: -2293498392,
-            },
-        },
+        awalTahun: awalTahunManual || {},
 
         // ---- Struktur baris persis sheet KELAPA SAWIT & KARET (TEMPLATE PERSEDIAAN.xlsx) ----
         cfg() {
