@@ -134,6 +134,39 @@ class PersediaanController extends Controller
         return $out;
     }
 
+    /**
+     * Nilai baris "Jumlah Persediaan" kolom NILAI PERSEDIAAN AKHIR (Rp) satu tab
+     * = Σ nilai ZSTOCK seluruh produk × unit yang PUNYA baris di halaman
+     * (App\Domain\Report\PersediaanStruktur) + baris "Penyesuaian atas nilai
+     * persediaan akhir". Dipakai baris "Persediaan Akhir" LM-27A supaya angkanya
+     * persis sama dengan halaman ini.
+     *
+     * Baris berkas yang unit/produknya tidak ada di halaman (mis. 5E13 Kebun
+     * Batulicin) DIABAIKAN — sama seperti yang dilakukan tabelnya.
+     *
+     * ⚠️ Baris penyesuaian TIDAK terpisah per komoditi (satu ember `_penyes`),
+     * jadi ia ikut terhitung di tab mana pun. Menjumlahkan hasil 'sawit' + 'karet'
+     * berarti menghitung penyesuaian itu DUA KALI.
+     */
+    public function nilaiAkhirJumlah(int $year, int $month, string $tab): float
+    {
+        $nilai = $this->nilaiAkhir($year, $month);
+        $units = \App\Domain\Report\PersediaanStruktur::unitKeys($tab);
+
+        $total = 0.0;
+        foreach (\App\Domain\Report\PersediaanStruktur::produkKeys($tab) as $produk) {
+            foreach ($units as $unit) {
+                $total += (float) ($nilai[$produk][$unit] ?? 0);
+            }
+        }
+
+        // Baris penyesuaian tidak punya produk/unit — nilainya berdiri sendiri dan
+        // berlaku untuk tab mana pun yang sedang dibuka, sama seperti di tabel.
+        $penyesuaian = $this->penyesuaian($year, $month);
+
+        return $total + (float) ($penyesuaian['_penyes']['_penyes']['nilai_akhir'] ?? 0);
+    }
+
     /** Kunci pencocokan longgar: huruf besar, tanpa awalan '-'/spasi ganda. */
     private static function norm(string $s): string
     {

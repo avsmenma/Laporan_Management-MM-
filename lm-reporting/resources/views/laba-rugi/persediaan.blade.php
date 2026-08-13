@@ -11,11 +11,13 @@
         'deleteUrl' => url('/laba-rugi/persediaan/penyesuaian'), // + /{id}
         'canEdit' => (bool) auth()->user()?->hasRole(\App\Models\Role::OPERATOR, \App\Models\Role::ADMIN),
     ];
-    // Saldo PERSEDIAAN AWAL TAHUN (manual) dibaca dari PHP supaya identik dengan
-    // baris "Persediaan Awal" LM-27A — satu sumber angka, lihat kelasnya.
+    // Saldo PERSEDIAAN AWAL TAHUN (manual) & struktur baris dibaca dari PHP supaya
+    // identik dengan baris "Persediaan Awal"/"Persediaan Akhir" LM-27A — satu
+    // sumber angka, lihat kelasnya.
     $psdAwalTahun = \App\Domain\Report\PersediaanAwalTahun::untukView();
+    $psdStruktur = \App\Domain\Report\PersediaanStruktur::untukView();
 @endphp
-<div x-data="persediaanApp(@js($psdPenyesuaian), @js($psdAwalTahun))" x-init="init()" class="psd-page">
+<div x-data="persediaanApp(@js($psdPenyesuaian), @js($psdAwalTahun), @js($psdStruktur))" x-init="init()" class="psd-page">
     <div class="filter-bar">
         <div class="filter-grid">
             {{-- Opsi dirender server (bukan x-for) supaya nilai awal Juli 2026 langsung terpilih --}}
@@ -117,7 +119,7 @@
 
 @push('scripts')
 <script>
-function persediaanApp(cfgPenyesuaian, awalTahunManual) {
+function persediaanApp(cfgPenyesuaian, awalTahunManual, strukturTabel) {
     return {
         cfgPenyes: cfgPenyesuaian || null,
         penyRows: [],       // baris tab PENYESUAIAN (semua periode)
@@ -152,63 +154,12 @@ function persediaanApp(cfgPenyesuaian, awalTahunManual) {
         awalTahun: awalTahunManual || {},
 
         // ---- Struktur baris persis sheet KELAPA SAWIT & KARET (TEMPLATE PERSEDIAAN.xlsx) ----
+        // Daftar produk & unitnya TIDAK ditulis di sini lagi, melainkan disuntik
+        // dari PHP (App\Domain\Report\PersediaanStruktur) karena LM-27A baris
+        // "Persediaan Akhir" menjumlahkan baris yang sama persis.
+        struktur: strukturTabel || {},
         cfg() {
-            if (this.tab === 'karet') {
-                return {
-                    judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KARET',
-                    // key = kunci sumber produksi; karet belum ada sumber → null semua.
-                    products: [
-                        { label: '- SIR 20 SWJP', key: null },
-                        { label: '- SCRAP', key: null },
-                        { label: '- BLANKET', key: null },
-                        { label: '- LATEKS', key: null },
-                        { label: '- LUMP', key: null },
-                        { label: '- RSS I', key: null },
-                        { label: '- RSS II', key: null },
-                        { label: '- RSS III', key: null },
-                    ],
-                    // Baris pemisah antarproduk di sheet memuat strip pada kolom
-                    // "Persediaan per ..." — kecuali setelah produk terakhir.
-                    spacerDash: [true, true, true, true, true, true, true, false],
-                    units: [
-                        ['5F20', 'PKR Tambarangan'],
-                        ['5E06', 'Kebun Sintang'],
-                        ['5E11', 'Kebun Danau Salak'],
-                        ['5E19', 'Kebun Longkali'],
-                        ['5E12', 'Kebun Kumai'],
-                    ],
-                };
-            }
-            return {
-                judul: 'PERSEDIAAN AKHIR HASIL PRODUKSI KELAPA SAWIT',
-                // key mengacu peta produksi dari API: ms/is/tbs (TBS = TBS Diterima);
-                // peta penjualan hanya punya ms (CPO) & is (INTI SAWIT);
-                // keyOlah (PENGOLAHAN SENDIRI) hanya TBS = TBS Diolah.
-                products: [
-                    { label: '- Minyak Sawit', key: 'ms' },
-                    { label: '- Inti Sawit', key: 'is' },
-                    { label: '- Tandan Buah Segar', key: 'tbs', keyOlah: 'olah' },
-                ],
-                spacerDash: [true, false, false],
-                // [plant, unit kerja, kode form penyesuaian (bila beda)] — kode
-                // 5R00 dipakai 2 unit, jadi tab PENYESUAIAN memakai 5R00-1 (IPP
-                // Tayan) & 5R00-2 (Tanah Merah) supaya isian tidak selalu jatuh
-                // ke baris pertama. Kolom lain (produksi/penjualan/ZSTOCK) tetap
-                // memakai kode plant asli.
-                units: [
-                    ['5R00', 'IPP Tayan', '5R00-1'],
-                    ['5R00', 'Tanah Merah', '5R00-2'],
-                    ['5F01', 'PKS Gunung Meliau'],
-                    ['5F04', 'PKS Rimba Belian'],
-                    ['5F07', 'PKS Ngabang'],
-                    ['5F08', 'PKS Parindu'],
-                    ['5F09', 'PKS Kembayan'],
-                    ['5F14', 'PKS Pamukan'],
-                    ['5F15', 'PKS Pelaihari'],
-                    ['5F21', 'PKS Samuntai'],
-                    ['5F22', 'PKS Long Pinang'],
-                ],
-            };
+            return this.struktur[this.tab] || { judul: '', products: [], spacerDash: [], units: [] };
         },
         judul() {
             return this.cfg().judul;
