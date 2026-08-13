@@ -224,12 +224,18 @@ function lm27aApp() {
             //   Jumlah Biaya Usaha        = Biaya Penjualan + Biaya Administrasi / Umum
             //   Laba ( Rugi ) Usaha       = Laba ( Rugi ) Kotor + Jumlah Biaya Usaha
             //   Laba (Rugi) Usaha Setelah Biaya Bunga = Laba ( Rugi ) Usaha + Biaya Bunga
-            // "- Administrasi Kebun" & "Biaya Bunga" belum ada sumbernya → dihitung 0.
-            // Dua baris laba butuh Laba Kotor, jadi kolom tanpa Laba Kotor tetap '-'.
+            //   Jumlah Pendapatan / Biaya Lain - Lain = Pendapatan Lain - Lain + Biaya Lain - Lain
+            //   Laba (Rugi) sebelum Pajak = Laba (Rugi) Usaha Setelah Biaya Bunga
+            //                               + Jumlah Pendapatan / Biaya Lain - Lain
+            // "- Administrasi Kebun", "Biaya Bunga" & "Pendapatan Lain - Lain" belum
+            // ada sumbernya → dihitung 0. Baris laba butuh Laba Kotor, jadi kolom
+            // tanpa Laba Kotor tetap '-'.
             const adm = {};
             const jbu = {};
             const usaha = {};
             const usahaBunga = {};
+            const lain = {};
+            const sebelumPajak = {};
             ['ks', 'kr'].forEach((c) => {
                 const kol = (k) => Number((out[k] || {})[c] || 0);
                 adm[c] = kol('administrasi_kandir') + kol('administrasi_kebun');
@@ -237,11 +243,15 @@ function lm27aApp() {
                 const kotor = (out.laba_kotor || {})[c];
                 usaha[c] = (kotor == null) ? null : kotor + jbu[c];
                 usahaBunga[c] = (usaha[c] == null) ? null : usaha[c] + kol('biaya_bunga');
+                lain[c] = kol('pendapatan_lain_lain') + kol('biaya_lain_lain');
+                sebelumPajak[c] = (usahaBunga[c] == null) ? null : usahaBunga[c] + lain[c];
             });
             out.biaya_adm_umum = adm;
             out.jumlah_biaya_usaha = jbu;
             out.laba_usaha = usaha;
             out.laba_usaha_bunga = usahaBunga;
+            out.jumlah_lain_lain = lain;
+            out.laba_sebelum_pajak = sebelumPajak;
             return out;
         },
 
@@ -278,10 +288,10 @@ function lm27aApp() {
                 d('Biaya Bunga', 'biaya_bunga'),
                 t('Laba (Rugi) Usaha Setelah Biaya Bunga', 'laba_usaha_bunga'),
                 gv('Pendapatan / Biaya Lain - Lain'),
-                d('Pendapatan Lain - Lain'),
+                d('Pendapatan Lain - Lain', 'pendapatan_lain_lain'),
                 d('Biaya Lain - Lain', 'biaya_lain_lain'),
-                t('Jumlah Pendapatan / Biaya Lain - Lain'),
-                t('Laba (Rugi) sebelum Pajak', null, 'green'),
+                t('Jumlah Pendapatan / Biaya Lain - Lain', 'jumlah_lain_lain'),
+                t('Laba (Rugi) sebelum Pajak', 'laba_sebelum_pajak', 'green'),
                 sb('Pajak Perseroan'),
                 t('Laba (Rugi) setelah Pajak'),
                 sb('Pajak Tangguhan'),
