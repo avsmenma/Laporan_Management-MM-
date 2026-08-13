@@ -215,6 +215,27 @@ function lm27aApp() {
                 out.hpp = hpp;
                 out.laba_kotor = kotor;
             }
+
+            // Blok Biaya Usaha (tiga rumus dari user; semua baris biayanya sudah
+            // bertanda minus, jadi cukup dijumlahkan):
+            //   Biaya Administrasi / Umum = Administrasi Kandir + Administrasi Kebun
+            //   Jumlah Biaya Usaha        = Biaya Penjualan + Biaya Administrasi / Umum
+            //   Laba ( Rugi ) Usaha       = Laba ( Rugi ) Kotor + Jumlah Biaya Usaha
+            // "- Administrasi Kebun" belum ada sumbernya → dihitung 0. Laba (Rugi)
+            // Usaha butuh Laba Kotor, jadi kolom tanpa Laba Kotor tetap '-'.
+            const adm = {};
+            const jbu = {};
+            const usaha = {};
+            ['ks', 'kr'].forEach((c) => {
+                const kol = (k) => Number((out[k] || {})[c] || 0);
+                adm[c] = kol('administrasi_kandir') + kol('administrasi_kebun');
+                jbu[c] = kol('biaya_penjualan') + adm[c];
+                const kotor = (out.laba_kotor || {})[c];
+                usaha[c] = (kotor == null) ? null : kotor + jbu[c];
+            });
+            out.biaya_adm_umum = adm;
+            out.jumlah_biaya_usaha = jbu;
+            out.laba_usaha = usaha;
             return out;
         },
 
@@ -225,7 +246,7 @@ function lm27aApp() {
             const gv = (u) => ({ u, _type: 'gvalue' }); // judul blok bernilai: tebal saja
             const sb = (u) => ({ u, _type: 'sub' });    // baris setingkat judul blok, biasa
             const d = (u, k) => ({ u, _type: 'detail', _k: k || null });  // rincian
-            const dh = (u) => ({ u, _type: 'dhead' });  // rincian bertebal + garis bawah
+            const dh = (u, k) => ({ u, _type: 'dhead', _k: k || null }); // rincian bertebal + garis bawah
             const t = (u, k, fill) => ({ u, _type: 'total', _k: k || null, _fill: fill || null });
             const defs = [
                 g('Penjualan'),
@@ -243,11 +264,11 @@ function lm27aApp() {
                 t('Laba ( Rugi ) Kotor', 'laba_kotor'),
                 g('Biaya Usaha'),
                 d('Biaya Penjualan', 'biaya_penjualan'),
-                dh('Biaya Administrasi / Umum'),
+                dh('Biaya Administrasi / Umum', 'biaya_adm_umum'),
                 d('- Administrasi Kandir', 'administrasi_kandir'),
-                d('- Administrasi Kebun'),
-                t('Jumlah Biaya Usaha'),
-                t('Laba ( Rugi ) Usaha'),
+                d('- Administrasi Kebun', 'administrasi_kebun'),
+                t('Jumlah Biaya Usaha', 'jumlah_biaya_usaha'),
+                t('Laba ( Rugi ) Usaha', 'laba_usaha'),
                 d('Biaya Bunga'),
                 t('Laba (Rugi) Usaha Setelah Biaya Bunga'),
                 gv('Pendapatan / Biaya Lain - Lain'),
