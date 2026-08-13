@@ -363,6 +363,17 @@ pada baris-baris itu.
 **12. RKO dan RKAP diimpor terpisah** (`rko_*` → `budget_rko`, `rkap_*` → `budget_rkap`).
 Sebelumnya satu berkas mengisi keduanya sehingga RKO selalu = RKAP.
 
+**13. Angka manual yang dipakai lebih dari satu halaman disimpan di kelas PHP, bukan konstanta
+JavaScript di blade** — contoh pertama `app/Domain/Report/PersediaanAwalTahun.php` (saldo
+PERSEDIAAN AWAL TAHUN, dipakai halaman Persediaan **dan** baris "Persediaan Awal" LM-27A).
+*Alternatif yang ditolak:* menyalin angkanya ke dua tempat (dulu memang begitu, dan keduanya
+harus disamakan manual setiap kali user mengoreksi).
+*Konsekuensi:* halaman Persediaan menerima konstanta lewat argumen kedua
+`persediaanApp(@js($psdPenyesuaian), @js($psdAwalTahun))` — kalau menambah konstanta manual baru
+yang dipakai dua halaman, ikuti pola ini. Label produk & nama unit di kelas WAJIB sama persis
+dengan `cfg()` di blade Persediaan; kalau meleset, nilainya tetap masuk `jumlahRp()` (LM-27A)
+tetapi hilang dari baris rincian → dua halaman berselisih tanpa peringatan.
+
 ---
 
 ## 8. JANGAN DIUBAH (terlihat aneh, tetapi disengaja)
@@ -475,29 +486,35 @@ perintah native (mis. pesan commit) — pakai here-string `@'…'@` dengan penut
 
 ## 11. YANG SEDANG DIKERJAKAN
 
-Pekerjaan terakhir (selesai & sudah di-deploy, commit `101c75e`): **kolom PERSEDIAAN AKHIR (Rp)
-pada tab PENYESUAIAN** halaman `/laba-rugi/persediaan`. Berkas yang tersentuh:
-`database/migrations/2026_08_12_200000_add_nilai_akhir_persediaan_penyesuaian.php`,
-`app/Http/Controllers/PersediaanPenyesuaianController.php`,
-`app/Http/Controllers/Api/PersediaanController.php`,
+Pekerjaan terakhir (selesai & sudah di-deploy, commit `f778470` + `f4ffe88`): **baris
+"Persediaan Awal" LM-27A dihubungkan ke halaman Persediaan**. Konstanta saldo awal tahun
+dipindah dari literal JavaScript di blade ke `app/Domain/Report/PersediaanAwalTahun.php`
+(lihat §7 no.13), lalu `Api\Lm27aController` memakainya: Kelapa Sawit 194.983.848.689,
+Karet 241.975.496. Berkas tersentuh: kelas baru itu,
+`app/Http/Controllers/Api/Lm27aController.php`,
+`resources/views/laba-rugi/lm27a.blade.php`,
 `resources/views/laba-rugi/persediaan.blade.php`,
-`tests/Feature/PersediaanPenyesuaianTest.php`.
+`tests/Feature/Lm27aApiTest.php`.
 
 **Tidak ada pekerjaan yang tergantung setengah jalan.** Langkah berikutnya menunggu arahan
 pemilik project; kandidat terdekat ada di §12.
 
 Halaman Persediaan sendiri masih menyisakan kolom kosong: seluruh kolom tab **KARET**
-(produksi & penjualan belum punya sumber), dan kolom `PERSEDIAAN AWAL TAHUN` tab Sawit/Karet
-yang sampai sekarang **konstanta manual di Blade**.
+(produksi & penjualan belum punya sumber). Kolom `PERSEDIAAN AWAL TAHUN` tetap **nilai manual**,
+hanya letaknya kini di PHP; nilainya milik tahun buku 2026 dan ditampilkan untuk tahun mana pun
+(`PersediaanAwalTahun::TAHUN` masih penanda, belum jadi filter).
 
 ---
 
 ## 12. RENCANA KE DEPAN
 
 **Prioritas yang dinyatakan pemilik project (2026-08-12): melengkapi LM-27A.**
-Saat ini hanya blok Penjualan→Lokal yang terisi (dari `penjualan_produk`, memakai pemetaan yang
-sama dengan LM 34 lewat `Lm34Controller::detailKeysOf()`), sedangkan blok Harga Pokok Penjualan,
-Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai Laba (Rugi) masih `-`.
+Yang sudah terisi: blok Penjualan→Lokal (dari `penjualan_produk`, memakai pemetaan yang sama
+dengan LM 34 lewat `Lm34Controller::detailKeysOf()`) dan Harga Pokok Penjualan→Persediaan Awal
+(dari `PersediaanAwalTahun`). Sisanya — Biaya Produksi, Penyusutan, Order Produksi, Persediaan
+Akhir, seluruh Biaya Usaha, Pendapatan/Biaya Lain-lain, sampai Laba (Rugi) — masih `-`,
+termasuk semua baris totalnya (baris total sengaja dibiarkan `-` selama komponennya belum
+lengkap, supaya tidak menampilkan total yang menyesatkan).
 Saat mengerjakannya: **jangan** membuat sumber data baru sendiri — angka LM-27A harus berasal
 dari halaman yang sudah ada (Beban Usaha, Persediaan, LM 34, LM13/LM16) supaya tidak muncul dua
 versi kebenaran.
