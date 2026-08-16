@@ -1119,17 +1119,15 @@ class ReportController extends Controller
      */
     private function applyAlokasiOlahToLm13(\Illuminate\Support\Collection $rows, Batch $batch, ?RefUnit $unit, string $komoditi, bool $isAll): \Illuminate\Support\Collection
     {
-        $komoditi = strtoupper($komoditi);
+        if (strtoupper($komoditi) !== 'KS') {
+            return $rows;
+        }
 
         // Peta urutan baris per komoditi (lihat seed_lm_template_row.sql).
         $map = [
             'KS' => ['langsung' => 56, 'overhead' => 57, 'jml_olah' => 58, 'peny_kebun' => 59, 'peny_olah' => 60, 'jml_peny' => 61, 'jml_tan_oh' => 55, 'jml_prod_inti' => 62],
-            'KR' => ['langsung' => 36, 'overhead' => 37, 'jml_olah' => 38, 'peny_kebun' => 39, 'peny_olah' => 40, 'jml_peny' => 41, 'jml_tan_oh' => 35, 'jml_prod_inti' => 42],
         ];
-        if (! isset($map[$komoditi])) {
-            return $rows;
-        }
-        $u = $map[$komoditi];
+        $u = $map['KS'];
 
         // JLH Alokasi Biaya Olah per Kebun untuk periode batch.
         $alok = app(\App\Http\Controllers\Api\AlokasiBiayaOlahController::class)
