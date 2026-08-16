@@ -158,13 +158,24 @@ class Lm27aApiTest extends TestCase
         $this->assertEqualsWithDelta(-$sd(61), $data['values']['penyusutan']['ks'], 0.001);
         $this->assertEqualsWithDelta(-($sd(68) - $sd(61)), $data['values']['biaya_produksi']['ks'], 0.001);
 
-        // Hanya kolom Kelapa Sawit yang boleh dihitung Harga Pokok Penjualan-nya.
-        $this->assertSame(['ks'], $data['values']['hpp_kolom']);
+        // Karet juga ditarik dari LM Eksploitasi Karet (komoditi KR):
+        // penyusutan = urutan 41, biaya produksi = urutan 48 − urutan 41.
+        $penyusutanKr = 1_603_272_138.0;
+        $biayaProduksiKr = 25_000_000_000.0;
+        $this->assertEqualsWithDelta(-$penyusutanKr, $data['values']['penyusutan']['kr'], 0.001);
+        $this->assertEqualsWithDelta(-($biayaProduksiKr - $penyusutanKr), $data['values']['biaya_produksi']['kr'], 0.001);
 
-        // Karet SENGAJA 0 walaupun datanya ada: baris pengolahan KM masih memakai
-        // alokasi biaya olah PKS (sawit). Lihat Lm27aController::LM13_BUDIDAYA.
-        $this->assertEqualsWithDelta(0, $data['values']['penyusutan']['kr'], 0.001);
-        $this->assertEqualsWithDelta(0, $data['values']['biaya_produksi']['kr'], 0.001);
+        $lm13Kr = collect($this->actingAs($user)
+            ->getJson("/report-data/lm13?batch={$batch->id}&unit=ALL&komoditi=KR")
+            ->assertOk()->json('rows'));
+        $sdKr = fn (int $urutan) => (float) $lm13Kr->first(
+            fn ($r) => (int) $r['urutan'] === $urutan && $r['block'] === 'OLAH_JUAL'
+        )['sd_jumlah'];
+        $this->assertEqualsWithDelta(-$sdKr(41), $data['values']['penyusutan']['kr'], 0.001);
+        $this->assertEqualsWithDelta(-($sdKr(48) - $sdKr(41)), $data['values']['biaya_produksi']['kr'], 0.001);
+
+        // Kedua kolom budidaya masuk hpp_kolom
+        $this->assertSame(['ks', 'kr'], $data['values']['hpp_kolom']);
     }
 
     public function test_persediaan_akhir_sama_dengan_halaman_persediaan(): void
