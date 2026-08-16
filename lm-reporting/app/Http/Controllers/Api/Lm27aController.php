@@ -29,8 +29,7 @@ use Illuminate\Support\Facades\DB;
  *   PERSEDIAAN AWAL TAHUN (Rp) per tab.
  *   "Biaya Produksi" & "Penyusutan" — sumber SAMA dengan /kebun (LM Eksploitasi),
  *   kolom "s.d Bulan → Real s.d" blok "Kebun Sendiri + Pihak III", unit "Semua
- *   Unit", lewat ReportController::lm13Rows(). Kolom Karet keduanya masih '-'
- *   (lihat LM13_BUDIDAYA).
+ *   Unit", lewat ReportController::lm13Rows() (KS: 61 & 68, KR: 41 & 48).
  *   "Persediaan Akhir" — baris "Jumlah Persediaan" kolom NILAI PERSEDIAAN AKHIR
  *   (Rp) halaman yang sama, lewat PersediaanController::nilaiAkhirJumlah().
  *
@@ -74,20 +73,12 @@ class Lm27aController extends Controller
     /**
      * Kolom budidaya → baris LM13 yang dipakai LM-27A: komoditi + urutan baris
      * "Jumlah Beban Penyusutan" dan "Jumlah Biaya Produksi". Urutan berbeda antar
-     * komoditi karena templatnya memang beda panjang (KR: 41 & 48 — lihat
+     * komoditi karena templatnya memang beda panjang (KS: 61 & 68, KR: 41 & 48 — lihat
      * `seed_lm_template_row.sql`); diuji di Lm27aApiTest.
-     *
-     * ⚠️ 'kr' SENGAJA TIDAK diikutkan. Di halaman LM Eksploitasi, baris pengolahan
-     * komoditi KR (Beban Langsung/Overhead/Penyusutan Pengolahan) diisi dari Alokasi
-     * Biaya Olah yang sumbernya PKS/sawit (`AlokasiBiayaOlahController::jlhPerKebunLm13()`
-     * tidak menerima parameter komoditi), sehingga nilainya sama persis dengan kolom
-     * Sawit dan kedua subtotal Karet ikut menggelembung. Contoh Juli 2026 di server:
-     * KR penyusutan pengolahan 38.875.653.655 = angka Sawit, padahal penyusutan kebun
-     * karetnya hanya 2.211.421.100. Isi kolom Karet di sini setelah sumber itu
-     * dipisahkan per komoditi.
      */
     private const LM13_BUDIDAYA = [
         'ks' => ['komoditi' => 'KS', 'penyusutan' => 61, 'biaya_produksi' => 68],
+        'kr' => ['komoditi' => 'KR', 'penyusutan' => 41, 'biaya_produksi' => 48],
     ];
 
     public function index(Request $request): JsonResponse
@@ -193,8 +184,7 @@ class Lm27aController extends Controller
      * di lapisan presentasi, sehingga subtotal di tabel lebih kecil daripada yang
      * tampil di halaman.
      *
-     * Hanya kolom Kelapa Sawit yang diisi; alasan kolom Karet dikosongkan ada di
-     * LM13_BUDIDAYA.
+     * Nilai ditarik untuk kedua budidaya (Kelapa Sawit & Karet).
      *
      * Kunci `siap` = kolom yang benar-benar mendapat angka. Periode tanpa batch
      * (atau batch yang belum digenerate) TIDAK masuk daftar, supaya Harga Pokok
