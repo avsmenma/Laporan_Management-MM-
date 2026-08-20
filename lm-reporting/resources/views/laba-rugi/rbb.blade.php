@@ -25,6 +25,16 @@
             </div>
 
             <div class="filter-group">
+                <label class="filter-label">Kategori</label>
+                <select class="filter-select" x-model="kategori" @change="render()">
+                    <option value="semua">Semua</option>
+                    <template x-for="s in daftarSegmen()" :key="s">
+                        <option :value="s" x-text="namaSegmen(s)"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="filter-group">
                 <label class="filter-label">Rincian</label>
                 <div class="rbb-aksi">
                     <button type="button" class="btn" @click="bukaSemua()">Buka semua</button>
@@ -77,10 +87,13 @@ function rbbApp() {
     return {
         year: 2026,
         month: 1,
+        kategori: 'semua',  // 'semua' | nama segmen ('1. Sawit', dst)
         loading: false,
         data: { periode: {}, blok: [], baris: [], ada_data: false },
         tutup: {},          // id baris yang rinciannya disembunyikan
         petaKunci: {},      // field kolom Tabulator → kunci nilai dari server
+        kunciSegmen: [],    // kunci sel segmen yang sedang tampil
+        fieldGrand: '',     // field kolom Grand Total
         table: null,
 
         async load(adopsiPeriode = false) {
@@ -93,6 +106,10 @@ function rbbApp() {
                 if (this.data.periode) {
                     this.year = this.data.periode.year;
                     this.month = this.data.periode.month;
+                }
+                // Periode baru bisa saja tak punya segmen yang sedang dipilih.
+                if (this.kategori !== 'semua' && !this.daftarSegmen().includes(this.kategori)) {
+                    this.kategori = 'semua';
                 }
                 this.tutupSemua(false);
                 this.render();
@@ -137,6 +154,31 @@ function rbbApp() {
             });
         },
 
+        // ===== Saringan kategori (segmen) =====
+
+        // Daftar segmen yang ada datanya pada periode ini, gabungan seluruh blok.
+        daftarSegmen() {
+            const out = [];
+            (this.data.blok || []).forEach((b) => b.segmen.forEach((s) => {
+                if (!out.includes(s)) out.push(s);
+            }));
+            return out.sort();
+        },
+        // Label dropdown tanpa nomor urut: "1. Sawit" → "Sawit".
+        namaSegmen(s) {
+            return String(s).replace(/^\s*\d+\.\s*/, '');
+        },
+        // Segmen yang sedang dipilih, atau null bila "Semua".
+        segmenAktif() {
+            const daftar = this.daftarSegmen();
+            return this.kategori !== 'semua' && daftar.includes(this.kategori) ? this.kategori : null;
+        },
+        // Blok yang punya segmen terpilih (saat "Semua": seluruh blok).
+        blokTampil() {
+            const seg = this.segmenAktif();
+            return (this.data.blok || []).filter((b) => seg === null || b.segmen.includes(seg));
+        },
+
         // ===== Kolom & baris Tabulator =====
 
         esc(s) {
@@ -169,6 +211,8 @@ function rbbApp() {
             // Nama field sengaja c0,c1,… — nama blok/segmen mengandung titik ("1. Sawit")
             // yang akan dibaca Tabulator sebagai penunjuk objek bersarang.
             this.petaKunci = {};
+            this.kunciSegmen = [];   // kunci sel segmen yang tampil → dasar Grand Total
+            const seg = this.segmenAktif();
             let i = 0;
             const cols = [
                 { title: 'Uraian', field: 'uraian', frozen: true, minWidth: 330,
@@ -176,27 +220,46 @@ function rbbApp() {
                   cellClick: (e, cell) => this.toggle(cell.getRow().getData().id) },
                 { title: 'GL Account Desc', field: 'gl', frozen: true, minWidth: 250 },
             ];
-            (this.data.blok || []).forEach((b) => {
-                const sub = b.segmen.map((s) => this.num(s, 'c' + i++, b.nama + '|' + s));
-                sub.push(this.num('Total', 'c' + i++, b.nama + '|__total'));
+            this.blokTampil().forEach((b) => {
+                const sub = (seg === null ? b.segmen : [seg]).map((s) => {
+                    const field = 'c' + i++;
+                    this.kunciSegmen.push(b.nama + '|' + s);
+                    return this.num(s, field, b.nama + '|' + s);
+                });
+                // Kolom Total blok hanya berarti bila lebih dari satu segmen tampil.
+                if (seg === null) sub.push(this.num('Total', 'c' + i++, b.nama + '|__total'));
                 cols.push({ title: b.nama, headerHozAlign: 'center', columns: sub });
             });
-            cols.push(this.num('Grand Total', 'c' + i++, '__grand', 160));
+            // Grand Total dihitung ulang dari kolom segmen yang tampil (bukan nilai
+            // __grand dari server), supaya ikut menyusut saat kategori disaring.
+            this.fieldGrand = 'c' + i++;
+            cols.push({ title: 'Grand Total', field: this.fieldGrand, hozAlign: 'right', headerHozAlign: 'center', minWidth: 160, formatter: this.numFmt.bind(this) });
 
             return cols;
         },
         baris() {
-            return this.tampil().map((r) => {
+            const out = [];
+            this.tampil().forEach((r) => {
                 const row = {
                     id: r.id, uraian: r.uraian, gl: r.gl,
                     _level: r.level, _anak: this.punyaAnak(r.id), _tutup: !!this.tutup[r.id],
                 };
+                let ada = false;
                 Object.keys(this.petaKunci).forEach((f) => {
                     const v = r.nilai[this.petaKunci[f]];
-                    if (v !== undefined) row[f] = v;
+                    if (v !== undefined) { row[f] = v; ada = true; }
                 });
-                return row;
+                let grand = null;
+                this.kunciSegmen.forEach((k) => {
+                    const v = r.nilai[k];
+                    if (v !== undefined) grand = (grand ?? 0) + Number(v);
+                });
+                if (grand !== null) row[this.fieldGrand] = grand;
+                // Saat kategori disaring, baris tanpa posting di kategori itu ikut
+                // hilang seperti pivot yang difilter; baris Grand Total selalu tampil.
+                if (ada || r.level === 0) out.push(row);
             });
+            return out;
         },
 
         render() {
