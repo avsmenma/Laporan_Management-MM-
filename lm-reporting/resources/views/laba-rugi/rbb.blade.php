@@ -29,7 +29,7 @@
                 <select class="filter-select" x-model="kategori" @change="render()">
                     <option value="semua">Semua</option>
                     <template x-for="s in daftarSegmen()" :key="s">
-                        <option :value="s" x-text="namaSegmen(s)"></option>
+                        <option :value="s" x-text="tanpaNomor(s)"></option>
                     </template>
                 </select>
             </div>
@@ -73,6 +73,13 @@
     .rbb-head-judul { font-size: 15px; font-weight: 700; margin-top: 2px; }
 
     .rbb-kosong { padding: 28px 18px; text-align: center; color: var(--ink-500); font-size: 13px; }
+
+    /* Judul header rata tengah mendatar DAN tegak. Pita judul blok dipaksa setinggi
+       sama supaya sub-kolom seluruh blok sejajar walau judulnya beda jumlah baris
+       (mis. "Beban Usaha" satu baris vs "Beban Pokok Penjualan" dua baris). */
+    .rbb-frame .tabulator-header .tabulator-col .tabulator-col-content { display: flex; align-items: center; justify-content: center; }
+    .rbb-frame .tabulator-header .tabulator-col:not(.tabulator-col-group) > .tabulator-col-content { height: 100%; }
+    .rbb-frame .tabulator-header .tabulator-col.tabulator-col-group > .tabulator-col-content { min-height: 46px; }
 
     /* Segitiga buka/tutup rincian pada kolom Uraian */
     .rbb-caret { display: inline-block; width: 16px; color: var(--g-700); font-size: 10px; }
@@ -164,8 +171,10 @@ function rbbApp() {
             }));
             return out.sort();
         },
-        // Label dropdown tanpa nomor urut: "1. Sawit" → "Sawit".
-        namaSegmen(s) {
+        // Label tampilan tanpa nomor urut: "1. Sawit" → "Sawit",
+        // "2. Beban Pokok Penjualan" → "Beban Pokok Penjualan". Nilai aslinya tetap
+        // dipakai sebagai kunci sel, yang dibuang hanya nomornya di layar.
+        tanpaNomor(s) {
             return String(s).replace(/^\s*\d+\.\s*/, '');
         },
         // Segmen yang sedang dipilih, atau null bila "Semua".
@@ -215,20 +224,20 @@ function rbbApp() {
             const seg = this.segmenAktif();
             let i = 0;
             const cols = [
-                { title: 'Uraian', field: 'uraian', frozen: true, minWidth: 330,
+                { title: 'Uraian', field: 'uraian', frozen: true, minWidth: 330, headerHozAlign: 'center',
                   formatter: this.uraianFmt.bind(this),
                   cellClick: (e, cell) => this.toggle(cell.getRow().getData().id) },
-                { title: 'GL Account Desc', field: 'gl', frozen: true, minWidth: 250 },
+                { title: 'GL Account Desc', field: 'gl', frozen: true, minWidth: 250, headerHozAlign: 'center' },
             ];
             this.blokTampil().forEach((b) => {
                 const sub = (seg === null ? b.segmen : [seg]).map((s) => {
                     const field = 'c' + i++;
                     this.kunciSegmen.push(b.nama + '|' + s);
-                    return this.num(s, field, b.nama + '|' + s);
+                    return this.num(this.tanpaNomor(s), field, b.nama + '|' + s);
                 });
                 // Kolom Total blok hanya berarti bila lebih dari satu segmen tampil.
                 if (seg === null) sub.push(this.num('Total', 'c' + i++, b.nama + '|__total'));
-                cols.push({ title: b.nama, headerHozAlign: 'center', columns: sub });
+                cols.push({ title: this.tanpaNomor(b.nama), headerHozAlign: 'center', columns: sub });
             });
             // Grand Total dihitung ulang dari kolom segmen yang tampil (bukan nilai
             // __grand dari server), supaya ikut menyusut saat kategori disaring.
