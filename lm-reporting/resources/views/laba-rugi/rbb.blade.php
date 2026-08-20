@@ -99,6 +99,7 @@ function rbbApp() {
         data: { periode: {}, blok: [], baris: [], ada_data: false },
         tutup: {},          // id baris yang rinciannya disembunyikan
         petaKunci: {},      // field kolom Tabulator → kunci nilai dari server
+        idPunyaAnak: {},    // { id induk: true } — baris yang punya rincian di bawahnya
         kunciSegmen: [],    // kunci sel segmen yang sedang tampil
         fieldGrand: '',     // field kolom Grand Total
         table: null,
@@ -110,6 +111,9 @@ function rbbApp() {
                 const resp = await fetch(`/report-data/laba-rugi/rbb${q}`);
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 this.data = await resp.json();
+                const punyaAnak = {};
+                (this.data.baris || []).forEach(r => { if (r.induk) punyaAnak[r.induk] = true; });
+                this.idPunyaAnak = punyaAnak;
                 if (this.data.periode) {
                     this.year = this.data.periode.year;
                     this.month = this.data.periode.month;
@@ -130,23 +134,46 @@ function rbbApp() {
         // ===== Buka/tutup rincian =====
 
         punyaAnak(id) {
-            return this.data.baris.some(r => r.induk === id);
+            return this.idPunyaAnak[id] === true;
         },
         // Bawaan seperti pivot acuan: kelompok besar terbuka, rincian akun tertutup.
         tutupSemua(gambarUlang = true) {
             const t = {};
             this.data.baris.forEach(r => { if (r.level === 2) t[r.id] = true; });
             this.tutup = t;
-            if (gambarUlang) this.render();
+            if (gambarUlang) this.perbaruiBaris();
         },
         bukaSemua() {
             this.tutup = {};
-            this.render();
+            this.perbaruiBaris();
         },
         toggle(id) {
             if (!this.punyaAnak(id)) return;
             this.tutup = { ...this.tutup, [id]: !this.tutup[id] };
-            this.render();
+            this.perbaruiBaris();
+        },
+        /**
+         * Ganti isi baris TANPA membangun ulang tabel, lalu kembalikan posisi gulir.
+         * Kalau tabel di-destroy seperti saat ganti periode/kategori, layar melompat
+         * ke atas tiap kali satu rincian dibuka — menyiksa di baris paling bawah.
+         */
+        perbaruiBaris() {
+            if (!this.table) { this.render(); return; }
+            const wadah = () => document.querySelector('#rbb-table .tabulator-tableholder');
+            const el = wadah();
+            const atas = el ? el.scrollTop : 0;
+            const kiri = el ? el.scrollLeft : 0;
+            const halaman = { y: window.scrollY, x: window.scrollX };
+            const pulihkan = () => {
+                const w = wadah();
+                if (w) { w.scrollTop = atas; w.scrollLeft = kiri; }
+                window.scrollTo(halaman.x, halaman.y);
+            };
+            this.table.replaceData(this.baris()).then(() => {
+                pulihkan();
+                // Sekali lagi setelah Tabulator selesai menggambar barisnya.
+                requestAnimationFrame(pulihkan);
+            }).catch(() => {});
         },
         tampil() {
             const induk = {};
