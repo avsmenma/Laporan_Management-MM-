@@ -40,6 +40,12 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::get('/laba-rugi/persediaan/penyesuaian', [\App\Http\Controllers\PersediaanPenyesuaianController::class, 'index'])
         ->name('laba-rugi.persediaan.penyesuaian.index');
 
+    // Laba Rugi — RBB (submenu paling bawah; UI & sumber data menyusul).
+    Route::view('/laba-rugi/rbb', 'coming-soon', [
+        'judul' => 'RBB',
+        'subjudul' => 'Halaman RBB sedang disiapkan; struktur tabel dan sumber datanya menyusul.',
+    ])->name('laba-rugi.rbb');
+
     // Laba Rugi — LM 34 kini tab pada halaman Penjualan; tautan lama diarahkan ke tab itu.
     Route::redirect('/laba-rugi/lm34', '/laba-rugi/penjualan?tab=lm34')->name('laba-rugi.lm34');
 
