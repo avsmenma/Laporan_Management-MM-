@@ -69,6 +69,8 @@ class ProcessImport implements ShouldQueue
             } elseif (SpreadsheetImportService::isRbbGl($job->type)) {
                 // GL RBB (Rincian PNL): multi-periode per tahun, tanpa regenerasi batch.
                 $result = $service->importRbbGl($path, $job->user_id, $onProgress, (int) $job->year);
+                // Angka halaman RBB dibaca dari agregat → bangun ulang periode terdampak.
+                app(\App\Domain\Report\RbbPivotService::class)->generateAll((int) $job->year);
             } elseif (SpreadsheetImportService::isBebanUsaha($job->type)) {
                 // GL Beban Usaha (ADMIN/BOL): multi-periode per tahun, tanpa regenerasi.
                 $result = $service->importBebanUsaha($job->type, $path, $job->user_id, $onProgress, (int) $job->year);

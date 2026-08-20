@@ -989,3 +989,25 @@ Artisan::command('produksi:cpo-inti {--year=} {--month=}', function (\App\Domain
 
     return 0;
 })->purpose('Materialisasi tabel PRODUKSI CPO + INTI (produksi_cpo_inti) dari produksi_pks. Tanpa --year/--month = semua periode.');
+
+Artisan::command('rbb:pivot {--year=} {--month=}', function (\App\Domain\Report\RbbPivotService $service): int {
+    $year = $this->option('year') !== null ? (int) $this->option('year') : null;
+    $month = $this->option('month') !== null ? (int) $this->option('month') : null;
+
+    if ($year !== null && $month !== null) {
+        $n = $service->generate($year, $month);
+        $this->info("Selesai: {$n} baris agregat RBB untuk {$year}-".str_pad((string) $month, 2, '0', STR_PAD_LEFT).'.');
+
+        return 0;
+    }
+
+    // Tanpa bulan → seluruh periode yang ada di rbb_gl (opsional dibatasi --year).
+    $total = 0;
+    foreach ($service->generateAll($year) as $r) {
+        $this->line("  {$r['year']}-".str_pad((string) $r['period'], 2, '0', STR_PAD_LEFT).": {$r['rows']} baris");
+        $total += $r['rows'];
+    }
+    $this->info("Selesai: {$total} baris agregat RBB.");
+
+    return 0;
+})->purpose('Materialisasi agregat halaman RBB (rbb_pivot) dari rbb_gl. Tanpa --month = semua periode.');

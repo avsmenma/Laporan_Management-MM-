@@ -24,7 +24,7 @@ class ImportServiceTest extends TestCase
                 'rko_bku', 'rko_ohc', 'rko_gc', 'rko_pks_biaya', 'rko_pks_produksi',
                 'rkap_bku', 'rkap_ohc', 'rkap_gc', 'rkap_pks_biaya', 'rkap_pks_produksi',
                 'areal', 'produksi', 'produksi_kebun', 'pembelian_tbs', 'penjualan_produk', 'persediaan_nilai',
-                'beban_admin', 'beban_ops', 'beban_penjualan', 'pendapatan_lain',
+                'beban_admin', 'beban_ops', 'beban_penjualan', 'pendapatan_lain', 'rbb_gl',
                 'pks_biaya', 'investasi_wbs', 'investasi_asset',
             ],
             array_keys(SpreadsheetImportService::types())
@@ -34,6 +34,9 @@ class ImportServiceTest extends TestCase
         $this->assertFalse(SpreadsheetImportService::isBebanUsaha('wbs'));
         $this->assertTrue(SpreadsheetImportService::usesMonthGuard('beban_admin'));
         $this->assertTrue(SpreadsheetImportService::usesMonthGuard('beban_ops'));
+        $this->assertTrue(SpreadsheetImportService::isRbbGl('rbb_gl'));
+        $this->assertFalse(SpreadsheetImportService::isRbbGl('beban_ops'));
+        $this->assertTrue(SpreadsheetImportService::usesMonthGuard('rbb_gl'));
         $this->assertFalse(SpreadsheetImportService::isBudget('wbs'));
         $this->assertTrue(SpreadsheetImportService::isBudget('rko_ohc'));
         $this->assertTrue(SpreadsheetImportService::isBudget('rkap_ohc'));

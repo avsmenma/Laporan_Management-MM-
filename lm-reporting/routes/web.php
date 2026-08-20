@@ -40,11 +40,8 @@ Route::middleware(['auth', 'role:Viewer,Operator,Admin'])->group(function () {
     Route::get('/laba-rugi/persediaan/penyesuaian', [\App\Http\Controllers\PersediaanPenyesuaianController::class, 'index'])
         ->name('laba-rugi.persediaan.penyesuaian.index');
 
-    // Laba Rugi — RBB (submenu paling bawah; UI & sumber data menyusul).
-    Route::view('/laba-rugi/rbb', 'coming-soon', [
-        'judul' => 'RBB',
-        'subjudul' => 'Halaman RBB sedang disiapkan; struktur tabel dan sumber datanya menyusul.',
-    ])->name('laba-rugi.rbb');
+    // Laba Rugi — RBB (Rincian PNL; template sheet "Report I." workbook Beban Pokok & Usaha).
+    Route::view('/laba-rugi/rbb', 'laba-rugi.rbb')->name('laba-rugi.rbb');
 
     // Laba Rugi — LM 34 kini tab pada halaman Penjualan; tautan lama diarahkan ke tab itu.
     Route::redirect('/laba-rugi/lm34', '/laba-rugi/penjualan?tab=lm34')->name('laba-rugi.lm34');
@@ -106,6 +103,7 @@ Route::prefix('report-data')->group(function () {
     Route::get('/laba-rugi/lm27a', [\App\Http\Controllers\Api\Lm27aController::class, 'index']);
     Route::get('/laba-rugi/persediaan', [\App\Http\Controllers\Api\PersediaanController::class, 'index']);
     Route::get('/laba-rugi/beban-usaha', [\App\Http\Controllers\Api\BebanUsahaDataController::class, 'index']);
+    Route::get('/laba-rugi/rbb', [\App\Http\Controllers\Api\RbbController::class, 'index']);
     Route::get('/laba-rugi/drilldown', [\App\Http\Controllers\Api\LabaRugiDrilldownController::class, 'pivot']);
     Route::get('/laba-rugi/drilldown-deep', [\App\Http\Controllers\Api\LabaRugiDrilldownController::class, 'deep']);
     Route::get('/alokasi-biaya-olah', [\App\Http\Controllers\Api\AlokasiBiayaOlahController::class, 'index']);

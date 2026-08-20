@@ -2,6 +2,7 @@
 
 namespace App\Domain\Import;
 
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
@@ -275,6 +276,21 @@ class ImportTemplateService
                     'Reversed With', 'WBS Element', 'Descripition Cctr', 'Klasifikasi',
                 ],
             ],
+            'rbb_gl' => [
+                'sheet' => 'Data',
+                'note' => 'RBB — Rincian PNL (ekspor line-item GL SAP, sheet "Data"). Kolom dibaca berdasarkan NAMA header, bukan posisi, jadi kolom tambahan boleh ada. Wajib: Posting Period (atau Year/Month), Amount in Local Currency, serta empat kolom klasifikasi Klasifikasi / Klasifikasi 2 / Jenis Beban / Segmen — keempatnya kolom bantu workbook (hasil VLOOKUP ke sheet "Lock"), bukan keluaran SAP mentah. Satu berkas biasanya satu bulan; seluruh periode pada tahun terpilih diimpor (hapus-ganti per periode). Boleh diunggah sebagai .xlsx atau .csv (berkas .xlsb harus disimpan ulang lebih dulu).',
+                'headers' => [
+                    'Document Number', 'Posting Date', 'Posting Period', 'Account', 'Assignment', 'Reference',
+                    'Supplier', 'Vendor Name', 'Profit Center', 'Description Prctr',
+                    'Offsetting Account in General Ledger', 'Name of offsetting account', 'Document Type',
+                    'Posting Key', 'Amount in Local Currency', 'Clearing Document', 'Text', 'User Name',
+                    'GL Account Desc', 'Entry Date', 'Time of Entry', 'Year/Month', 'Reference Key',
+                    'Purchasing Document', 'Material', 'Material Description', 'Quantity', 'Base Unit of Measure',
+                    'Cost Center', 'Cost Element', 'Reference Key 3', 'Customer', 'Customer Name', 'Asset',
+                    'Reversed With', 'WBS Element', 'Descripition Cctr', 'Reference Key 1', 'Reference Key 2',
+                    'Klasifikasi', 'Klasifikasi 2', 'Jenis Beban', 'Segmen',
+                ],
+            ],
             'investasi_wbs' => [
                 'sheet' => 'DB',
                 'note' => 'Biaya investasi TBM (sheet harus bernama "DB"). Baca posisional; data mulai baris pertama yang kolom A berkode kebun (5Exx).',
@@ -319,12 +335,12 @@ class ImportTemplateService
         $sheet->setTitle(mb_substr($spec['sheet'], 0, 31)); // batas 31 char nama sheet Excel
         $sheet->fromArray([$spec['headers']], null, 'A1');
 
-        $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($spec['headers']));
+        $lastCol = Coordinate::stringFromColumnIndex(count($spec['headers']));
         $sheet->getStyle("A1:{$lastCol}1")->getFont()->setBold(true);
         $sheet->getStyle("A1:{$lastCol}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->freezePane('A2');
         foreach (range(1, count($spec['headers'])) as $i) {
-            $sheet->getColumnDimension(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
         }
 
         return $ss;
