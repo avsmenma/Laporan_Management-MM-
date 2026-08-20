@@ -547,6 +547,14 @@ bisa dibuka/tutup, bawaannya rincian akun tertutup), kolom **dinamis** (blok Kla
 sub-kolom Segmen — hanya yang ada datanya, tiap blok ditutup Total, lalu Grand Total), format
 akuntansi (minus dalam kurung, nol jadi `-`, sel tanpa posting dibiarkan kosong).
 
+- `028566d` — dropdown **Kategori** (Semua / Sawit / Karet / Pabrik / Regional, isinya diturunkan
+  dari segmen yang ada datanya). Saringan berjalan di sisi klien: memilih satu segmen menyisakan
+  satu sub-kolom per blok, blok & baris tanpa posting di segmen itu ikut hilang (seperti pivot
+  yang difilter), kolom Total per blok disembunyikan karena jadi kembar, dan Grand Total
+  **dihitung ulang** dari kolom yang tampil — bukan memakai `__grand` dari server.
+  Januari 2026: Sawit (149.255.875.246), Karet 662.649.565, Pabrik 17.202.533.705,
+  Regional 18.168.198.942 — jumlahnya persis Grand Total semua (113.222.493.034).
+
 Angka Januari 2026 **cocok selisih 0** dengan workbook pada seluruh sel yang diperiksa —
 Grand Total (113.222.493.034), Penjualan (193.747.725.081), Beban Pokok Penjualan 59.927.519.350,
 Beban Usaha 21.023.475.715, Pendapatan Lain-lain (425.763.018), termasuk pecahan per Jenis Beban
