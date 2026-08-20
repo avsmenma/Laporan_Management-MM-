@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use OpenSpout\Common\Entity\Cell\FormulaCell;
 use OpenSpout\Common\Entity\Row;
+use OpenSpout\Reader\CSV\Options as CsvReaderOptions;
+use OpenSpout\Reader\CSV\Reader as CsvReader;
 use OpenSpout\Reader\XLSX\Options as XlsxReaderOptions;
 use OpenSpout\Reader\XLSX\Reader as XlsxReader;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -127,6 +129,7 @@ class SpreadsheetImportService
             'beban_ops' => 'Beban Ops Lainnya (GL)',
             'beban_penjualan' => 'Beban Penjualan (GL)',
             'pendapatan_lain' => 'Pendapatan Lainnya (GL)',
+            'rbb_gl' => 'RBB — Rincian PNL (GL)',
             'pks_biaya' => 'Biaya PKS (LM16)',
             'investasi_wbs' => 'Investasi — Biaya (DB)',
             'investasi_asset' => 'Investasi — Aset (WS)',
@@ -191,6 +194,15 @@ class SpreadsheetImportService
         return in_array($type, ['beban_admin', 'beban_ops', 'beban_penjualan', 'pendapatan_lain'], true);
     }
 
+    /**
+     * Jenis RBB — Rincian PNL: ekspor line-item GL SAP sheet "Data" (±240 rb baris/bulan).
+     * Menerima .csv selain .xlsx karena berkas aslinya .xlsb yang tak terbaca pustaka.
+     */
+    public static function isRbbGl(string $type): bool
+    {
+        return $type === 'rbb_gl';
+    }
+
     /** Jenis yang memakai bulan sebagai penjaga periode (tanpa Batch). */
     public static function usesMonthGuard(string $type): bool
     {
@@ -201,7 +213,7 @@ class SpreadsheetImportService
         // bulan & tahun terpilih JADI periodenya (hapus-ganti per year+period).
         return self::isBudget($type) || self::isProduksi($type) || self::isProduksiKebun($type)
             || self::isPembelianTbs($type) || self::isPenjualanProduk($type) || self::isBebanUsaha($type)
-            || self::isPersediaanNilai($type);
+            || self::isPersediaanNilai($type) || self::isRbbGl($type);
     }
 
     /** Sumber budget (BKU/OHC/GC/PKS) untuk jenis anggaran rko & rkap, atau null. */
@@ -745,6 +757,22 @@ class SpreadsheetImportService
             return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
         }
 
+        // RBB — Rincian PNL: sampel dari sheet "Data"/CSV, kolom kunci + 4 kolom klasifikasi.
+        if (self::isRbbGl($type)) {
+            $total = max(0, $this->rowCountForType($type, $path));
+            $fields = ['posting_date', 'period', 'account', 'gl_account_desc', 'profit_center', 'cost_center', 'amount', 'klasifikasi', 'klasifikasi_2', 'jenis_beban', 'segmen'];
+            $headers = ['Posting Date', 'Period', 'Account', 'GL Account Desc', 'Profit Center', 'Cost Center', 'Amount', 'Klasifikasi', 'Klasifikasi 2', 'Jenis Beban', 'Segmen'];
+            $rows = [];
+            foreach ($this->rbbRows($path) as $row) {
+                $rows[] = array_map(fn ($f) => $row[$f] ?? null, $fields);
+                if (count($rows) >= $sampleSize) {
+                    break;
+                }
+            }
+
+            return ['type' => $type, 'label' => self::types()[$type], 'columns' => $headers, 'rows' => $rows, 'total' => $total];
+        }
+
         // Areal: baca header + sampel dari sheet "DB", hitung total via rowCountForType.
         if ($type === 'areal') {
             $total = max(0, $this->rowCountForType('areal', $path));
@@ -802,6 +830,11 @@ class SpreadsheetImportService
     /** Jumlah baris data sesuai jenis: areal pakai sheet "DB", produksi pakai sheet "ZPTPNHLPP039", pembelian TBS sheet "Data", lainnya sheet pertama. */
     public function rowCountForType(string $type, string $path): int
     {
+        // RBB boleh berupa .csv (berkas .xlsb aslinya tak terbaca pustaka) → baris
+        // dihitung dari jumlah baris teks, bukan dari <dimension> xlsx.
+        if (self::isRbbGl($type)) {
+            return $this->isZipArchive($path) ? $this->totalDataRows($path, 'Data') : $this->csvDataRows($path);
+        }
         if ($type !== 'areal' && ! self::isProduksi($type) && ! self::isProduksiKebun($type)
             && ! self::isPembelianTbs($type) && ! self::isPenjualanProduk($type)
             && ! self::isPersediaanNilai($type)) {
@@ -823,7 +856,7 @@ class SpreadsheetImportService
      *
      * @return \Generator<int, array<int, mixed>>
      */
-    private function dataRowsSheet(string $path, string $sheetName): \Generator
+    private function dataRowsSheet(string $path, string $sheetName, bool $withHeader = false): \Generator
     {
         $reader = new XlsxReader(new XlsxReaderOptions);
         $reader->open($path);
@@ -863,8 +896,9 @@ class SpreadsheetImportService
                 foreach ($sheet->getRowIterator() as $row) {
                     if ($isHeader) {
                         $isHeader = false;
-
-                        continue;
+                        if (! $withHeader) {
+                            continue;
+                        }
                     }
                     yield $this->rowToArray($row);
                 }
@@ -1871,6 +1905,292 @@ class SpreadsheetImportService
         });
 
         return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /**
+     * Peta kolom sheet "Data" RBB → kolom tabel rbb_gl, memakai NAMA header (bukan
+     * posisi): ekspor SAP bisa memuat kolom tambahan / urutan berbeda, sedangkan
+     * empat kolom klasifikasi berada di ujung kanan dan mudah bergeser.
+     */
+    private const RBB_COLS = [
+        'document_number' => 'Document Number',
+        'posting_date' => 'Posting Date',
+        'period' => 'Posting Period',
+        'year_month' => 'Year/Month',
+        'account' => 'Account',
+        'gl_account_desc' => 'GL Account Desc',
+        'profit_center' => 'Profit Center',
+        'profit_center_desc' => 'Description Prctr',
+        'cost_center' => 'Cost Center',
+        'cost_element' => 'Cost Element',
+        'wbs_element' => 'WBS Element',
+        'vendor_name' => 'Vendor Name',
+        'document_type' => 'Document Type',
+        'text' => 'Text',
+        'amount' => 'Amount in Local Currency',
+        'klasifikasi' => 'Klasifikasi',
+        'klasifikasi_2' => 'Klasifikasi 2',
+        'jenis_beban' => 'Jenis Beban',
+        'segmen' => 'Segmen',
+    ];
+
+    /**
+     * Impor sheet "Data" (ekspor GL SAP penuh) → rbb_gl, sumber halaman RBB.
+     *
+     * Idempoten HAPUS-GANTI per (year, period) yang muncul di berkas; $year = penjaga
+     * tahun. Amount disimpan APA ADANYA (penjualan & pendapatan negatif) sehingga
+     * agregasi halaman cukup SUM(amount) — cocok selisih 0 dengan pivot "Report I.".
+     * Streaming + insert per-chunk: satu berkas ±240 rb baris.
+     */
+    public function importRbbGl(string $path, ?int $userId = null, ?callable $onProgress = null, ?int $year = null): ImportResult
+    {
+        $inserted = 0;
+
+        DB::transaction(function () use ($path, $year, $onProgress, &$inserted): void {
+            $records = [];
+            $cleared = []; // "year-period" yang sudah dihapus-ganti
+            $flush = function () use (&$records, &$inserted, $onProgress): void {
+                if ($records === []) {
+                    return;
+                }
+                DB::table('rbb_gl')->insert($records);
+                $inserted += count($records);
+                $records = [];
+                if ($onProgress !== null) {
+                    $onProgress($inserted);
+                }
+            };
+
+            foreach ($this->rbbRows($path) as $v) {
+                $date = $this->rbbDate($v['posting_date'] ?? null);
+                $ym = trim((string) ($v['year_month'] ?? ''));           // "2026/01"
+                $cocok = preg_match('/^(\d{4})\D(\d{1,2})$/', $ym, $m) === 1;
+                $rowYear = $cocok ? (int) $m[1] : ($date !== null ? (int) substr($date, 0, 4) : null);
+                $period = is_numeric($v['period'] ?? null) ? (int) $v['period'] : ($cocok ? (int) $m[2] : null);
+                if ($rowYear === null || $period === null || $period < 1 || $period > 12) {
+                    continue;
+                }
+                // Penjaga tahun: hanya baris pada tahun terpilih yang diimpor.
+                if ($year !== null && $rowYear !== $year) {
+                    continue;
+                }
+
+                // Hapus-ganti data lama saat periode pertama kali dijumpai di berkas.
+                $key = "{$rowYear}-{$period}";
+                if (! isset($cleared[$key])) {
+                    DB::table('rbb_gl')->where('year', $rowYear)->where('period', $period)->delete();
+                    $cleared[$key] = true;
+                }
+
+                $records[] = [
+                    'year' => $rowYear,
+                    'period' => $period,
+                    'document_number' => $this->produksiText($v['document_number'] ?? null, 20),
+                    'posting_date' => $date,
+                    'account' => $this->produksiText($v['account'] ?? null, 20),
+                    'gl_account_desc' => $this->produksiText($v['gl_account_desc'] ?? null),
+                    'profit_center' => strtoupper((string) $this->produksiText($v['profit_center'] ?? null, 20)) ?: null,
+                    'profit_center_desc' => $this->produksiText($v['profit_center_desc'] ?? null),
+                    'cost_center' => strtoupper((string) $this->produksiText($v['cost_center'] ?? null, 30)) ?: null,
+                    'cost_element' => $this->produksiText($v['cost_element'] ?? null, 20),
+                    'wbs_element' => $this->produksiText($v['wbs_element'] ?? null, 40),
+                    'vendor_name' => $this->produksiText($v['vendor_name'] ?? null),
+                    'document_type' => $this->produksiText($v['document_type'] ?? null, 10),
+                    'text' => $this->produksiText($v['text'] ?? null, 255),
+                    'amount' => $this->rbbNum($v['amount'] ?? null),
+                    'klasifikasi' => $this->produksiText($v['klasifikasi'] ?? null, 60),
+                    'klasifikasi_2' => $this->produksiText($v['klasifikasi_2'] ?? null, 120),
+                    'jenis_beban' => $this->produksiText($v['jenis_beban'] ?? null, 150),
+                    'segmen' => $this->produksiText($v['segmen'] ?? null, 40),
+                ];
+                if (count($records) >= 1000) {
+                    $flush();
+                }
+            }
+            $flush();
+        });
+
+        return new ImportResult(rowCount: $inserted, errors: []);
+    }
+
+    /**
+     * Baris sheet "Data" RBB sebagai array asosiatif sesuai RBB_COLS (header dicocokkan
+     * tanpa peduli besar-kecil huruf & spasi ganda). Mendukung .xlsx maupun .csv.
+     *
+     * @return \Generator<int, array<string, mixed>>
+     */
+    private function rbbRows(string $path): \Generator
+    {
+        $map = null;
+        foreach ($this->rbbRawRows($path) as $v) {
+            if ($map === null) {
+                $map = [];
+                foreach ($v as $i => $name) {
+                    $key = $this->rbbNorm($name);
+                    if ($key !== '' && ! isset($map[$key])) {
+                        $map[$key] = $i;
+                    }
+                }
+
+                continue;
+            }
+            if ($this->isEmptyRow($v)) {
+                continue;
+            }
+            $out = [];
+            foreach (self::RBB_COLS as $field => $header) {
+                $i = $map[$this->rbbNorm($header)] ?? null;
+                $out[$field] = $i === null ? null : ($v[$i] ?? null);
+            }
+            yield $out;
+        }
+    }
+
+    /**
+     * Baris mentah (TERMASUK header) berkas RBB: sheet "Data" bila .xlsx, atau seluruh
+     * baris bila .csv. Pemisah kolom CSV dideteksi dari baris header.
+     *
+     * @return \Generator<int, array<int, mixed>>
+     */
+    private function rbbRawRows(string $path): \Generator
+    {
+        if ($this->isZipArchive($path)) {
+            yield from $this->dataRowsSheet($path, 'Data', true);
+
+            return;
+        }
+
+        $reader = new CsvReader(new CsvReaderOptions(FIELD_DELIMITER: $this->csvDelimiter($path)));
+        $reader->open($path);
+        $sheet = $row = null;
+
+        try {
+            foreach ($reader->getSheetIterator() as $sheet) {
+                foreach ($sheet->getRowIterator() as $row) {
+                    yield $this->rowToArray($row);
+                }
+                break;
+            }
+        } finally {
+            $reader->close();
+            unset($reader, $sheet, $row);
+            gc_collect_cycles();
+        }
+    }
+
+    /** Jumlah baris data (di luar header) berkas CSV, dihitung streaming. */
+    private function csvDataRows(string $path): int
+    {
+        $fh = @fopen($path, 'rb');
+        if ($fh === false) {
+            return 0;
+        }
+        $n = 0;
+        while (fgets($fh) !== false) {
+            $n++;
+        }
+        fclose($fh);
+
+        return max(0, $n - 1);
+    }
+
+    /** Berkas berformat zip (xlsx) atau bukan (csv). */
+    private function isZipArchive(string $path): bool
+    {
+        $fh = @fopen($path, 'rb');
+        if ($fh === false) {
+            return false;
+        }
+        $head = (string) fread($fh, 4);
+        fclose($fh);
+
+        return str_starts_with($head, "PK\x03\x04");
+    }
+
+    /**
+     * Pemisah kolom CSV ditebak dari baris pertama. Excel berlokal Indonesia menulis
+     * titik-koma (pemisah daftar id-ID), ekspor lain lazimnya koma.
+     */
+    private function csvDelimiter(string $path): string
+    {
+        $fh = @fopen($path, 'rb');
+        $line = $fh === false ? '' : (string) fgets($fh, 65536);
+        if ($fh !== false) {
+            fclose($fh);
+        }
+        $best = ',';
+        $bestCount = 0;
+        foreach ([',', ';', "\t", '|'] as $sep) {
+            $n = substr_count($line, $sep);
+            if ($n > $bestCount) {
+                $bestCount = $n;
+                $best = $sep;
+            }
+        }
+
+        return $best;
+    }
+
+    /** Nama header dinormalkan: huruf kecil, spasi rangkap & spasi tepi dibuang. */
+    private function rbbNorm(mixed $v): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', mb_strtolower(trim((string) ($v ?? '')))) ?? '');
+    }
+
+    /**
+     * Angka RBB: sel numerik xlsx dipakai langsung; teks CSV ditoleransi dalam format
+     * Indonesia (1.234.567 atau 1.234,56), Inggris (1,234.56), minus di belakang,
+     * maupun dalam kurung.
+     */
+    private function rbbNum(mixed $v): float
+    {
+        if (is_int($v) || is_float($v)) {
+            return (float) $v;
+        }
+        $t = str_replace([' ', "\u{00a0}"], '', trim((string) ($v ?? '')));
+        if ($t === '') {
+            return 0.0;
+        }
+        $neg = false;
+        if (str_ends_with($t, '-')) {                 // SAP menaruh tanda minus di belakang
+            $neg = true;
+            $t = rtrim($t, '-');
+        }
+        if (str_starts_with($t, '(') && str_ends_with($t, ')')) {
+            $neg = true;
+            $t = trim($t, '()');
+        }
+        $koma = strrpos($t, ',');
+        $titik = strrpos($t, '.');
+        if ($koma !== false && $titik !== false) {
+            // Pemisah desimal = tanda yang paling kanan; satunya pemisah ribuan.
+            $t = $koma > $titik ? str_replace(['.', ','], ['', '.'], $t) : str_replace(',', '', $t);
+        } elseif ($koma !== false) {
+            $t = preg_match('/^-?\d{1,3}(,\d{3})+$/', $t) === 1 ? str_replace(',', '', $t) : str_replace(',', '.', $t);
+        } elseif ($titik !== false && preg_match('/^-?\d{1,3}(\.\d{3})+$/', $t) === 1) {
+            $t = str_replace('.', '', $t);            // 524.700 = ribuan, bukan desimal
+        }
+        $n = is_numeric($t) ? (float) $t : 0.0;
+
+        return $neg ? -$n : $n;
+    }
+
+    /** Tanggal RBB: serial Excel / Y-m-d (via produksiDate) atau teks d/m/Y. */
+    private function rbbDate(mixed $v): ?string
+    {
+        $d = $this->produksiDate($v);
+        if ($d !== null) {
+            return $d;
+        }
+        $t = trim((string) ($v ?? ''));
+        foreach (['!j/n/Y', '!j-n-Y', '!j.n.Y'] as $format) {
+            $p = \DateTime::createFromFormat($format, $t);
+            if ($p !== false) {
+                return $p->format('Y-m-d');
+            }
+        }
+
+        return null;
     }
 
     /** Tanggal pembelian: serial Excel / 'Y-m-d' (via produksiDate) atau teks 'm/d/Y'. */

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Domain\Import\SpreadsheetImportService;
+use App\Domain\Report\ProduksiCpoIntiService;
 use App\Models\Batch;
 use App\Models\ImportJob;
 use Illuminate\Bus\Queueable;
@@ -65,6 +66,9 @@ class ProcessImport implements ShouldQueue
                 // ZSTOCK: berkas tanpa kolom periode → bulan & tahun terpilih jadi
                 // periodenya; tidak menyentuh report batch → tanpa regenerasi.
                 $result = $service->importPersediaanNilai($path, $job->user_id, $onProgress, (int) $job->year, $month);
+            } elseif (SpreadsheetImportService::isRbbGl($job->type)) {
+                // GL RBB (Rincian PNL): multi-periode per tahun, tanpa regenerasi batch.
+                $result = $service->importRbbGl($path, $job->user_id, $onProgress, (int) $job->year);
             } elseif (SpreadsheetImportService::isBebanUsaha($job->type)) {
                 // GL Beban Usaha (ADMIN/BOL): multi-periode per tahun, tanpa regenerasi.
                 $result = $service->importBebanUsaha($job->type, $path, $job->user_id, $onProgress, (int) $job->year);
@@ -74,9 +78,9 @@ class ProcessImport implements ShouldQueue
                 // Materialisasi ulang PRODUKSI CPO + INTI (Alokasi Biaya Olah) untuk
                 // periode ini — otomatis mengikuti perubahan angka produksi.
                 if ($month !== null) {
-                    app(\App\Domain\Report\ProduksiCpoIntiService::class)->generate((int) $job->year, $month);
+                    app(ProduksiCpoIntiService::class)->generate((int) $job->year, $month);
                 } else {
-                    app(\App\Domain\Report\ProduksiCpoIntiService::class)->generateAll();
+                    app(ProduksiCpoIntiService::class)->generateAll();
                 }
             } elseif ($isBudget) {
                 $result = $service->importBudget((int) $job->year, $job->type, $path, $job->user_id, $onProgress, $month);
