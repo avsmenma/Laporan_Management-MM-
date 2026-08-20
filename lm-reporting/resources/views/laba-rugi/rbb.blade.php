@@ -24,11 +24,11 @@
                 </select>
             </div>
 
-            <div class="filter-group filter-group-aksi">
+            <div class="filter-group">
                 <label class="filter-label">Rincian</label>
                 <div class="rbb-aksi">
-                    <button type="button" class="btn btn-ghost" @click="bukaSemua()">Buka semua</button>
-                    <button type="button" class="btn btn-ghost" @click="tutupSemua()">Tutup semua</button>
+                    <button type="button" class="btn" @click="bukaSemua()">Buka semua</button>
+                    <button type="button" class="btn" @click="tutupSemua()">Tutup semua</button>
                 </div>
             </div>
         </div>

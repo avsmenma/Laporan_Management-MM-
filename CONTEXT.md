@@ -190,7 +190,7 @@ lm-reporting/
 - Perintah artisan tidak di `app/Console/Commands`, tapi **ditulis inline di `routes/console.php`**:
   `lm:import-raw`, `report:generate`, `budget:import-test`, `lm:tahunlalu-wbs`, `lm:tahunlalu-ohc`,
   `alokasi:import-areal`, `alokasi:import-produksi`, `produksi:import`, `produksi-kebun:import`,
-  `produksi:cpo-inti`, `pembelian-tbs:import`, `penjualan-produk:import`.
+  `produksi:cpo-inti`, `pembelian-tbs:import`, `penjualan-produk:import`, `rbb:pivot`.
 - Konfigurasi rute halaman kebanyakan `Route::view(...)` — halaman mengambil data sendiri lewat
   `fetch('/report-data/...')` dari JS inline.
 
@@ -221,13 +221,16 @@ Tiga lapis: **master** → **mentah (raw)** → **hasil hitung (report)**, plus 
 - `report_lm16` — kolom berpasangan `bi_*` (bulan ini) dan `sd_*` (s.d bulan ini), masing-masing
   `olah`, `kso`, `jumlah` (**jumlah = olah + kso**), plus `rp_kg_tbs`, `rp_kg_mi`.
 
+Selain itu `rbb_pivot` — agregat halaman RBB yang dibangun ulang dari `rbb_gl`
+(lihat §7 no.16).
+
 ### Mentah / sumber
 
 `db_wbs_raw` (+`db_wbs_tahun_lalu`), `db_ohc`, `db_gc`, `db_wbs`, `db_btl`, `db_pks`,
 `pks_biaya`, `pks_produksi`, `budget_rko`, `budget_rkap`, `budget_source` (`jenis` = rko|rkap),
 `realisasi_tahun_lalu`, `areal_blok`, `alokasi_areal`, `alokasi_produksi`, `produksi_pks`,
 `produksi_kebun_wb`, `produksi_cpo_inti`, `pembelian_tbs`, `penjualan_produk`, `beban_usaha_gl`,
-`persediaan_nilai`, `investasi_wbs`, `investasi_asset`.
+`persediaan_nilai`, `investasi_wbs`, `investasi_asset`, `rbb_gl` (±240 rb baris/bulan).
 
 ### Input manual (tidak ada di SAP)
 
@@ -383,6 +386,26 @@ total yang terlihat sah tetapi salah (pernah terjadi: periode tanpa batch LM13 m
 Kotor 1,13 T). *Konsekuensi:* setiap kali sebuah baris komponen mendapat sumber baru, perbarui
 juga daftar itu.
 
+**15. Kolom klasifikasi RBB DISIMPAN APA ADANYA dari berkas, tidak dihitung ulang** — sheet
+"Data" workbook RBB punya empat kolom bantu (`Klasifikasi`, `Klasifikasi 2`, `Jenis Beban`,
+`Segmen`) yang di Excel berupa rumus VLOOKUP berjenjang ke sheet "Lock" (peta 1.860 cost center,
+peta account, peta khusus stasiun pabrik, prefix WBS, plus aturan Profit Center `5F` → Pabrik,
+WBS `PC` → Investasi, Account `55` → Variance). Importer menyalin hasilnya, bukan menirukan
+rumusnya. *Alasan:* menirukan rantai VLOOKUP itu di PHP berarti menebak-nebak pemetaan yang
+pemiliknya bisa ubah kapan saja di workbook, dan setiap selisih kecil langsung merusak angka
+laporan; menyalin hasil membuat halaman dijamin sama dengan pivot acuan (terbukti selisih 0 untuk
+seluruh 241.643 baris Januari 2026). *Konsekuensi:* berkas yang diunggah HARUS berisi keempat
+kolom itu — ekspor SAP mentah tanpa kolom bantu akan menghasilkan baris tanpa klasifikasi.
+Kalau suatu saat pemetaan perlu dihitung sendiri, sheet "Lock" itulah sumbernya.
+
+**16. Halaman RBB membaca `rbb_pivot`, bukan `rbb_gl`** — `RbbPivotService` memateri­alisasi
+agregat terdalam (Klasifikasi 2 × Jenis Beban × Account × Klasifikasi × Segmen) setiap kali impor
+selesai. *Alasan:* `SUM`+`GROUP BY` langsung atas ±240 rb baris per bulan memakan ±2 detik tiap
+muat halaman, sedangkan hasilnya hanya ratusan baris. *Konsekuensi:* kalau `rbb_gl` diubah di
+luar importer (mis. hapus manual), jalankan `php artisan rbb:pivot` supaya halaman ikut berubah.
+Subtotal tingkat 1 & 2 sengaja TIDAK disimpan — dijumlahkan dari agregat ini di controller,
+supaya total tidak mungkin berbeda dari rinciannya.
+
 ---
 
 ## 8. JANGAN DIUBAH (terlihat aneh, tetapi disengaja)
@@ -504,30 +527,39 @@ perintah native (mis. pesan commit) — pakai here-string `@'…'@` dengan penut
 
 ## 11. YANG SEDANG DIKERJAKAN
 
-Pekerjaan terakhir (selesai & sudah di-deploy): **mengisi blok Harga Pokok Penjualan LM-27A**.
+Pekerjaan terakhir (selesai & sudah di-deploy): **halaman RBB — Rincian PNL**.
 
-- `f778470` + `f4ffe88` — baris **"Persediaan Awal"** dihubungkan ke halaman Persediaan.
-  Konstanta saldo awal tahun dipindah dari literal JavaScript di blade ke
-  `app/Domain/Report/PersediaanAwalTahun.php` (lihat §7 no.13); Kelapa Sawit 194.983.848.689,
-  Karet 241.975.496.
-- `4301f06` + `516c09a` + `d9e4ec6` — baris **"Penyusutan"** dihubungkan ke halaman LM
-  Eksploitasi. `ReportController::lm13()` dipecah supaya `lm13Rows()` bisa dipakai halaman lain;
-  Kelapa Sawit Juli 2026 = 80.825.741.670. Kolom Karet sengaja kosong (§10).
-- `c09837d` — baris **"Biaya Produksi"** = "Jumlah Biaya Produksi" halaman LM Eksploitasi
-  **dikurangi** "Jumlah Beban Penyusutan" (aturan pemilik project: di LM-27A penyusutan berdiri
-  sebagai baris tersendiri). Juli 2026: 1.264.270.936.505 − 80.825.741.670 = 1.183.445.194.835.
-- `615fefb` + `59af8b9` — blok **Biaya Usaha**: "Biaya Penjualan" (dari halaman Beban Penjualan,
-  baris "Jumlah" per seksi) dan "- Administrasi Kandir" (dari Beban Administrasi tab ADMI KS/KR,
-  baris "Jumlah beban administrasi Include Penyusutan"), keduanya bertanda minus, ditutup tiga
-  baris total: Biaya Administrasi / Umum = Kandir + Kebun, Jumlah Biaya Usaha = Biaya Penjualan +
-  Biaya Administrasi / Umum, Laba (Rugi) Usaha = Laba (Rugi) Kotor + Jumlah Biaya Usaha.
-  Juli 2026 Kelapa Sawit: Jumlah Biaya Usaha (115.883.771.387), Laba (Rugi) Usaha 60.209.491.179.
-- `ee9095a` + `07bf643` + `9f45a4d` — baris **"Persediaan Akhir"** (dari halaman Persediaan kolom
-  NILAI PERSEDIAAN AKHIR, lewat `PersediaanStruktur` + `PersediaanController::nilaiAkhirJumlah()`),
-  **tanda minus + format kurung** untuk tiga baris biaya, serta dua rumus total:
-  Harga Pokok Penjualan = jumlah seluruh baris bloknya, Laba (Rugi) Kotor = Jumlah Penjualan +
-  Harga Pokok Penjualan. Juli 2026 Kelapa Sawit: HPP (1.228.470.741.295), Laba Kotor
-  176.093.262.566.
+Template: `docs/laba_rugi/rbb/Beban Pokok & Usaha Januari 2026.xlsb`, sheet **`Report I.`**
+(perhatikan titiknya) — PivotTable atas sheet `Data` (Table1, 241.643 baris GL SAP, satu berkas
+= satu bulan). Sheet lain di workbook itu: `Report` (ringkas PNL), `Report II` (pembelian TBS,
+sudah ada padanannya di `/produksi/pembelian`), `Report III` (persediaan, padanannya
+`/laba-rugi/persediaan`) — atas keputusan pemilik project **hanya Report I. yang dibuat**.
+
+- `ba4abc9` — tabel mentah `rbb_gl` + jenis impor baru **`rbb_gl`** ("RBB — Rincian PNL (GL)").
+  Kolom dipetakan lewat **nama header**, bukan posisi. Importer menerima `.xlsx` maupun **`.csv`**
+  (pemisah kolom ditebak dari baris header; angka bergaya Indonesia "1.234.567" ikut terbaca) —
+  berkas asli `.xlsb` tidak terbaca pustaka mana pun, jadi harus disimpan ulang lebih dulu.
+- `ba8eca8` — agregat `rbb_pivot` + `RbbPivotService` + perintah `rbb:pivot`, `Api\RbbController`,
+  halaman `resources/views/laba-rugi/rbb.blade.php`, tes `tests/Feature/RbbApiTest.php`.
+
+Bentuk halaman mengikuti pivot acuan: baris 3 tingkat (Klasifikasi 2 → Jenis Beban → Account,
+bisa dibuka/tutup, bawaannya rincian akun tertutup), kolom **dinamis** (blok Klasifikasi ×
+sub-kolom Segmen — hanya yang ada datanya, tiap blok ditutup Total, lalu Grand Total), format
+akuntansi (minus dalam kurung, nol jadi `-`, sel tanpa posting dibiarkan kosong).
+
+Angka Januari 2026 **cocok selisih 0** dengan workbook pada seluruh sel yang diperiksa —
+Grand Total (113.222.493.034), Penjualan (193.747.725.081), Beban Pokok Penjualan 59.927.519.350,
+Beban Usaha 21.023.475.715, Pendapatan Lain-lain (425.763.018), termasuk pecahan per Jenis Beban
+× Segmen di blok `b. Overhead`. Data Januari 2026 sudah diimpor di kedua server.
+
+Yang belum ada di halaman RBB: **kolom kumulatif "s.d bulan"** (pemilik project memilih bulan
+berjalan saja dulu) dan **drill-down ke posting** seperti halaman laba-rugi lain.
+
+Sebelumnya (juga selesai & ter-deploy): **blok Harga Pokok Penjualan sampai baris penutup LM-27A**
+— seluruh baris total LM-27A kini berumus, yang tersisa mengisi baris komponennya (Ekspor,
+Perubahan Nilai Wajar Aset Biologis, Order Produksi, Administrasi Kebun, Biaya Bunga, Pendapatan
+Lain-Lain, Pajak Perseroan, Pajak Tangguhan, tiga baris Pendapatan Komprehensif Lain) serta
+keputusan kolom Karet (§10).
 
 **Tidak ada pekerjaan yang tergantung setengah jalan.** Langkah berikutnya menunggu arahan
 pemilik project; kandidat terdekat ada di §12.
